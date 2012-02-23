@@ -160,11 +160,13 @@ class mapobject:
             bottom = maxy - ey
             ey = maxy
         
-        # now cut'n'paste requested piece of crap onto correct spot 
-        # in the rv.
+        #print x,y,z, w, h
+        #print sx,ex, sy,ey
+        #print left, top, right, bottom
         
         pompous_variable_name = self.p.madpump._binary_form[sx:ex,sy:ey,z]
         rv[left:right, top:bottom] = pompous_variable_name
+        
         return rv
 
 class rednerer(object):
@@ -243,17 +245,18 @@ class rednerer(object):
         return True
     
     def grid_allocate(self, w, h):
-        rv = []
+        rv = np.zeros((2*w*h,) , 'f')
+        i = 0
         for xt in xrange(0, w):
             for yt in xrange(0, h):
-                x = (xt + 0.5)#/w
-                y = (h - yt - 0.5)#/h
-                rv.append( [ x, y ] )
+                rv[2 * i + 0] = (xt + 0.5)#/w
+                rv[2 * i + 1] = (h - yt - 0.5)#/h
+                i += 1
         
         self.grid_w = w
         self.grid_h = h
         self.grid_tile_count = w*h
-        self.grid = np.array( rv, 'f' )
+        self.grid = rv
         
     
     def opengl_init(self):
@@ -294,7 +297,7 @@ class rednerer(object):
         if self.do_update_attrs or not self.screen_vbo:
             self.screen_vbo = vbo.VBO(self.screen, usage=GL_DYNAMIC_DRAW)
             self.screen_vbo.bind()
-            glVertexAttribPointer(self.aloc["screen"], 2, GL_FLOAT, GL_FALSE, 0, self.screen_vbo)
+            glVertexAttribPointer(self.aloc["screen"], 2, GL_UNSIGNED_INT, GL_FALSE, 0, self.screen_vbo)
             self.grid_vbo = vbo.VBO(self.grid, usage=GL_STATIC_DRAW)
             self.grid_vbo.bind()
             glVertexAttribPointer(self.aloc["position"], 2, GL_FLOAT, GL_FALSE, 0, self.grid_vbo)
@@ -370,6 +373,7 @@ class rednerer(object):
                     self.set_mode(self.viewport_w, self.viewport_h, False)
                 else:
                     self.set_mode(new_window_w, new_window_h, False)
+        self.set_viewport()
 
     def glinfo(self):
         strs = {

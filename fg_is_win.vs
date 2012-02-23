@@ -6,11 +6,8 @@
 uniform vec2 viewpoint;			
 uniform vec3 pszar; 			// { parx, pary, psz }
 
-// Total 9 float uniforms
-
 attribute vec2 screen;          // key into blithash 
 attribute vec2 position;        // almost forgot teh grid
-// Total 7 attributes  = 11 float values 
 
 varying vec2 crap;        // computed rendering and positioning
 

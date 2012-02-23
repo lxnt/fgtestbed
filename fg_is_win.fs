@@ -57,7 +57,5 @@ void main() {
 
     vec4 tile_color = texture2D(font, texcoords);
     gl_FragColor = mix(tile_color, blend_color, 1.0 - tile_color.a);
-    gl_FragColor.rg = crap;
-    gl_FragColor.b = 1.0;
     gl_FragColor.a = final_alpha;
 }
