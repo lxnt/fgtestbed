@@ -25,8 +25,8 @@ from OpenGL.GL.ARB import shader_objects
 import numpy as np
 import raw
 
-def compileProgramTheRightWay(fs, vs, unifomap = {}):
-    shaders = [ fs, vs ]
+def compileProgramTheRightWay(*shaders):
+    
     program = glCreateProgram()
     for shader in shaders:
         glAttachShader(program, shader)
@@ -41,7 +41,7 @@ def compileProgramTheRightWay(fs, vs, unifomap = {}):
         ))
     glUseProgram(program)
     au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
-    
+    rv = {}
     for i in xrange(au):
         name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
         loc = glGetUniformLocation(program, name)
@@ -52,14 +52,14 @@ def compileProgramTheRightWay(fs, vs, unifomap = {}):
             glUniform1i(loc, 0)
         elif typ == GL_SAMPLER_3D:
             glUniform1i(loc, 1)
-    
-    for uname, uval in unifomap.items():
-        uloc = glGetUniformLocation(program, uname)
-        print "{0}: {1}".format(uname, uloc)
-        try:
-            glUniform1i(uloc, uval)
-        except GLError:
-            print 'failed'
+    if False:
+        for uname, uval in unifomap.items():
+            uloc = glGetUniformLocation(program, uname)
+            print "{0}: {1}".format(uname, uloc)
+            try:
+                glUniform1i(uloc, uval)
+            except GLError:
+                print 'failed'
     
     glValidateProgram(program)
     validation = glGetProgramiv( program, GL_VALIDATE_STATUS )
@@ -164,21 +164,64 @@ class rednerer(object):
         self.snap_to_grid = False
         self.gameobject = go
         
-        self.w_px = 16*80
-        self.h_px = 16*25
+        self.grid_w = 80
+        self.grid_h = 25
         
-        self.initializeDisplay()
+        
         self.vs = vs
         self.fs = fs
-        self.shader_setup()
         self.reset_vbos = True
         
         self.texgen = None
         self.filter = GL_NEAREST
         
+        self.opengl_initialized = False
+        self.do_reset_glcontext = False
+        self.do_update_attrs = True
+        self.surface = None
         
-    def initializeDisplay(self):
-        self.reset_videomode()
+        
+        self.set_mode(1280, 1024)
+        
+    def set_mode(self, w, h, fullscreen=False):
+        if self.surface is None:
+            fs_state = False
+            res_change = True
+        else:
+            fs_state = self.surface.get_flags() & pygame.FULLSCREEN
+            res_change = ( surface.get_width() != w ) or (surface.get_height() != h)
+            
+        if self.opengl_initialized and ( (fullscreen_state and fullscree) or (not (fullscreen_state or fullscreen))) and not res_change:
+            return True # nothing to do
+        
+        if self.opengl_initialized and self.do_reset_glcontext:
+            self.opengl_fini()
+        
+        flags = pygame.OPENGL|pygame.DOUBLEBUF|pygame.RESIZABLE
+        if fullscreen:
+            flags |= pygame.SDL_FULLSCREEN
+        
+        pygame.display.set_mode((w,h), pygame.OPENGL|pygame.DOUBLEBUF|pygame.RESIZABLE)
+        
+        if not self.opengl_initialized:
+            self.opengl_init()
+        return True
+        
+    def opengl_init(self):
+        
+        glMatrixMode(GL_MODELVIEW) # always so as we don't do any model->world->eye transform
+        glLoadIdentity()
+
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        
+        gluOrtho2D(0, self.w_px, 0, self.h_px)
+        #print repr(glGetFloatv(GL_PROJECTION_MATRIX))
+        #glViewport(0, self.w_px, 0, self.h_px)
+        glViewport(0, 0, self.w_px, self.h_px)
+
+        glClearColor(0.3, 0.0, 0.0, 1.0)
+        glClear(GL_COLOR_BUFFER_BIT)
         self.glinfo()
         glEnable(GL_ALPHA_TEST)
         glAlphaFunc(GL_NOTEQUAL, 0)
@@ -191,6 +234,16 @@ class rednerer(object):
         #glDisable(GL_POINT_SMOOTH)
         glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT)
         self.font_txid, self.txco_txid = glGenTextures(2)
+        self.shader_setup()
+        
+        self.opengl_initialized = True
+        
+    def opengl_fini(self):
+        self.shader = None
+        glDeleteTextures()
+        glDeleteBuffers()
+        self.opengl_initialized = False
+        self.do_update_attrs = True
         
     def glinfo(self):
         strs = {
@@ -244,19 +297,10 @@ class rednerer(object):
             raise SystemExit
         
         where = 'link'
-        sampuni = { 
-            'blitcode': 0,
-            'blendcode':1,
-            'dispatch':2,
-            'font':3,
-            'txco':4,
-            }
-        self.shader = compileProgramTheRightWay( vsp, fsp, sampuni ) 
-                
-            
-        glUseProgram(self.shader)
+
+        self.shader = compileProgramTheRightWay( vsp, fsp ) 
         
-        uniforms = "font blithash blitcode txco txsz final_alpha viewpoint pszar frameno".split()
+        uniforms = "dispatch blitcode blendcode font txco txsz final_alpha viewpoint pszar frame_no".split()
         attributes = [ "screen" ] #.split()
 
         self.uloc = {}
@@ -272,23 +316,20 @@ class rednerer(object):
                 print "failed enabling VAA for {0}".format(a)
                 print e
                 raise
-            
-        self.makeansitex()
-        print repr(self.uloc)
-        glUniform1i(self.uloc["blithash"], 1) # blitter hash tui
-        glUniform1i(self.uloc["blitcode"], 2) # blitter code tui 
-        glUniform1i(self.uloc["font"], 2) # tilepage tui
-        glUniform1i(self.uloc["txco"], 4) # tilepage tilesizes tui
+                
+        glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
+        glUniform1i(self.uloc["blendcode"], 1) # blitter blend code tiu
+        glUniform1i(self.uloc["blitcode"], 2) # blitter blit code tiu
+        glUniform1i(self.uloc["font"], 3) # tilepage tilesizes tiu
+        glUniform1i(self.uloc["txco"], 4) # tilepage tiu
         glUniform1f(self.uloc["final_alpha"], 1.0)
         glUniform2f(self.uloc["viewpoint"], 0, 0);
-        glUniform1i(self.uloc["frameno"], 0);
+        glUniform1f(self.uloc["frame_no"], 0.0);
 
     def reload_shaders(self, frame, texture, nominal):
-        glDeleteProgram(self.shader)
+        self.shader = None
         print "reload_shaders(): shaders dropped, reloading with nominal={0}".format(nominal)
         self.shader_setup(nominal)
-        w_t, h_t, t_w, t_h = texture[1:5]
-        glUniform4f(self.uloc["txsz"], w_t, h_t, t_w, t_h )  # tex size in tiles, tile size in texels
         self.reset_vbos = True
 
     def upload_textures(self): 
@@ -299,26 +340,22 @@ class rednerer(object):
         
 
     def rebind_textures(self):
-        glActiveTexture(GL_TEXTURE4)
-        glBindTexture(self.textarget, self.txco_txid)        
-        glUniform1i(self.uloc["txco"], 4) # GL_TEXTURE1 : font
-        glActiveTexture(GL_TEXTURE2)
-        glBindTexture(self.textarget,  self.font_txid)
-        glUniform1i(self.uloc["font"], 2) # GL_TEXTURE1 : font
         glActiveTexture(GL_TEXTURE0)
-        glBindTexture(self.textarget,  self.ansi_txid)
-        
-        glUniform1i(self.uloc["ansi"], 0) # GL_TEXTURE0 : ansi color strip
-        glUniform1i(self.uloc["blithash"], 1) # blitter hash tui
-        glUniform1i(self.uloc["blitcode"], 2) # blitter code tui 
-        glUniform1i(self.uloc["font"], 2) # tilepage tui
-        glUniform1i(self.uloc["txco"], 4) # tilepage tilesizes tui
-        
+        glBindTexture(GL_TEXTURE_2D, self.txid['dispatch'])
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_3D, self.txid['blendcode'])
+        glActiveTexture(GL_TEXTURE2)
+        glBindTexture(GL_TEXTURE_3D, self.txid['blitcode'])
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, self.txid['font'])
+        glActiveTexture(GL_TEXTURE4)
+        glBindTexture(GL_TEXTURE_2D, self.txid['txco'])
+
     def update_all_uniforms(self):
         #glUniform4f(self.uloc["txsz"], w_t, h_t, t_w, t_h )  # tex size in tiles, tile size in texels
         glUniform1f(self.uloc["final_alpha"], 1.0)
         glUniform2f(self.uloc["viewpoint"], 0, 0)
-        glUniform4f(self.uloc["txsz"],*self.txsz ) 
+        glUniform4f(self.uloc["txsz"], *self.txsz ) 
         
     def update_vbos(self, frame_i):
 
@@ -346,33 +383,12 @@ class rednerer(object):
             self.screen_vbo = vbo.VBO(buf, usage=GL_STREAM_DRAW)
             self.screen_vbo.bind()
             
-            glVertexAttribPointer(self.aloc["screen"], 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.screen)
-            #glVertexAttribPointer(self.aloc["screen"], 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.underlay)
-            glVertexAttribPointer(self.aloc["texpos"], 1 , GL_UNSIGNED_INT, GL_FALSE, 0, self.screen_vbo + frame.bo.texpos)
-            glVertexAttribPointer(self.aloc["addcolor"], 1 , GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.addcolor)
-            glVertexAttribPointer(self.aloc["grayscale"], 1,  GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.grayscale)
-            glVertexAttribPointer(self.aloc["cf"], 1 , GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.cf)
-            glVertexAttribPointer(self.aloc["cbr"], 1 , GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo + frame.bo.cbr)
+            glVertexAttribPointer(self.aloc["screen"], 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, self.screen_vbo)
+
         else:
             self.screen_vbo.set_array(frame.buf())
             self.screen_vbo.bind()
 
-    def reset_videomode(self):
-        pygame.display.set_mode((self.w_px,self.h_px), pygame.OPENGL|pygame.DOUBLEBUF|pygame.RESIZABLE)
-        
-        glMatrixMode(GL_MODELVIEW) # always so as we don't do any model->world->eye transform
-        glLoadIdentity()
-
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        
-        gluOrtho2D(0, self.w_px, 0, self.h_px)
-        #print repr(glGetFloatv(GL_PROJECTION_MATRIX))
-        #glViewport(0, self.w_px, 0, self.h_px)
-        glViewport(0, 0, self.w_px, self.h_px)
-
-        glClearColor(0.3, 0.0, 0.0, 1.0)
-        glClear(GL_COLOR_BUFFER_BIT)
 
     """ 31.25 renderer_glsl  """
     MIN_GRID_X = 80
@@ -384,8 +400,8 @@ class rednerer(object):
         psize  = self.psize + delta
         
         # get new grid size
-        nw_t = math.floor(float(self.w_px)/psize)
-        nh_t = math.floor(float(self.h_px)/psize)
+        nw_t = math.floor(float(self.gw)/psize)
+        nh_t = math.floor(float(self.gh)/psize)
         
         # clamp the crap, yarrrr
         nw_t = min(max(nw_t, 80), 256)
@@ -415,12 +431,10 @@ class rednerer(object):
         self.reset_videomode()
         glUniform1f(self.uloc["pointsize"], psize)
     
-    def reshape(self): 
-        """ now, we got what? wpx, hpx, w_t, h_t from da frame. That is all.
-        
-        """
-        Pw = (1.0 * frame.wpx)/frame.w_t
-        Ph = (1.0 * frame.hpx)/frame.h_t
+    def reshape(self, wpx, hpx, gw, gh): 
+
+        Pw = (1.0 * wpx)/gw
+        Ph = (1.0 * hpx)/gh
         if Pw > Ph:
             Psize = Pw
             Parx = 1.0
@@ -431,11 +445,10 @@ class rednerer(object):
             Pary = 1.0
 
         glUniform3f(self.uloc["pszar"], Parx, Pary, frame.Psz)
-        
-        self.w_px = frame.wpx
-        self.h_px = frame.hpx
-        
-        self.makegrid(frame.w_t, frame.h_t)
+                
+        self.makegrid(gw, gh)
+        self.gw = gw
+        self.gh = gh
         
     def makegrid(self, w, h):
         rv = []
@@ -470,12 +483,12 @@ class rednerer(object):
     def loop(self):
         bgc = ( 0.0, 0.3, 0.0 ,1 )
         
-        GFPS = 12
+        GFPS = 24
         frame_i = 0
         frame_max = 127
         vpx = vpy = x = y = z = 0
         
-        slt = 1000.0/fps # milliseconds
+        slt = 1000.0/GFPS # milliseconds
         last_frame_ts = 0
         paused = False
         finished = False
