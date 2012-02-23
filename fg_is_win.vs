@@ -1,7 +1,7 @@
 #version 120
 #line 2 0
-//#pragma optimize(off)
-//#pragma debug(on)
+#pragma optimize(off)
+#pragma debug(on)
 
 uniform vec2 viewpoint;			
 uniform vec3 pszar; 			// { parx, pary, psz }

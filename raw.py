@@ -454,15 +454,13 @@ class preparer:
         for mat in mats:
             tcount += len(mats[mat].tiles.keys())
         #print "{1} mats with {0} defined tiles".format(tcount, len(mats.keys()))
-        if tcount <256:
-            tx = 16
-            ty = 16
-            tz = 128
+        if tcount < 4096:
+            tx = 8
+            ty = 512
         else:
-            return
+            raise TooManyTilesDefinedCommaManExclamationMark
         
-        blitcode = np.zeros((tx, ty, tz), dtype=np.uint32)
-        blendcode = np.zeros((tx, ty, tz), dtype=np.uint32)
+        blitcode = np.zeros((2048, 512), dtype=np.uint32)
         blithash = np.zeros((1024, 1024), dtype=np.uint32)
         tc = 0
             
@@ -478,26 +476,17 @@ class preparer:
                 tile_id = self.tile_names[tname]
                 x = tc % tx
                 y = tc / tx
-                z = 0
-                h = hashit(tile_id, mat_id) # not used with shader-based blithash
-                blitcode_index = x << 16 | ( y & 0xFFFF )
-                blithash[tile_id, mat_id] = blitcode_index # that's what each map frame shall consist of
-                #print "mat: {0} tname: {1} len(frameseq): {2}".format(name, tname, len(frameseq))
+                blithash[tile_id, mat_id] = tc
+                frame_no = 0
                 for insn in frameseq:
                     blit, blend = insn
-                    tiu, s, t, un = maptile(blit)
+                    un, s, t, un = maptile(blit)
                     r,g,b,a = blend
-                    blitcode[x,y,z] = tc
-                    #blitcode[x,y,z]['tileidx'] = tc
-                    #blitcode[x,y,z]['s'] = s
-                    #blitcode[x,y,z]['t'] = t
-                    #blitcode[x,y,z]['un'] = un
-                    blendcode[x,y,z] =( r << 24 ) | ( g<<15) | (b<<8) | a
-                    z += 1
+                    blitcode[x * 256 + 2*frame_no,     y] = ( s << 24 ) | ( t<<15 ) | ( 0<<8 ) | 0
+                    blitcode[x * 256 + 2*frame_no + 1, y] = ( r << 24 ) | ( g<<15 ) | ( b<<8 ) | a
                 tc += 1
 
-        self.tx, self.ty, self.tz, self.blithash, self.blitcode = tx, ty, tz, blithash, blitcode
-        self.blendcode = blendcode
+        self.tx, self.ty, self.blithash, self.blitcode = tx, ty, blithash.tostring(), blitcode.tostring()
 
     def second_stage(self, z):    
         tx, ty, tz, blithash, blitcode = self.tx, self.ty, self.tz, self.blithash, self.blitcode
