@@ -438,6 +438,12 @@ class preparer:
             'offsets': [0, 4, 5, 6, 7 ],
             'titles': ['tile index',
                        'blend-red', 'blend-blue', 'blend-green', 'blend-alpha']
+                       })        
+        _rgba = np.dtype({
+            'names': 'r g b a'.split(),
+            'formats': ['u1', 'u1', 'u1', 'u1' ],
+            'offsets': [0, 1, 2, 3 ],
+            'titles': ['red', 'green', 'blue', 'alpha']
                        })
         pages, mats = self.gr.get()
         
@@ -455,8 +461,9 @@ class preparer:
         else:
             return
         
-        blitcode = np.zeros((tx, ty, tz), _dt)
-        blithash = np.zeros((1024,1024), np.int32)
+        blitcode = np.zeros((tx, ty, tz), dtype=np.uint32)
+        blendcode = np.zeros((tx, ty, tz), dtype=np.uint32)
+        blithash = np.zeros((1024, 1024), dtype=np.uint32)
         tc = 0
             
         for name, mat in mats.items():
@@ -480,18 +487,17 @@ class preparer:
                     blit, blend = insn
                     tiu, s, t, un = maptile(blit)
                     r,g,b,a = blend
-                    blitcode[x,y,z]['tileidx'] = tc
+                    blitcode[x,y,z] = tc
+                    #blitcode[x,y,z]['tileidx'] = tc
                     #blitcode[x,y,z]['s'] = s
                     #blitcode[x,y,z]['t'] = t
                     #blitcode[x,y,z]['un'] = un
-                    blitcode[x,y,z]['r'] = r
-                    blitcode[x,y,z]['g'] = g
-                    blitcode[x,y,z]['b'] = b
-                    blitcode[x,y,z]['a'] = a
+                    blendcode[x,y,z] =( r << 24 ) | ( g<<15) | (b<<8) | a
                     z += 1
                 tc += 1
 
         self.tx, self.ty, self.tz, self.blithash, self.blitcode = tx, ty, tz, blithash, blitcode
+        self.blendcode = blendcode
 
     def second_stage(self, z):    
         tx, ty, tz, blithash, blitcode = self.tx, self.ty, self.tz, self.blithash, self.blitcode

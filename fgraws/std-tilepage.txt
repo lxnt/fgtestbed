@@ -6,7 +6,7 @@ Raws format:
 [OBJECT:FULL_GRAPHICS]
 
 [TILE_PAGE:curses16sq]
-    [FILE:curses_square_16x16.png]
+    [FILE:png/curses_square_16x16.png]
     [TILE_DIM:16:16]
     [PAGE_DIM:16:16]
                                 ====Row 01 (000-015)====
