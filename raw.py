@@ -114,7 +114,23 @@ class mapdump:
             self._dumb_list.append((tiletype, stone, inorg, grass, gramount))
             x, y, z = x-origin[0], y-origin[1], z-origin[2]
             self._binary_form[x, y, z] = hashit(tiletype, stone, inorg, grass, gramount)
-            
+
+    def __str__(self):
+        rv = ""
+        z = 0
+        uni = np.unique(self._binary_form)
+
+        tab = {}
+        i = 0
+        for u in uni:
+            tab[u] = "{:02x} ".format(i)
+            i += 1
+        print i
+        for x in xrange(self._xdim):
+            for y in xrange(self._ydim):
+                rv += tab[self._binary_form[x,y,z]]
+            rv += "\n"
+        return rv
 
     def stats(self, tile_names):
         mathash = {}
@@ -533,11 +549,12 @@ class preparer:
     
 
 if __name__ == '__main__':
-    if sys.argv[1] == 'rep':
+    if sys.argv[1] == 'map':
         enums, emap = enumaps(apidir)
         map = mapdump(mapfile)
-        map.stats(enums)
-    elif sys.argv[1] == 'parse':
+        #map.stats(enums)
+        print map
+    elif sys.argv[1] == 'raws':
         gr = graphraws(fgrawdir)
     elif sys.argv[1] == 'prep':
         p = preparer()

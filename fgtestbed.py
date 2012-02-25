@@ -298,7 +298,7 @@ class rednerer(object):
         if mapwindow != self._fc_key:
             self._fc_key = mapwindow
             self.screen  = self.gameobject.frame(*mapwindow)
-            print self.screen.shape
+            #print self.screen.shape
             #self.screen.fill(32)
             
         if self.do_update_attrs or not self.screen_vbo:
@@ -679,12 +679,14 @@ class rednerer(object):
                             paused = not paused
                         elif ev.key == pygame.K_ESCAPE:
                             finished = True 
-                        elif ev.key == pygame.K_COMMA and ev.mod & 3:
+                        elif ev.key == pygame.K_PERIOD and ev.mod & 3:
                             if z > 0:
                                 z -= 1
-                        elif ev.key == pygame.K_PERIOD  and ev.mod & 3:
+                            print "Z={}".format(z)
+                        elif ev.key == pygame.K_COMMA  and ev.mod & 3:
                             if z < self.gameobject.maxz:
                                 z += 1
+                            print "Z={}".format(z)
                         elif ev.key in scrolldict:
                             if ev.mod & 3:
                                 boost = 10
@@ -726,10 +728,8 @@ class rednerer(object):
                         else:
                             paused = not paused
                     elif ev.type == pygame.MOUSEBUTTONUP:
-                        panning = False
                         if ev.button == 3:
-                            print "panned to {0}x{1}".format(x, y)
-                            glUniform2f(self.uloc["viewpoint"], vpx, vpy)
+                            panning = False
              
                     elif ev.type ==  pygame.MOUSEMOTION:
                         if panning:
