@@ -14,6 +14,7 @@ import sys, time, math, struct, io, ctypes, zlib, collections, argparse, traceba
 from random import random as rnd
 import pygame
 import raw
+from o import cx as glnames
 
 from OpenGL.GL import *
 from OpenGL.arrays import vbo
@@ -22,57 +23,9 @@ import OpenGL.GL.shaders
 from OpenGL.GLU import *
 from OpenGL.GL.ARB import shader_objects
 from OpenGL.GL.ARB.texture_rg import *
-
+import ctypes
 import numpy as np
 import raw
-
-def compileProgramTheRightWay(*shaders):
-    
-    program = glCreateProgram()
-    for shader in shaders:
-        glAttachShader(program, shader)
-    glLinkProgram(program)
-    
-    link_status = glGetProgramiv( program, GL_LINK_STATUS )
-    if link_status == GL_FALSE:
-        raise RuntimeError(
-            """Link failure (%s): %s"""%(
-            link_status,
-            glGetProgramInfoLog( program ),
-        ))
-    glUseProgram(program)
-    au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
-    rv = {}
-    for i in xrange(au):
-        name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
-        loc = glGetUniformLocation(program, name)
-        val = None
-        #xval = glGetUniformiv(program, loc, 32)
-        print "{0}: name={1} type={2} loc={3} val={4}".format(i, name, typ, loc, val)
-        if typ == GL_SAMPLER_2D:
-            glUniform1i(loc, 0)
-        elif typ == GL_SAMPLER_3D:
-            glUniform1i(loc, 1)
-    if False:
-        for uname, uval in unifomap.items():
-            uloc = glGetUniformLocation(program, uname)
-            print "{0}: {1}".format(uname, uloc)
-            try:
-                glUniform1i(uloc, uval)
-            except GLError:
-                print 'failed'
-    
-    glValidateProgram(program)
-    validation = glGetProgramiv( program, GL_VALIDATE_STATUS )
-    if validation == GL_FALSE:
-        raise RuntimeError(
-            """Validation failure (%s): %s"""%(
-            validation,
-            glGetProgramInfoLog( program ),
-        ))
-    for shader in shaders:
-        glDeleteShader(shader)
-    return OpenGL.GL.shaders.ShaderProgram( program ) # context mgr        
 
 class mapobject:
     def __init__(self):
@@ -83,12 +36,12 @@ class mapobject:
         self.tp = self.p.gr.pages[self.p.gr.pages.keys()[0]]
         self.txco = self.tp.pdim + self.tp.tdim
         self.maxz = self.p.madpump._zdim - 1
+        print "maxz", self.maxz
 
     def upload_font(self, txid_font, txid_txco):
         
         surf = pygame.image.load(self.tp.file)
-        stuff = pygame.image.tostring(surf, "RGBA", 1)
-        txcos = "\x10\x10\x10\x10" * self.tp.pdim[0] * self.tp.pdim[1]
+        stuff = pygame.image.tostring(surf, "RGBA")
         
         glMatrixMode(GL_TEXTURE)
         glLoadIdentity()
@@ -102,17 +55,26 @@ class mapobject:
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, surf.get_width(), surf.get_height(), 
             0, GL_RGBA, GL_UNSIGNED_BYTE, stuff)        
             
-        glBindTexture(GL_TEXTURE_2D,  txid_txco)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.tp.pdim[0], self.tp.pdim[1],
-            0, GL_RGBA, GL_UNSIGNED_BYTE, txcos)
+        if False:
+            txcos = "\x10\x10\x10\x10" * self.tp.pdim[0] * self.tp.pdim[1]
+            glBindTexture(GL_TEXTURE_2D,  txid_txco)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.tp.pdim[0], self.tp.pdim[1],
+                0, GL_RGBA, GL_UNSIGNED_BYTE, txcos)
         
         return self.tp.pdim + self.tp.tdim
 
-    def upload_textures(self, txid_hash, txid_blit):
+    def upload_code(self, txid_hash, txid_blit):
+        
+        if False:
+            for i in (GL_UNPACK_SWAP_BYTES, GL_UNPACK_LSB_FIRST, GL_UNPACK_ROW_LENGTH,
+                GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS,
+                GL_UNPACK_SKIP_IMAGES, GL_UNPACK_ALIGNMENT ):
+                print i, glGetInteger(i)
+        
         glMatrixMode(GL_TEXTURE)
         glLoadIdentity()
         glMatrixMode(GL_MODELVIEW)
@@ -122,17 +84,28 @@ class mapobject:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1024, 1024, 0, GL_RGBA, GL_UNSIGNED_BYTE, self.p.blithash )
         
-        glBindTexture(GL_TEXTURE_2D,  txid_blit)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 2048, 512, 0, GL_RGBA, GL_UNSIGNED_BYTE, self.p.blitcode )
+
+        ptr = ctypes.c_void_p(self.p.blithash.__array_interface__['data'][0])
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16UI, self.p.hashw, self.p.hashw, 
+                     0, GL_RG_INTEGER , GL_UNSIGNED_SHORT, ptr)
         
+        glBindTexture(GL_TEXTURE_2D_ARRAY,  txid_blit)
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+                    
+        ptr = ctypes.c_void_p(self.p.blitcode.__array_interface__['data'][0])
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16UI, self.p.codew, self.p.codew, 128,
+                     0, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, ptr )
         
-    def frame(self, x,y,z,w,h):
+        print "dispatch: {0}x{1} blitcode: {2}x{3}x{4}".format(self.p.hashw, self.p.hashw, self.p.codew, self.p.codew, 128)
+        if False:
+            file("dispatch","w").write(self.p.blithash.tostring())
+            file("blitcode","w").write(self.p.blitcode.tostring())
+        
+    def frame(self, x,y,z,w,h ):
         maxx= 95
         maxy = 95
         rv = np.zeros((w, h), np.int32)
@@ -163,16 +136,29 @@ class mapobject:
         #print x,y,z, w, h
         #print sx,ex, sy,ey
         #print left, top, right, bottom
-        
         pompous_variable_name = self.p.madpump._binary_form[sx:ex,sy:ey,z]
         rv[left:right, top:bottom] = pompous_variable_name
-        
+        if False:
+            m = {}
+            i = 0
+            for k in np.unique(rv):
+                m[k] = chr(65 + i)
+                i += 1
+            print
+            for y in xrange(top, bottom):
+                s = ''
+                for x in xrange(left, right):
+                    s += m[rv[x,y]]
+                print s
+            raise SystemExit
+
         return rv
 
 class rednerer(object):
     def __init__(self, vs, fs, go):
         self.gameobject = go
         
+        default_res = ( 1280, 800 )
         
         self.vs = vs
         self.fs = fs
@@ -188,11 +174,13 @@ class rednerer(object):
         self.conf_stretch_tiles = False
         self.conf_snap_window = False
        
-        self.tex_id = []
-        self.vbo_id = []
-        self.attr_loc = []
-        self.unif_loc = []
+        self.aloc = {
+            'position': 0, 
+            'screen': 1
+        }
 
+        self.uloc = {}
+        
         self.tilesizes = None # txco texture
         self.grid = None # grid vaa/vbo
         self.screen = None # frame data
@@ -207,14 +195,16 @@ class rednerer(object):
         self.Pszx = self.Pszy = 0
         self.Psz = -8
         
+        self._fc_key = None
+        self.skip_glinfo = True
+        
         pygame.display.init()
         pygame.display.set_caption("full-graphics testbed", "fgtestbed")
-        self.set_mode(1280, 400)
+        self.set_mode(*default_res)
         self.gps_allocate(self.MIN_GRID_X, self.MIN_GRID_Y)
         self.Pszx = self.surface.get_width()/self.MIN_GRID_X
         self.Pszy = self.surface.get_height()/self.MIN_GRID_Y
-        self.texture_reset()
-        
+
     def gps_allocate(self, w, h):
         self.grid_allocate(w, h)
         self.do_update_attrs = True
@@ -257,7 +247,6 @@ class rednerer(object):
         self.grid_h = h
         self.grid_tile_count = w*h
         self.grid = rv
-        
     
     def opengl_init(self):
         
@@ -276,10 +265,23 @@ class rednerer(object):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glDisable(GL_DEPTH_TEST)
         glDepthMask(GL_FALSE)
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         glEnable(GL_POINT_SPRITE)
         glEnable(GL_PROGRAM_POINT_SIZE)
         #glDisable(GL_POINT_SMOOTH)
         glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT)
+
+        for loc in self.aloc.values():
+            glEnableVertexAttribArray(loc)
+        
+        #mkay so we have a few composited screens:
+        # 1. ze original renderer
+        # 2. ze new renderer
+        # 3. ?
+        
+        #self.map_fbo, self.crap_fbo = glGenFramebuffers(2)
+        #glBindFramebuffer(GL_FRAMEBUFFER)
+        
         self.dispatch_txid, self.blitcode_txid, self.font_txid, self.txco_txid = glGenTextures(4)
         self.shader_setup()
         
@@ -293,22 +295,38 @@ class rednerer(object):
         self.do_update_attrs = True
 
     def update_vbos(self, mapwindow):
-        self.screen  = self.gameobject.frame(*mapwindow)
+        if mapwindow != self._fc_key:
+            self._fc_key = mapwindow
+            self.screen  = self.gameobject.frame(*mapwindow)
+            print self.screen.shape
+            #self.screen.fill(32)
+            
         if self.do_update_attrs or not self.screen_vbo:
-            self.screen_vbo = vbo.VBO(self.screen, usage=GL_DYNAMIC_DRAW)
+            self.screen_vbo = vbo.VBO(self.screen, usage=GL_STREAM_DRAW)
             self.screen_vbo.bind()
-            glVertexAttribPointer(self.aloc["screen"], 2, GL_UNSIGNED_INT, GL_FALSE, 0, self.screen_vbo)
+            if False:
+                print dir(self.screen_vbo)
+                print self.screen_vbo.size, self.screen_vbo.target, self.screen_vbo.copied
+                file("frame","w").write(self.screen.tostring())
+            glVertexAttribIPointer(self.aloc["screen"], 1, GL_INT, 0, self.screen_vbo )
+            self.screen_vbo.unbind()
+
             self.grid_vbo = vbo.VBO(self.grid, usage=GL_STATIC_DRAW)
             self.grid_vbo.bind()
-            glVertexAttribPointer(self.aloc["position"], 2, GL_FLOAT, GL_FALSE, 0, self.grid_vbo)
+            glVertexAttribPointer(self.aloc["position"], 2, GL_FLOAT, GL_FALSE, 0, self.grid_vbo )
+            self.grid_vbo.unbind()
             self.do_update_attrs = False
-            print self.screen.shape
         else:
             self.screen_vbo.set_array(self.screen)
             self.screen_vbo.bind()
     
     def reshape(self, new_grid_w = 0, new_grid_h = 0, new_window_w = -1, new_window_h = -1, 
                 toggle_fullscreen = False, override_snap = False):
+
+        print "reshape(): got grid {}x{} window {}x{} tile {}x{} stretch={} snap={} Psz={}".format(
+            new_grid_w, new_grid_h, new_window_w, new_window_h, self.tile_w, self.tile_h,
+            self.conf_stretch_tiles, self.conf_snap_window, self.Psz)
+
         if not self.tile_w:
             return
         
@@ -316,11 +334,11 @@ class rednerer(object):
             new_window_w = self.surface.get_width()
         if (new_window_h < 0):
             new_window_h = self.surface.get_height()
-            
-        if self.Psz < 0:
+    
+        if new_grid_w + new_grid_h == 0:
             new_grid_w = new_window_w/self.tile_w
             new_grid_h = new_window_h/self.tile_h
-            
+        
         new_grid_w = min(max(new_grid_w, self.MIN_GRID_X), self.MAX_GRID_X)
         new_grid_h = min(max(new_grid_h, self.MIN_GRID_Y), self.MAX_GRID_Y)
         
@@ -333,16 +351,16 @@ class rednerer(object):
             
         self.Psz = max(new_psz_x, new_psz_y)
         
+        if self.conf_stretch_tiles:
+            new_psz_x = new_window_w/new_grid_w
+            new_psz_y = new_window_h/new_grid_h    
+        
         if (new_grid_w > self.grid_w) or (new_grid_h > self.grid_h):
             new_grid_w = new_window_w / new_psz_x
             new_grid_h = new_window_h / new_psz_y
             new_grid_w = min(max(new_grid_w, self.MIN_GRID_X), self.MAX_GRID_X)
             new_grid_h = min(max(new_grid_h, self.MIN_GRID_Y), self.MAX_GRID_Y)
-        
-        if self.conf_stretch_tiles:
-            new_psz_x = new_window_w/new_grid_w
-            new_psz_y = new_window_h/new_grid_h
-            
+                    
         self.Pszx = new_psz_x
         self.Pszy = new_psz_y
         
@@ -357,11 +375,14 @@ class rednerer(object):
         self.viewport_w = new_psz_x * new_grid_w
         self.viewport_h = new_psz_y * new_grid_h
         
+        print "reshape(): final grid {}x{} window {}x{} viewport {}x{} Psz {}x{}".format(
+            new_grid_w, new_grid_h, new_window_w, new_window_h,
+            self.viewport_w, self.viewport_h, self.Pszx, self.Pszy)
+        
         if new_grid_w != self.grid_w or new_grid_h != self.grid_h:
             self.gps_allocate(new_grid_w, new_grid_h)
             
         fullscreen = self.surface.get_flags() & pygame.FULLSCREEN
-        print "reshape() resulting res {0}x{1}".format(new_window_w, new_window_h)
         if toggle_fullscreen:
             if fullscreen:
                 self.set_mode(new_window_w, new_window_h, False)
@@ -376,6 +397,8 @@ class rednerer(object):
         self.set_viewport()
 
     def glinfo(self):
+        if self.skip_glinfo:
+            return
         strs = {
             GL_VENDOR: "vendor",
             GL_RENDERER: "renderer",
@@ -410,13 +433,11 @@ class rednerer(object):
         else:
             print "GL_ARB_texture_rectangle: NOT SUPPORTED"
         
-    def shader_setup(self, nominal=True):
+    def shader_setup(self):
+        
         print "Compiling shaders: \n {0}\n {1}".format(self.vs, self.fs)
         vs = file(self.vs).readlines()
         fs = file(self.fs).readlines()
-        if nominal:
-            vs.insert(5,"#define NOMINAL")
-            fs.insert(5,"#define NOMINAL")
         try:
             where = 'vertex'
             vsp = compileShader("\n".join(vs), GL_VERTEX_SHADER)
@@ -426,34 +447,62 @@ class rednerer(object):
             print where, e[0]#, e[1][0]
             raise SystemExit
         
-        where = 'link'
-
-        self.shader = compileProgramTheRightWay( vsp, fsp ) 
+        program = glCreateProgram()
+        glAttachShader(program, vsp)
+        glAttachShader(program, fsp)
         
-        uniforms = "dispatch blitcode font txco txsz final_alpha viewpoint pszar frame_no".split()
-        attributes = "screen position".split()
+        for name, loc in self.aloc.items():
+            glBindAttribLocation(program, loc, name)
+        glLinkProgram(program)
+    
+        link_status = glGetProgramiv( program, GL_LINK_STATUS )
+        if link_status == GL_FALSE:
+            raise RuntimeError(
+                """Link failure (%s): %s"""%(
+                link_status,
+                glGetProgramInfoLog( program ),
+            ))
+        
+        glUseProgram(program)
+        
+        if not self.skip_glinfo:
+            print "uniform list:"
+            au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
+            for i in xrange(au):
+                name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
+                loc = glGetUniformLocation(program, name)
+                val = None
+                #xval = glGetUniformiv(program, loc, 32)
+                print "  {0}: name={1} type={2} loc={3} val={4}".format(i, name, glnames.get(typ, typ), loc, val)
+
+        uniforms = "dispatch blitcode font txsz final_alpha viewpoint pszar frame_no dispatch_row_len".split()
 
         self.uloc = {}
         for u in uniforms:
-            self.uloc[u] = glGetUniformLocation(self.shader, u)
-            print "{0}: {1:08x}".format(u, self.uloc[u])
-        self.aloc = {}
-        for a in attributes:
-            self.aloc[a] = glGetAttribLocation(self.shader, a)
-            try:
-                glEnableVertexAttribArray(self.aloc[a])
-            except Exception, e:
-                print "failed enabling VAA for {0}".format(a)
-                print e
-                raise
-                
+            self.uloc[u] = glGetUniformLocation(program, u)
+        
         glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
         glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
-        glUniform1i(self.uloc["font"], 2) # tilepage tilesizes tiu
-        glUniform1i(self.uloc["txco"], 3) # tilepage tiu
+        glUniform1i(self.uloc["font"], 2) # tilepage tiu
         glUniform1f(self.uloc["final_alpha"], 1.0)
         glUniform2f(self.uloc["viewpoint"], 0, 0);
-        glUniform1f(self.uloc["frame_no"], 0.0);
+        glUniform1i(self.uloc["frame_no"], 0);
+        glUniform1i(self.uloc["dispatch_row_len"], 1024);
+        glUniform4i(self.uloc["txsz"], 16, 16, 16, 16);
+        glUniform3f(self.uloc["pszar"], 16.0, 1.0, 1.0);
+        
+        glValidateProgram(program)
+        validation = glGetProgramiv( program, GL_VALIDATE_STATUS )
+        if validation == GL_FALSE:
+            raise RuntimeError(
+                """Validation failure (%s): %s"""%(
+                validation,
+                glGetProgramInfoLog( program ),
+            ))
+            
+        for shader in (vsp, fsp):
+            glDeleteShader(shader)
+        self.shader = OpenGL.GL.shaders.ShaderProgram( program ) # context mgr        
 
     def reload_shaders(self, frame, texture, nominal):
         self.shader = None
@@ -463,7 +512,7 @@ class rednerer(object):
 
     def set_viewport(self):
         sw, sh =  self.surface.get_width(), self.surface.get_height()
-        print "set_viewport(): got %{0}x%{1} out of %{2}x%{3}\n".format(self.viewport_w, self.viewport_h, sw, sh)
+        print "set_viewport(): got {0}x{1} out of {2}x{3}\n".format(self.viewport_w, self.viewport_h, sw, sh)
         viewport_offset_x = (sw - self.viewport_w)/2;
         viewport_offset_y = (sh - self.viewport_h)/2;
         glMatrixMode( GL_PROJECTION);
@@ -477,42 +526,32 @@ class rednerer(object):
 
     def texture_reset(self):
         "dispatch blitcode blendcode font txco"
-        self.gameobject.upload_textures(self.dispatch_txid, self.blitcode_txid)
+        self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
         self.txsz = self.gameobject.upload_font(self.font_txid, self.txco_txid)
         self.tile_w = self.txsz[2]
         self.tile_h = self.txsz[3]
-        self.reshape()
     
-        glUniform4f(self.uloc["txsz"],*self.txsz )  # tex size in tiles, tile size in texels
-        print "txsz set to ( {0:0.2f}, {1:0.2f}, {2:0.2f}, {3:0.2f} )".format(*self.txsz )
-        
+        glUniform4i(self.uloc["txsz"],*self.txsz )  # tex size in tiles, tile size in texels
 
-    def rebind_textures(self):
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.dispatch_txid)
         glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
         
         glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D, self.blitcode_txid)
+        glBindTexture(GL_TEXTURE_2D_ARRAY, self.blitcode_txid)
         glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
         
         glActiveTexture(GL_TEXTURE2)
         glBindTexture(GL_TEXTURE_2D, self.font_txid)
         glUniform1i(self.uloc["font"], 2) # tilepage tilesizes tiu
-        
-        glActiveTexture(GL_TEXTURE3)
-        glBindTexture(GL_TEXTURE_2D, self.txco_txid)
-        glUniform1i(self.uloc["txco"], 3) # tilepage tiu        
-
-    def update_all_uniforms(self):
-        #glUniform4f(self.uloc["txsz"], w_t, h_t, t_w, t_h )  # tex size in tiles, tile size in texels
-        glUniform1f(self.uloc["final_alpha"], 1.0)
-        glUniform2f(self.uloc["viewpoint"], 0, 0)
-        glUniform4f(self.uloc["txsz"], *self.txsz ) 
 
 
-    MIN_GRID_X = 80
-    MIN_GRID_Y = 25
+        self.reshape()
+
+
+
+    MIN_GRID_X = 20
+    MIN_GRID_Y = 20
     MAX_GRID_X = 256
     MAX_GRID_Y = 256
     
@@ -581,7 +620,7 @@ class rednerer(object):
         glUniform1f(self.uloc["final_alpha"], alpha)
 
     def render(self, mapwindow, frame_no):
-        bgc = ( 0.0, 0.3, 0.0, 1 )
+        bgc = ( 0.0, 0.0, 0.0, 1 )
         t = pygame.time.get_ticks()
         self.timed_stuff()
         
@@ -590,22 +629,18 @@ class rednerer(object):
         
         glUseProgram(self.shader) # is this rly needed?
         
-        glUniform1f(self.uloc["frame_no"], frame_no)
-        self.update_all_uniforms()
+        glUniform1i(self.uloc["frame_no"], frame_no)
         
         self.update_vbos(mapwindow)
-        self.grid_vbo.bind() # are these
-        self.rebind_textures() # rly needed?
+        #self.grid_vbo.bind() # are these
+        #self.rebind_textures() # rly needed?
         
         glUseProgram(self.shader)
         glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
         pygame.display.flip()
         return  pygame.time.get_ticks() - t
         
-    def loop(self):
-        
-        
-        GFPS = 24
+    def loop(self, GFPS = 12):
         frame_no = 0
         vpx = vpy = x = y = z = 0
         
@@ -617,13 +652,15 @@ class rednerer(object):
         self.reset_vbo = True
         last_frame_ts = -1e23
         scrolldict = {
-                        pygame.K_LEFT: ( -5, 0),
-                        pygame.K_RIGHT: ( 5, 0),
-                        pygame.K_UP: ( 0, -5),
-                        pygame.K_DOWN: ( 0, 5),
+                        pygame.K_LEFT: ( -1, 0),
+                        pygame.K_RIGHT: ( 1, 0),
+                        pygame.K_UP: ( 0, -1),
+                        pygame.K_DOWN: ( 0, 1),
+                        pygame.K_HOME: ( -1, -1),
+                        pygame.K_PAGEUP: ( 1, -1),
+                        pygame.K_END: ( -1, 1),
+                        pygame.K_PAGEDOWN: ( 1, 1),
         }
-        
-        self.texture_reset()
         
         while not finished:
             last_render_ts = pygame.time.get_ticks()
@@ -642,19 +679,27 @@ class rednerer(object):
                             paused = not paused
                         elif ev.key == pygame.K_ESCAPE:
                             finished = True 
-                        elif ev.key == pygame.K_F1:
-                            self.reload_shaders(nominal=True)
-                        elif ev.key == pygame.K_F2:
-                            self.reload_shaders(nominal=False)
-                        elif ev.key == pygame.K_LESS and z > 0:
-                            z -= 1
-                        elif ev.key == pygame.K_GREATER and z < self.gameobject.maxz:
-                            z += 1
+                        elif ev.key == pygame.K_COMMA and ev.mod & 3:
+                            if z > 0:
+                                z -= 1
+                        elif ev.key == pygame.K_PERIOD  and ev.mod & 3:
+                            if z < self.gameobject.maxz:
+                                z += 1
                         elif ev.key in scrolldict:
-                            x += scrolldict[ev.key][0]
-                            y += scrolldict[ev.key][1]
+                            if ev.mod & 3:
+                                boost = 10
+                            else:
+                                boost = 1
+                            x += scrolldict[ev.key][0] * boost
+                            y += scrolldict[ev.key][1] * boost
                         elif ev.key == pygame.K_BACKSPACE:
                             x = y = 0
+                        elif ev.key == pygame.K_KP_PLUS:
+                            GFPS += 1
+                        elif ev.key == pygame.K_KP_MINUS:
+                            GFPS -= 1
+                        else:
+                            print repr(ev.key), repr(ev)
 
                     elif ev.type == pygame.QUIT:
                         finished = True
@@ -662,36 +707,48 @@ class rednerer(object):
                         self.resize(ev.w, ev.h)
                     elif ev.type == pygame.MOUSEBUTTONDOWN:
                         if ev.button == 4: # wheel forward
-                            self.zoom("zoom_in")
-                        elif ev.button == 5: # wheel back
                             self.zoom("zoom_out")
+                        elif ev.button == 5: # wheel back
+                            self.zoom("zoom_in")
                         elif ev.button == 3: # RMB
                             panning = True
+                        elif ev.button == 1:
+                            pv = glReadPixels(ev.pos[0], self.surface.get_height() - ev.pos[1], 1, 1, GL_RGBA , GL_UNSIGNED_INT_8_8_8_8)[0][0]
+                            cx, cy = ev.pos[0]/self.Pszx, ev.pos[1]/self.Pszy
+                            thash =  self.screen[cx,cy]
+                            
+                            r, g, b, a = pv >> 24, (pv >>16 ) & 0xff, (pv>>8) &0xff, pv&0xff
+                            print "{:02x} {:02x} {:02x} {:02x} at {}px thash={:03x} {:03x}".format(r,g,b,a, ev.pos, thash%1024, thash/1024)
+                            #print "{:.3f} {:.3f} {:.3f} {:03x} {:03x}".format(r/16.0, g/16.0, b/2, thash%1024, thash/1024)
+                            #print "{:.3f} {:.3f} {:.3f} {:.3f}".format(6*r/256.0,6*g/256.0,128*b/256.0,a/256.0)
+                            #print "{:03x} {:03x}".format( (r<<8 ) | b,(g<<8 ) | a)
+                            
                         else:
                             paused = not paused
                     elif ev.type == pygame.MOUSEBUTTONUP:
+                        panning = False
                         if ev.button == 3:
-                            #print "panned to {0}x{1}".format(self.x, self.y)
-                            panning = False
-                            glUniform2f(self.uloc["viewpoint"], 0, 0)
+                            print "panned to {0}x{1}".format(x, y)
+                            glUniform2f(self.uloc["viewpoint"], vpx, vpy)
+             
                     elif ev.type ==  pygame.MOUSEMOTION:
                         if panning:
                             vpx -= ev.rel[0]
                             vpy += ev.rel[1]
                             if (vpx > self.Pszx): 
                                 vpx = self.Pszx - vpx
-                                x -= 1
-                            elif vpx < 1:
                                 x += 1
-                                vpx = 0
+                            elif vpx < -self.Pszx:
+                                x -= 1
+                                vpx = self.Pszx + vpx
                             if (vpy > self.Pszy): 
                                 vpy = self.Pszy - vpy
                                 y -= 1
-                            elif vpy < 1:
+                            elif vpy < -self.Pszy:
                                 y += 1
-                                vpy = 0 
+                                vpy = self.Pszy + vpy 
                             glUniform2f(self.uloc["viewpoint"], vpx, vpy)
-                            
+
                 if next_render_time - pygame.time.get_ticks() < -50:
                     #print "drawing's too slow, {0:.2f} FPS vs {1:.2f} reqd".format(1000.0/render_time, GFPS)
                     break
@@ -757,11 +814,31 @@ class rednerer(object):
 #export TGSI_PRINT_SANITY=y
 
 if __name__ == "__main__":
+    print """
+Usage:
+./fgtestbed.py [<fps>]
+
+FPS is limited to no more than about 100 somewhere.
+    
+Controls:
+LMB : print rgba hexvalue and tile hash components under mouse
+RMB drag, arrows, pgup/down/home/end, shift:  scroll
+mouse wheel: zoom
+backspace: reset scroll
+esc : quit
+keypad +/- : adjust FPS
+
+"""
+
     mo = mapobject()
     t = time.time()
-    re = rednerer('fg_is_win.vs', 'fg_is_win.fs', mo)
+    re = rednerer('three.vs', 'three.fs', mo)
+    re.texture_reset()
     print "second_stage: {0:.4f} sec.".format(time.time()-t)
-    re.loop()
+    fps = 12
+    if len(sys.argv) > 1:
+        fps = int(sys.argv[1])
+    re.loop(fps)
     
 
 if __name__ == "old__main__":

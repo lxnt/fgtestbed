@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import os, os.path, glob, sys, xml.parsers.expat, time
+import os, os.path, glob, sys, xml.parsers.expat, time, math
 import numpy as np
 NOMAT = 0xFFFFFFFF
 
@@ -60,7 +60,7 @@ def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
     #mildly esoteric in the presense of NOMAT.
     # it seems grass & layer stone are mutex by tiletype.
     # so we just do:
-    if gramount:
+    if gramount != NOMAT and gramount != 0:
         stone = grass
         ore = NOMAT
     # and define GrassWhatEver tiles within only plant materials
@@ -70,7 +70,7 @@ def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
         stone = ore
         ore = NOMAT
 
-    return ( ( (ore +1) & 0x3ff ) << 20 ) | ( ( (stone + 1) & 0x3ff ) << 10 ) | ( ( tile & 0x3ff ) ) 
+    return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
 
 class mapdump:
     def __init__(self, fname):
@@ -83,7 +83,7 @@ class mapdump:
         self._ydim = 96
         self._zdim = 16
         
-        self._binary_form = np.zeros((self._xdim, self._ydim, self._zdim), "i4")
+        self._binary_form = np.zeros((self._xdim, self._ydim, self._zdim), np.int32)
         self._dumb_list = []
         
         self._parse(fname)
@@ -112,7 +112,8 @@ class mapdump:
             if origin is None:
                 origin = (x,y,z)
             self._dumb_list.append((tiletype, stone, inorg, grass, gramount))
-            self._binary_form[x-origin[0], y-origin[1], z-origin[2]] = hashit(tiletype, stone, inorg, grass, gramount)
+            x, y, z = x-origin[0], y-origin[1], z-origin[2]
+            self._binary_form[x, y, z] = hashit(tiletype, stone, inorg, grass, gramount)
             
 
     def stats(self, tile_names):
@@ -200,12 +201,17 @@ class matiles:
         self._blit = self._blend = self._glow = None
         self._frame = 0
         self._tname = None
+        self._keyframe_start = False
         
     def xpand(self):
         frameseq = []
         white = (0xff, 0xff, 0xff, 0xff)
         for f in self.prelimo:
+            
             blit, blend, glow, amt = f
+            #print chr(blit[1] + blit[2]*16)
+            #print repr(blit)
+            
             if len(self.prelimo) > 1:
                 nextbli, nextglo= self.prelimo[1][1:3]
             else:
@@ -243,26 +249,32 @@ class matiles:
         
     def fin(self):
         #print "fin(): {0} {1} {2} {3}".format(self.name, self._tname, len(self.prelimo), self._frame)
-        self.prelimo.append((self._blit, self._blend, self._glow, 128 - self._frame))
+        if not self._keyframe_start:
+            self.prelimo.append((self._blit, self._blend, self._glow, 128 - self._frame))
         #print repr(self.prelimo)
         self.xpand()
         #print repr(self.tiles[self._tname])
         #raise SystemExit
-        
+        self._frame = 0
         
     def blit(self, tpage, s, t):
         self._blit = (tpage, s, t)
+        self._keyframe_start = False        
         
     def glow(self, rgba):
         self._blend = None
         self._glow = rgba
+        self._keyframe_start = False
         
     def blend(self, rgba):
         self._blend = rgba
         self._glow = None
+        self._keyframe_start = False
         
     def key(self, frames):
-        self.prelimo.append((self._blit, self._blend, self._glow, frames - self._frame))
+        if not self._keyframe_start:
+            self.prelimo.append((self._blit, self._blend, self._glow, frames - self._frame))
+        self._keyframe_start = True
         #print self._frame, frames
         self._frame = frames
 
@@ -370,9 +382,9 @@ class graphraws(object):
                         s, t = self.pages[pagename].defs[defname]
                     mat.blit(pagename, s, t)
                 elif tag == 'BLEND':
-                        mat.blend(parse_rgba(f[1]))
+                    mat.blend(parse_rgba(f[1]))
                 elif tag == 'GLOW':
-                        mat.glow(parse_rgba(f[1]))
+                    mat.glow(parse_rgba(f[1]))
                 elif tag == 'KEY':
                     mat.key(int(f[1]))
         if matname is not None:
@@ -425,26 +437,19 @@ class preparer:
         
         inorg_ids, plant_ids = self.madpump.inorg_ids, self.madpump.plant_ids
         
-        _dt = np.dtype({
-            'names': 'tiu s t un r g b a'.split(),
-            'formats': ['u1', 'u1', 'u1', 'u1', 'u1', 'u1', 'u1', 'u1' ],
-            'offsets': [0, 1, 2, 3, 4, 5, 6, 7 ],
-            'titles': ['texture image unit', 's-coord in tiles', 't-coord in tiles', 'unused',
-                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha']
-                       })
-        _dt = np.dtype({
-            'names': 'tileidx r g b a'.split(),
-            'formats': ['u4', 'u1', 'u1', 'u1', 'u1' ],
-            'offsets': [0, 4, 5, 6, 7 ],
-            'titles': ['tile index',
-                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha']
-                       })        
-        _rgba = np.dtype({
-            'names': 'r g b a'.split(),
-            'formats': ['u1', 'u1', 'u1', 'u1' ],
-            'offsets': [0, 1, 2, 3 ],
-            'titles': ['red', 'green', 'blue', 'alpha']
-                       })
+        self.blithash_dt = np.dtype({  # GL_RG16UI
+            'names': 's t'.split(),
+            'formats': ['u2', 'u2' ],
+            'offsets': [ 0, 2 ],
+            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
+            
+        self.blitcode_dt = np.dtype({  # GL_RGBA16UI - 64 bits. 8 bytes
+            'names': 's t r g b a'.split(),
+            'formats': ['u2', 'u2', 'u1', 'u1', 'u1', 'u1' ],
+            'offsets': [ 0, 2, 4, 5, 6, 7 ],
+            'titles': ['s-coord in tiles', 't-coord in tiles',
+                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha'] })
+
         pages, mats = self.gr.get()
         
         for page in pages:
@@ -453,17 +458,19 @@ class preparer:
         tcount = 0
         for mat in mats:
             tcount += len(mats[mat].tiles.keys())
-        #print "{1} mats with {0} defined tiles".format(tcount, len(mats.keys()))
-        if tcount < 4096:
-            tx = 8
-            ty = 512
-        else:
-            raise TooManyTilesDefinedCommaManExclamationMark
+        print "{1} mats  {0} defined tiles".format(tcount, len(mats.keys()))
+        if tcount > 65536:
+            raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
         
-        blitcode = np.zeros((2048, 512), dtype=np.uint32)
-        blithash = np.zeros((1024, 1024), dtype=np.uint32)
-        tc = 0
-            
+        self.hashw = 1024 # 20bit hash.
+        self.codew = math.ceil(math.sqrt(tcount))
+        
+        blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
+        blitcode = np.zeros((128, self.codew, self.codew), dtype=self.blitcode_dt)
+        
+        tc = 1 # 0 === undefined.
+        #fd = file("dispatch.text","w")
+        #fb = file("blitcode.text","w")
         for name, mat in mats.items():
             if name in inorg_ids:
                 mat_id = inorg_ids[name]
@@ -473,22 +480,40 @@ class preparer:
                 print  "no per-session id for mat '{0}'".format(name)
                 continue
             for tname, frameseq in mat.tiles.items():
+                x = int (tc % self.codew)
+                y = int (tc / self.codew)
+                
                 tile_id = self.tile_names[tname]
-                x = tc % tx
-                y = tc / tx
-                blithash[tile_id, mat_id] = tc
+                hashed  = hashit(tile_id, mat_id)
+                hx = hashed % self.hashw 
+                hy = hashed / self.hashw 
+                blithash[hy, hx]['s'] = x
+                blithash[hy, hx]['t'] = y
+                #fd.write("{:03x} {:03x} {:06x} : {:02x} {:02x} {}\n".format(hx,hy,hashed, x, y, name))
+                
                 frame_no = 0
                 for insn in frameseq:
                     blit, blend = insn
                     un, s, t, un = maptile(blit)
                     r,g,b,a = blend
-                    blitcode[x * 256 + 2*frame_no,     y] = ( s << 24 ) | ( t<<15 ) | ( 0<<8 ) | 0
-                    blitcode[x * 256 + 2*frame_no + 1, y] = ( r << 24 ) | ( g<<15 ) | ( b<<8 ) | a
+                    r,g,b,a = frame_no, frame_no, frame_no, frame_no
+                    blitcode[frame_no, y, x]['s'] = s # fortran, motherfucker. do you speak it?
+                    blitcode[frame_no, y, x]['t'] = t
+                    blitcode[frame_no, y, x]['r'] = r
+                    blitcode[frame_no, y, x]['g'] = g
+                    blitcode[frame_no, y, x]['b'] = b
+                    blitcode[frame_no, y, x]['a'] = a
+                    #fb.write("{},{}: {} {} '{}' {} {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a, name))
+                    #break
+                    #if frame_no != -1:
+                    #    fb.write("{},{}: {} {} '{}' {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a))
+                    frame_no += 1
                 tc += 1
 
-        self.tx, self.ty, self.blithash, self.blitcode = tx, ty, blithash.tostring(), blitcode.tostring()
+        self.blithash, self.blitcode = blithash, blitcode
 
     def second_stage(self, z):    
+        raise Unused
         tx, ty, tz, blithash, blitcode = self.tx, self.ty, self.tz, self.blithash, self.blitcode
        
         # okay ...
@@ -518,10 +543,6 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'prep':
         p = preparer()
         p.first_stage()
-        # upload texpages and the blitcode here.        
-        f = p.second_stage(2)
-        # render muthafuka!
-        print f.shape
         
 
 
