@@ -242,10 +242,8 @@ class mapobject:
             file("blitcode","w").write(self.blitcode.tostring())
         
     def frame(self, x,y,z,w,h ):
-        maxx= 95
-        maxy = 95
         rv = np.zeros((w, h), np.int32)
-        if x + w < 0 or y+h < 0 or x > maxx or y > maxy:
+        if x + w < 0 or y+h < 0 or x > self.xdim or y > self.ydim:
             # black screen
             return rv
         sx = x
@@ -255,9 +253,9 @@ class mapobject:
             sx = 0
         ex = x + w
         right = w
-        if ex > maxx:
-            right = maxx - ex
-            ex = maxx
+        if ex > self.xdim:
+            right = self.xdim - ex
+            ex = self.xdim
         sy = y
         top = 0
         if sy < 0:
@@ -265,9 +263,9 @@ class mapobject:
             sy = 0
         ey = y + h
         bottom = h
-        if ey > maxy:
-            bottom = maxy - ey
-            ey = maxy
+        if ey > self.ydim:
+            bottom = self.ydim - ey
+            ey = self.ydim
         
         zedoffs = self.xdim*self.ydim*4*z
         yoffs = sy*self.xdim*4
@@ -277,12 +275,14 @@ class mapobject:
         for rownum in xrange( ey - sy ):
             offs = zedoffs + yoffs + rownum*self.xdim*4 + xskip 
             buf = buffer(self._map_mmap, offs, rowlen*4)
-            rv[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf )
+            rv[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)
+        
+        file('frame', 'w').write(rv.tostring())
 
         return rv
 
 class rednerer(object):
-    def __init__(self, vs, fs, go):
+    def __init__(self, vs, fs, go, glinfo=False):
         self.gameobject = go
         
         default_res = ( 1280, 800 )
@@ -290,9 +290,7 @@ class rednerer(object):
         self.vs = vs
         self.fs = fs
         self.reset_vbos = True
-        
-        self.filter = GL_NEAREST
-        
+
         self.opengl_initialized = False
         self.snap_to_grid = False
         self.do_reset_glcontext = False
@@ -323,14 +321,21 @@ class rednerer(object):
         self.Psz = -8
         
         self._fc_key = None
-        self.skip_glinfo = True
-        
+        self.skip_glinfo = not glinfo
+        self.loud_reshape = True
+
+        self.MIN_GRID_X = 20
+        self.MIN_GRID_Y = 20
+        self.MAX_GRID_X = go.xdim
+        self.MAX_GRID_Y = go.ydim
+
         pygame.display.init()
         pygame.display.set_caption("full-graphics testbed", "fgtestbed")
         self.set_mode(*default_res)
         self.gps_allocate(self.MIN_GRID_X, self.MIN_GRID_Y)
         self.Pszx = self.surface.get_width()/self.MIN_GRID_X
         self.Pszy = self.surface.get_height()/self.MIN_GRID_Y
+        
 
     def gps_allocate(self, w, h):
         self.grid_allocate(w, h)
@@ -450,9 +455,10 @@ class rednerer(object):
     def reshape(self, new_grid_w = 0, new_grid_h = 0, new_window_w = -1, new_window_h = -1, 
                 toggle_fullscreen = False, override_snap = False):
 
-        print "reshape(): got grid {}x{} window {}x{} tile {}x{} stretch={} snap={} Psz={}".format(
-            new_grid_w, new_grid_h, new_window_w, new_window_h, self.tile_w, self.tile_h,
-            self.conf_stretch_tiles, self.conf_snap_window, self.Psz)
+        if self.loud_reshape:
+            print "reshape(): got grid {}x{} window {}x{} tile {}x{} stretch={} snap={} Psz={}".format(
+                new_grid_w, new_grid_h, new_window_w, new_window_h, self.tile_w, self.tile_h,
+                self.conf_stretch_tiles, self.conf_snap_window, self.Psz)
 
         if not self.tile_w:
             return
@@ -502,9 +508,10 @@ class rednerer(object):
         self.viewport_w = new_psz_x * new_grid_w
         self.viewport_h = new_psz_y * new_grid_h
         
-        print "reshape(): final grid {}x{} window {}x{} viewport {}x{} Psz {}x{}".format(
-            new_grid_w, new_grid_h, new_window_w, new_window_h,
-            self.viewport_w, self.viewport_h, self.Pszx, self.Pszy)
+        if self.loud_reshape:        
+            print "reshape(): final grid {}x{} window {}x{} viewport {}x{} Psz {}x{}".format(
+                new_grid_w, new_grid_h, new_window_w, new_window_h,
+                self.viewport_w, self.viewport_h, self.Pszx, self.Pszy)
         
         if new_grid_w != self.grid_w or new_grid_h != self.grid_h:
             self.gps_allocate(new_grid_w, new_grid_h)
@@ -600,7 +607,7 @@ class rednerer(object):
                 loc = glGetUniformLocation(program, name)
                 val = None
                 #xval = glGetUniformiv(program, loc, 32)
-                print "  {0}: name={1} type={2} loc={3} val={4}".format(i, name, glnames.get(typ, typ), loc, val)
+                print "  {0}: name={1} type={2} loc={3} val={4}".format(i, name, glname.get(typ, typ), loc, val)
 
         uniforms = "dispatch blitcode font txsz final_alpha viewpoint pszar frame_no dispatch_row_len".split()
 
@@ -639,7 +646,8 @@ class rednerer(object):
 
     def set_viewport(self):
         sw, sh =  self.surface.get_width(), self.surface.get_height()
-        print "set_viewport(): got {0}x{1} out of {2}x{3}\n".format(self.viewport_w, self.viewport_h, sw, sh)
+        if self.loud_reshape:
+            print "set_viewport(): got {0}x{1} out of {2}x{3}\n".format(self.viewport_w, self.viewport_h, sw, sh)
         viewport_offset_x = (sw - self.viewport_w)/2;
         viewport_offset_y = (sh - self.viewport_h)/2;
         glMatrixMode( GL_PROJECTION);
@@ -676,12 +684,6 @@ class rednerer(object):
         self.reshape()
 
 
-
-    MIN_GRID_X = 20
-    MIN_GRID_Y = 20
-    MAX_GRID_X = 256
-    MAX_GRID_Y = 256
-    
     def _zoom(self, zoom):
         new_psz  = self.Psz + zoom
         
@@ -769,7 +771,13 @@ class rednerer(object):
         
     def loop(self, GFPS = 12):
         frame_no = 0
-        vpx = vpy = x = y = z = 0
+        vpx = vpy = 0
+        
+        x = (self.gameobject.xdim - self.grid_w)/2
+        y = (self.gameobject.ydim - self.grid_h)/2
+        z = self.gameobject.zdim - 10
+        if z < 0:
+            z = 0
         
         slt = 1000.0/GFPS # milliseconds
         last_frame_ts = 0
@@ -844,7 +852,7 @@ class rednerer(object):
                         elif ev.button == 1:
                             pv = glReadPixels(ev.pos[0], self.surface.get_height() - ev.pos[1], 1, 1, GL_RGBA , GL_UNSIGNED_INT_8_8_8_8)[0][0]
                             cx, cy = ev.pos[0]/self.Pszx, ev.pos[1]/self.Pszy
-                            thash =  self.screen[cx,cy]
+                            thash = self.screen[cx,cy]
                             
                             r, g, b, a = pv >> 24, (pv >>16 ) & 0xff, (pv>>8) &0xff, pv&0xff
                             print "{:02x} {:02x} {:02x} {:02x} at {}px thash={:03x} {:03x}".format(r,g,b,a, ev.pos, thash%1024, thash/1024)
@@ -858,7 +866,7 @@ class rednerer(object):
                         if ev.button == 3:
                             panning = False
              
-                    elif ev.type ==  pygame.MOUSEMOTION:
+                    elif ev.type == pygame.MOUSEMOTION:
                         if panning:
                             vpx -= ev.rel[0]
                             vpy += ev.rel[1]
@@ -893,9 +901,6 @@ class rednerer(object):
         glDeleteProgram(self.shader)
         glDeleteTextures((self.dispatch_txid, self.font_txid, self.blitcode_txid))
         pygame.quit()
-
-
-
 
 
 """
@@ -963,12 +968,14 @@ keypad +/- : adjust FPS
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dumpfx', metavar="dumpfx", nargs='?', help="dump name prefix (foobar in foobar.mats/foobar.tiles)", default='fugrdump')
     ap.add_argument('-raws', metavar="fgraws", default="fgraws", help="fg raws directory")
+    ap.add_argument('--glinfo', action='store_true', help="spit info about GL driver capabilities")
         
     pa = ap.parse_args()
     
+    
     mo = mapobject(matsfile=pa.dumpfx+'.mats', tilesfile = pa.dumpfx + '.tiles', fgrawdir=pa.raws)
         
-    re = rednerer(vs=pa.vs, fs=pa.fs, go=mo)
+    re = rednerer(vs=pa.vs, fs=pa.fs, go=mo, glinfo=pa.glinfo)
     re.texture_reset()
     re.loop(pa.fps)
 
