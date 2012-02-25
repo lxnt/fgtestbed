@@ -8,19 +8,22 @@ uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA16U
 uniform int frame_no;
 uniform ivec4 txsz;              // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 uniform int dispatch_row_len;
-uniform vec2 viewpoint;			
+uniform ivec2 shift;		 // shift for smooth scrolling, pixels.
+uniform ivec2 resolution;	 // resolution for normalizing the above.
+uniform ivec2 grid;	 	 // grid size for avoiding artifacts when pre-normalizing position.
 uniform vec3 pszar; 			// { parx, pary, psz }
 
-in vec2 position;
+in vec2 position; // normalized. 
 in int screen;
 
 flat out vec4 blit;
 flat out vec4 blend;
-flat out vec4 debug;
 
 void main() {
-    vec2 posn = pszar.xy*position*pszar.z - viewpoint;     
-    gl_Position = gl_ModelViewProjectionMatrix*vec4(posn.x, posn.y, 0.0, 1.0);
+    vec2 normposn = (position + 0.5)/grid;
+    normposn.y = 1.0 - normposn.y;
+    vec2 posn = 2.0 * pszar.xy*normposn - 1.0 - shift/resolution;
+    gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
     gl_PointSize = pszar.z;
 
     uvec4 addr;
@@ -39,15 +42,6 @@ void main() {
 
     blit.zw = 1.0 / vec2(txsz.xy) ; // for as long as we don't support tiles-smaller-than-txsz.zw
     
-    blend = vec4(insn.z >> 8, insn.z & 0xffu, insn.w >> 8, insn.z & 0xffu) / 256.0;
-  
-
-    //float fs = float( addr.x * 8.0 );
-    //debug = vec4( fract(fs/ (65536.0*256.0) ), fract(fs/ 65536.0), fract(fs/256.0), 1.0);
-    //debug = vec4( float(addr.x)/1024, float(addr.y)/1024, 0, 1);
-    //debug=blit;
-    debug = vec4( float(addr.x)/6.0, float(addr.y)/6.0, float(addr.z)/128.0, 1.0);
-    
-    //debug = vec4( blit.x, blit.y, float(addr.z)/128.0, 1.0); 
-    
+    blend = vec4(insn.z >> 8u, insn.z & 0xffu, insn.w >> 8u, insn.w & 0xffu) / 256.0;
+   
 }

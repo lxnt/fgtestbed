@@ -282,7 +282,7 @@ class mapobject:
         return rv
 
 class rednerer(object):
-    def __init__(self, vs, fs, go, glinfo=False):
+    def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
         self.gameobject = go
         
         default_res = ( 1280, 800 )
@@ -309,6 +309,8 @@ class rednerer(object):
         self.tilesizes = None # txco texture
         self.grid = None # grid vaa/vbo
         self.screen = None # frame data
+
+        self.cutoff_frame = anicutoff
 
         self.viewport_w = 0
         self.viewport_h = 0
@@ -364,6 +366,7 @@ class rednerer(object):
         
         if not self.opengl_initialized:
             self.opengl_init()
+
         return True
     
     def grid_allocate(self, w, h):
@@ -371,33 +374,24 @@ class rednerer(object):
         i = 0
         for xt in xrange(0, w):
             for yt in xrange(0, h):
-                rv[2 * i + 0] = (xt + 0.5)#/w
-                rv[2 * i + 1] = (h - yt - 0.5)#/h
+                rv[2 * i + 0] = xt
+                rv[2 * i + 1] = yt
                 i += 1
-        
+        glUniform2i(self.uloc['grid'], w, h)
         self.grid_w = w
         self.grid_h = h
         self.grid_tile_count = w*h
         self.grid = rv
     
     def opengl_init(self):
-        
-        glMatrixMode(GL_MODELVIEW) # always so as we don't do any model->world->eye transform
-        glLoadIdentity()
-
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-
-        glClearColor(0.3, 0.0, 0.0, 1.0)
-        glClear(GL_COLOR_BUFFER_BIT)
         self.glinfo()
+
         glEnable(GL_ALPHA_TEST)
         glAlphaFunc(GL_NOTEQUAL, 0)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glDisable(GL_DEPTH_TEST)
         glDepthMask(GL_FALSE)
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         glEnable(GL_POINT_SPRITE)
         glEnable(GL_PROGRAM_POINT_SIZE)
         #glDisable(GL_POINT_SMOOTH)
@@ -482,7 +476,8 @@ class rednerer(object):
         new_psz_x = int(ff * self.tile_w)
         new_psz_y = int(ff * self.tile_h)
             
-        self.Psz = max(new_psz_x, new_psz_y)
+        new_psz = max(new_psz_x, new_psz_y)
+        self.Psz = new_psz
         
         if self.conf_stretch_tiles:
             new_psz_x = new_window_w/new_grid_w
@@ -609,7 +604,7 @@ class rednerer(object):
                 #xval = glGetUniformiv(program, loc, 32)
                 print "  {0}: name={1} type={2} loc={3} val={4}".format(i, name, glname.get(typ, typ), loc, val)
 
-        uniforms = "dispatch blitcode font txsz final_alpha viewpoint pszar frame_no dispatch_row_len".split()
+        uniforms = "dispatch blitcode font txsz final_alpha shift resolution grid pszar frame_no dispatch_row_len".split()
 
         self.uloc = {}
         for u in uniforms:
@@ -619,7 +614,9 @@ class rednerer(object):
         glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
         glUniform1i(self.uloc["font"], 2) # tilepage tiu
         glUniform1f(self.uloc["final_alpha"], 1.0)
-        glUniform2f(self.uloc["viewpoint"], 0, 0);
+        glUniform2i(self.uloc["shift"], 0, 0);
+        glUniform2i(self.uloc["resolution"], 42, 23); # set in set_mode()
+        glUniform2i(self.uloc["grid"], 42, 23); # set in grid_allocate()
         glUniform1i(self.uloc["frame_no"], 0);
         glUniform1i(self.uloc["dispatch_row_len"], 1024);
         glUniform4i(self.uloc["txsz"], 16, 16, 16, 16);
@@ -645,19 +642,20 @@ class rednerer(object):
         self.reset_vbos = True
 
     def set_viewport(self):
+        """ this kills artifacts caused by window being a few pixels
+            larger than the tiles occupy. """
         sw, sh =  self.surface.get_width(), self.surface.get_height()
+        self.viewport_x = (sw - self.viewport_w)/2;
+        self.viewport_y = (sh - self.viewport_h)/2;
+        
         if self.loud_reshape:
-            print "set_viewport(): got {0}x{1} out of {2}x{3}\n".format(self.viewport_w, self.viewport_h, sw, sh)
-        viewport_offset_x = (sw - self.viewport_w)/2;
-        viewport_offset_y = (sh - self.viewport_h)/2;
-        glMatrixMode( GL_PROJECTION);
-        glLoadIdentity();
-        gluOrtho2D(0, self.viewport_w, 0, self.viewport_h);
-        glViewport(self.viewport_offset_x, self.viewport_offset_y, self.viewport_w, self.viewport_h);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glClearColor(0.3, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
+            print "set_viewport(): got {}x{} out of {}x{} offs {}x{}\n".format(
+                self.viewport_w, self.viewport_h, sw, sh, self.viewport_offset_x, 
+                self.viewport_offset_y)
+        
+        glViewport(self.viewport_x, self.viewport_y, self.viewport_w, self.viewport_h)
+        glUniform2i(self.uloc['resolution'], self.viewport_w, self.viewport_h)
+
 
     def texture_reset(self):
         "dispatch blitcode blendcode font txco"
@@ -684,7 +682,7 @@ class rednerer(object):
         self.reshape()
 
 
-    def _zoom(self, zoom):
+    def _zoom(self, zoom, force = 0):
         new_psz  = self.Psz + zoom
         
         if new_psz < 2:
@@ -698,11 +696,20 @@ class rednerer(object):
         else:
             new_psz_x =  int( new_psz * t_ar)
             new_psz_y = new_psz
-        
+
         new_grid_w = self.surface.get_width() / new_psz_x
         new_grid_h = self.surface.get_height() / new_psz_y
-        
+
+        print "_zoom({}): psz {} -> {} pszxy {}x{} -> {}x{} grid {}x{} -> {}x{}".format(
+            zoom, self.Psz, new_psz, 
+            self.Pszx, self.Pszy, new_psz_x, new_psz_y,
+            self.grid_w, self.grid_h, new_grid_w, new_grid_h)
+            
+        og = (self.grid_w, self.grid_h)
         self.reshape(new_grid_w, new_grid_h, -1, -1, False, True)
+        if og == (self.grid_w, self.grid_h): # if we got stuck,
+            force += 1
+            self._zoom(zoom*force, force) # apply boot to ass
     
     def resize(self, new_window_w, new_window_h, toggle_fullscreen = False):
         if  (     (new_window_w == self.surface.get_width())
@@ -778,7 +785,7 @@ class rednerer(object):
         z = self.gameobject.zdim - 10
         if z < 0:
             z = 0
-        
+        z = 162
         slt = 1000.0/GFPS # milliseconds
         last_frame_ts = 0
         paused = False
@@ -801,7 +808,8 @@ class rednerer(object):
             last_render_ts = pygame.time.get_ticks()
             if not paused:
                 frame_no += 1
-                frame_no &= 0x7f
+                if frame_no > self.cutoff_frame:
+                    frame_no = 0
             render_time = self.render((x, y, z, self.grid_w, self.grid_h), frame_no)
             
             #print "frame rendered in {0} msec".format(render_time)
@@ -852,7 +860,10 @@ class rednerer(object):
                         elif ev.button == 1:
                             pv = glReadPixels(ev.pos[0], self.surface.get_height() - ev.pos[1], 1, 1, GL_RGBA , GL_UNSIGNED_INT_8_8_8_8)[0][0]
                             cx, cy = ev.pos[0]/self.Pszx, ev.pos[1]/self.Pszy
-                            thash = self.screen[cx,cy]
+                            try:
+                                thash = self.screen[cx,cy]
+                            except IndexError:
+                                thash = -1
                             
                             r, g, b, a = pv >> 24, (pv >>16 ) & 0xff, (pv>>8) &0xff, pv&0xff
                             print "{:02x} {:02x} {:02x} {:02x} at {}px thash={:03x} {:03x}".format(r,g,b,a, ev.pos, thash%1024, thash/1024)
@@ -882,7 +893,7 @@ class rednerer(object):
                             elif vpy < -self.Pszy:
                                 y += 1
                                 vpy = self.Pszy + vpy 
-                            glUniform2f(self.uloc["viewpoint"], vpx, vpy)
+                            glUniform2i(self.uloc["shift"], vpx, vpy)
 
                 if next_render_time - pygame.time.get_ticks() < -50:
                     #print "drawing's too slow, {0:.2f} FPS vs {1:.2f} reqd".format(1000.0/render_time, GFPS)
@@ -969,13 +980,13 @@ keypad +/- : adjust FPS
     ap.add_argument('dumpfx', metavar="dumpfx", nargs='?', help="dump name prefix (foobar in foobar.mats/foobar.tiles)", default='fugrdump')
     ap.add_argument('-raws', metavar="fgraws", default="fgraws", help="fg raws directory")
     ap.add_argument('--glinfo', action='store_true', help="spit info about GL driver capabilities")
+    ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
         
     pa = ap.parse_args()
     
-    
     mo = mapobject(matsfile=pa.dumpfx+'.mats', tilesfile = pa.dumpfx + '.tiles', fgrawdir=pa.raws)
         
-    re = rednerer(vs=pa.vs, fs=pa.fs, go=mo, glinfo=pa.glinfo)
+    re = rednerer(vs=pa.vs, fs=pa.fs, go=mo, glinfo=pa.glinfo, anicutoff = pa.cutoff_frame)
     re.texture_reset()
     re.loop(pa.fps)
 
