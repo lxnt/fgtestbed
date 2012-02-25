@@ -10,11 +10,11 @@
 # ...
 # lxnt cancels Store item in stockpile: interrupted by bug
 
-import sys, time, math, struct, io, ctypes, zlib, collections, argparse, traceback, os, types
-from random import random as rnd
+import sys, time, math, struct, io, ctypes, zlib, ctypes
+import collections, argparse, traceback, os, types, mmap
+import numpy as np
+
 import pygame
-import raw
-from o import cx as glnames
 
 from OpenGL.GL import *
 from OpenGL.arrays import vbo
@@ -23,20 +23,156 @@ import OpenGL.GL.shaders
 from OpenGL.GLU import *
 from OpenGL.GL.ARB import shader_objects
 from OpenGL.GL.ARB.texture_rg import *
-import ctypes
-import numpy as np
+from glname import glname as glname
+
 import raw
 
 class mapobject:
-    def __init__(self):
-        t = time.time()
-        self.p = raw.preparer()
-        self.p.first_stage()
-        print "first_stage: {0:.4f} sec.".format(time.time()-t)
-        self.tp = self.p.gr.pages[self.p.gr.pages.keys()[0]]
+    def __init__(self, fgrawdir, matsfile, tilesfile, pngdir='png', apidir=''):
+        self.gr = raw.graphraws(fgrawdir)
+        unused, self.tile_names = raw.enumaps(apidir)
+        self.parse_matsfile(matsfile)
+        self.assemble_blitcode()
+        
+        self.tp = self.gr.pages[self.gr.pages.keys()[0]]
         self.txco = self.tp.pdim + self.tp.tdim
-        self.maxz = self.p.madpump._zdim - 1
-        print "maxz", self.maxz
+
+        if os.name == 'nt':
+            self._map_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
+        else:
+            self._map_fd = os.open(tilesfile, os.O_RDONLY)
+
+        self._map_mmap = mmap.mmap(self._map_fd, 0, access = mmap.ACCESS_READ)
+
+
+    def eatpage(self, page):
+        pass
+    
+    def maptile(self, blit):
+        return 1, blit[1], blit[2], 0
+
+    def parse_matsfile(self, matsfile):
+        self.inorg_names = {}
+        self.inorg_ids = {}
+        self.plant_names = {}
+        self.plant_ids = {}
+        for l in file(matsfile):
+            if l.startswith("count_block:"):
+                continue
+            elif l.startswith("region:"):
+                continue
+            elif l.startswith("count:"):
+                un, x, y, z = l.split(':')
+                self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
+                continue
+                
+            f = l.split()
+            if f[1] == 'INORG':
+                self.inorg_names[int(f[0])] = ' '.join(f[2:])
+                self.inorg_ids[' '.join(f[2:])] = int(f[0])
+            elif f[1] == 'PLANT':
+                self.plant_names[int(f[0])] = ' '.join(f[2:])
+                self.plant_ids[' '.join(f[2:])] = int(f[0])
+
+    def assemble_blitcode(self):
+        # all used data is available before first map frame is to be
+        # rendered in game.
+        # eatpage receives individual tile pages and puts them into one big one
+        # maptile maps pagename, s, t into tiu, s, t  that correspond to the big one
+        # tile_names map tile names in raws to tile_ids in game
+        # inorg_ids and plant_ids map mat names in raws to effective mat ids in game
+        # (those can change every read of raws)
+        
+        self.blithash_dt = np.dtype({  # GL_RG16UI
+            'names': 's t'.split(),
+            'formats': ['u2', 'u2' ],
+            'offsets': [ 0, 2 ],
+            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
+            
+        self.blitcode_dt = np.dtype({  # GL_RGBA16UI - 64 bits. 8 bytes
+            'names': 's t r g b a'.split(),
+            'formats': ['u2', 'u2', 'u1', 'u1', 'u1', 'u1' ],
+            'offsets': [ 0, 2, 4, 5, 6, 7 ],
+            'titles': ['s-coord in tiles', 't-coord in tiles',
+                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha'] })
+
+        pages, mats = self.gr.get()
+        
+        for page in pages:
+            self.eatpage(page)
+        
+        tcount = 0
+        for mat in mats:
+            tcount += len(mats[mat].tiles.keys())
+        print "{1} mats  {0} defined tiles".format(tcount, len(mats.keys()))
+        if tcount > 65536:
+            raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
+        
+        self.hashw = 1024 # 20bit hash.
+        self.codew = math.ceil(math.sqrt(tcount))
+        
+        blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
+        blitcode = np.zeros((128, self.codew, self.codew), dtype=self.blitcode_dt)
+        
+        NOMAT=0x3FF
+        def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
+            #mildly esoteric in the presense of NOMAT.
+            # it seems grass & layer stone are mutex by tiletype.
+            # so we just do:
+            if gramount != NOMAT and gramount != 0:
+                stone = grass
+                ore = NOMAT
+            # and define GrassWhatEver tiles within only plant materials
+            
+            # Also since we don't have a plan how to compose ore/cluster tiles yet:
+            if ore != NOMAT:
+                stone = ore
+                ore = NOMAT
+
+            return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
+        
+        tc = 1 # 0 === undefined.
+        #fd = file("dispatch.text","w")
+        #fb = file("blitcode.text","w")
+        for name, mat in mats.items():
+            if name in self.inorg_ids:
+                mat_id = self.inorg_ids[name]
+            elif name in self.plant_ids:
+                mat_id = self.plant_ids[name]
+            else:
+                print  "no per-session id for mat '{0}'".format(name)
+                continue
+            for tname, frameseq in mat.tiles.items():
+                x = int (tc % self.codew)
+                y = int (tc / self.codew)
+                
+                tile_id = self.tile_names[tname]
+                hashed  = hashit(tile_id, mat_id)
+                hx = hashed % self.hashw 
+                hy = hashed / self.hashw 
+                blithash[hy, hx]['s'] = x
+                blithash[hy, hx]['t'] = y
+                #fd.write("{:03x} {:03x} {:06x} : {:02x} {:02x} {}\n".format(hx,hy,hashed, x, y, name))
+                
+                frame_no = 0
+                for insn in frameseq:
+                    blit, blend = insn
+                    un, s, t, un = self.maptile(blit)
+                    r,g,b,a = blend
+                    blitcode[frame_no, y, x]['s'] = s # fortran, motherfucker. do you speak it?
+                    blitcode[frame_no, y, x]['t'] = t
+                    blitcode[frame_no, y, x]['r'] = r
+                    blitcode[frame_no, y, x]['g'] = g
+                    blitcode[frame_no, y, x]['b'] = b
+                    blitcode[frame_no, y, x]['a'] = a
+                    #fb.write("{},{}: {} {} '{}' {} {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a, name))
+                    #break
+                    #if frame_no != -1:
+                    #    fb.write("{},{}: {} {} '{}' {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a))
+                    frame_no += 1
+                tc += 1
+
+        self.blithash, self.blitcode = blithash, blitcode
 
     def upload_font(self, txid_font, txid_txco):
         
@@ -86,8 +222,8 @@ class mapobject:
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
         
 
-        ptr = ctypes.c_void_p(self.p.blithash.__array_interface__['data'][0])
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16UI, self.p.hashw, self.p.hashw, 
+        ptr = ctypes.c_void_p(self.blithash.__array_interface__['data'][0])
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16UI, self.hashw, self.hashw, 
                      0, GL_RG_INTEGER , GL_UNSIGNED_SHORT, ptr)
         
         glBindTexture(GL_TEXTURE_2D_ARRAY,  txid_blit)
@@ -96,14 +232,14 @@ class mapobject:
         glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
                     
-        ptr = ctypes.c_void_p(self.p.blitcode.__array_interface__['data'][0])
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16UI, self.p.codew, self.p.codew, 128,
+        ptr = ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16UI, self.codew, self.codew, 128,
                      0, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, ptr )
         
-        print "dispatch: {0}x{1} blitcode: {2}x{3}x{4}".format(self.p.hashw, self.p.hashw, self.p.codew, self.p.codew, 128)
+        print "dispatch: {0}x{1} blitcode: {2}x{3}x{4}".format(self.hashw, self.hashw, self.codew, self.codew, 128)
         if False:
-            file("dispatch","w").write(self.p.blithash.tostring())
-            file("blitcode","w").write(self.p.blitcode.tostring())
+            file("dispatch","w").write(self.blithash.tostring())
+            file("blitcode","w").write(self.blitcode.tostring())
         
     def frame(self, x,y,z,w,h ):
         maxx= 95
@@ -133,24 +269,15 @@ class mapobject:
             bottom = maxy - ey
             ey = maxy
         
-        #print x,y,z, w, h
-        #print sx,ex, sy,ey
-        #print left, top, right, bottom
-        pompous_variable_name = self.p.madpump._binary_form[sx:ex,sy:ey,z]
-        rv[left:right, top:bottom] = pompous_variable_name
-        if False:
-            m = {}
-            i = 0
-            for k in np.unique(rv):
-                m[k] = chr(65 + i)
-                i += 1
-            print
-            for y in xrange(top, bottom):
-                s = ''
-                for x in xrange(left, right):
-                    s += m[rv[x,y]]
-                print s
-            raise SystemExit
+        zedoffs = self.xdim*self.ydim*4*z
+        yoffs = sy*self.xdim*4
+        xskip = sx*4
+        rowlen = ex-sx
+        
+        for rownum in xrange( ey - sy ):
+            offs = zedoffs + yoffs + rownum*self.xdim*4 + xskip 
+            buf = buffer(self._map_mmap, offs, rowlen*4)
+            rv[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf )
 
         return rv
 
@@ -435,7 +562,7 @@ class rednerer(object):
         
     def shader_setup(self):
         
-        print "Compiling shaders: \n {0}\n {1}".format(self.vs, self.fs)
+        #print "Compiling shaders: \n {0}\n {1}".format(self.vs, self.fs)
         vs = file(self.vs).readlines()
         fs = file(self.fs).readlines()
         try:
@@ -684,7 +811,7 @@ class rednerer(object):
                                 z -= 1
                             print "Z={}".format(z)
                         elif ev.key == pygame.K_COMMA  and ev.mod & 3:
-                            if z < self.gameobject.maxz:
+                            if z < self.gameobject.zdim - 1:
                                 z += 1
                             print "Z={}".format(z)
                         elif ev.key in scrolldict:
@@ -761,63 +888,63 @@ class rednerer(object):
                     pygame.time.wait(50)
 
     def fini(self):
-        self.shader = None
-        self.vbo = None
-        glDeleteTextures((self.ansi_txid, self.font_txid))
+        self.grid_vbo = None
+        self.screen_vbo = None
+        glDeleteProgram(self.shader)
+        glDeleteTextures((self.dispatch_txid, self.font_txid, self.blitcode_txid))
         pygame.quit()
 
 
 
 
-#~ debug_get_flags_option: help for ST_DEBUG:
-#~ |      mesa [0x0000000000000001]
-#~ |      tgsi [0x0000000000000002]
-#~ | constants [0x0000000000000004]
-#~ |      pipe [0x0000000000000008]
-#~ |       tex [0x0000000000000010]
-#~ |  fallback [0x0000000000000020]
-#~ |    screen [0x0000000000000080]
-#~ |     query [0x0000000000000040]
 
-#~ debug_get_flags_option: help for LP_DEBUG: -- softpipe only
-#~ |          pipe [0x0000000000000001]
-#~ |          tgsi [0x0000000000000002]
-#~ |           tex [0x0000000000000004]
-#~ |         setup [0x0000000000000010]
-#~ |          rast [0x0000000000000020]
-#~ |         query [0x0000000000000040]
-#~ |        screen [0x0000000000000080]
-#~ |    show_tiles [0x0000000000000200]
-#~ | show_subtiles [0x0000000000000400]
-#~ |      counters [0x0000000000000800]
-#~ |         scene [0x0000000000001000]
-#~ |         fence [0x0000000000002000]
-#~ |           mem [0x0000000000004000]
-#~ |            fs [0x0000000000008000]
+"""
+    debug_get_flags_option: help for ST_DEBUG:
+    |      mesa [0x0000000000000001]
+    |      tgsi [0x0000000000000002]
+    | constants [0x0000000000000004]
+    |      pipe [0x0000000000000008]
+    |       tex [0x0000000000000010]
+    |  fallback [0x0000000000000020]
+    |    screen [0x0000000000000080]
+    |     query [0x0000000000000040]
 
-#~ debug_get_flags_option: help for GALLIVM_DEBUG:
-#~ |         tgsi [0x0000000000000001]
-#~ |           ir [0x0000000000000002]
-#~ |          asm [0x0000000000000004]
-#~ |         nopt [0x0000000000000008]
-#~ |         perf [0x0000000000000010]
-#~ | no_brilinear [0x0000000000000020]
-#~ |           gc [0x0000000000000040]
+    debug_get_flags_option: help for LP_DEBUG: -- softpipe only
+    |          pipe [0x0000000000000001]
+    |          tgsi [0x0000000000000002]
+    |           tex [0x0000000000000004]
+    |         setup [0x0000000000000010]
+    |          rast [0x0000000000000020]
+    |         query [0x0000000000000040]
+    |        screen [0x0000000000000080]
+    |    show_tiles [0x0000000000000200]
+    | show_subtiles [0x0000000000000400]
+    |      counters [0x0000000000000800]
+    |         scene [0x0000000000001000]
+    |         fence [0x0000000000002000]
+    |           mem [0x0000000000004000]
+    |            fs [0x0000000000008000]
+
+    debug_get_flags_option: help for GALLIVM_DEBUG:
+    |         tgsi [0x0000000000000001]
+    |           ir [0x0000000000000002]
+    |          asm [0x0000000000000004]
+    |         nopt [0x0000000000000008]
+    |         perf [0x0000000000000010]
+    | no_brilinear [0x0000000000000020]
+    |           gc [0x0000000000000040]
 
 
-#export LP_DEBUG=tgsi
-#export ST_DEBUG=tgsi,mesa
-#export GALLIVM_DEBUG=tgsi
-#export MESA_DEBUG=y
-#export LIBGL_DEBUG=verbose
-#export GALLIUM_PRINT_OPTIONS=help
-#export TGSI_PRINT_SANITY=y
+    #~ #export LP_DEBUG=tgsi
+    #~ #export ST_DEBUG=tgsi,mesa
+    #~ #export GALLIVM_DEBUG=tgsi
+    #~ #export MESA_DEBUG=y
+    #~ #export LIBGL_DEBUG=verbose
+    #~ #export GALLIUM_PRINT_OPTIONS=help
+    #~ #export TGSI_PRINT_SANITY=y """
 
 if __name__ == "__main__":
-    print """
-Usage:
-./fgtestbed.py [<fps>]
-
+    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', epilog =  """
 FPS is limited to no more than about 100 somewhere.
     
 Controls:
@@ -828,62 +955,21 @@ backspace: reset scroll
 esc : quit
 keypad +/- : adjust FPS
 
-"""
+""")
 
-    mo = mapobject()
-    t = time.time()
-    re = rednerer('three.vs', 'three.fs', mo)
-    re.texture_reset()
-    print "second_stage: {0:.4f} sec.".format(time.time()-t)
-    fps = 12
-    if len(sys.argv) > 1:
-        fps = int(sys.argv[1])
-    re.loop(fps)
     
-
-if __name__ == "old__main__":
-    ap = argparse.ArgumentParser(description = '[PRINT_MODE:SHADER] testbed')
-    ap.add_argument('-fps', '--fps', metavar='fps', type=float, default=0.4)
-    ap.add_argument('-rect', '--rect', metavar='texture mode', dest='tmode', action='store_const', const=GL_TEXTURE_RECTANGLE)
-    ap.add_argument('-npot', '--npot', metavar='texture mode', dest='tmode', action='store_const', const=GL_TEXTURE_2D)
-    ap.add_argument('-gfps', '--gfps', metavar='gfps', type=float, default=1.0)
-    ap.add_argument('-s', '--start-frame', metavar='start frame', type=int, default=0)
-    ap.add_argument('-vs', '--vertex-shader',  metavar='vertex shader', default='data/cbr_is_bold.vs')
-    ap.add_argument('-fs', '--fragment-shader',  metavar='fragment shader', default='data/cbr_is_bold.fs')
-    ap.add_argument('dumpname', metavar="dump_prefix", help="dump name prefix (foobar in foobar.sdump/foobar0000.png)")
-    ap.add_argument('mesa', metavar="mesa_driver", nargs='?', default="hw", help="mesa driver, values: hw, hw-alt, sw, sw-alt")
+    ap.add_argument('-fps', metavar='fps', type=float, default=12)
+    ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
+    ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
+    ap.add_argument('dumpfx', metavar="dumpfx", nargs='?', help="dump name prefix (foobar in foobar.mats/foobar.tiles)", default='fugrdump')
+    ap.add_argument('-raws', metavar="fgraws", default="fgraws", help="fg raws directory")
         
     pa = ap.parse_args()
-    if pa.tmode is None:
-        pa.tmode = GL_TEXTURE_2D
+    
+    mo = mapobject(matsfile=pa.dumpfx+'.mats', tilesfile = pa.dumpfx + '.tiles', fgrawdir=pa.raws)
         
-    envi = {
-        "hw": (),
-        "hw-alt": (("LIBGL_DRIVERS_PATH","/usr/lib/x86_64-linux-gnu/dri-alternates"),),
-        "sw" : (("LIBGL_ALWAYS_SOFTWARE","y"),),
-        "sw-alt": (("LIBGL_ALWAYS_SOFTWARE","y"), ("LIBGL_DRIVERS_PATH","/usr/lib/x86_64-linux-gnu/dri-alternates"),)
-    }
-    
-    for v in envi.values():
-        for et in v:
-            if et:
-                try:
-                    del os.environ[et[0]]
-                except KeyError:
-                    pass
-    if pa.mesa:
-        for et in envi[pa.mesa]:
-            if et:
-                os.environ[et[0]] = et[1]
-    
-    try:
-        stuff = StuffDump(pa.dumpname)
-        
-        r = rednener(stuff, pa.vertex_shader, pa.fragment_shader, pa.tmode)
-    except OSError, e:
-        traceback.print_exc(e)
-        ap.print_help()
-        sys.exit(1)
-    
-    r.loop(fps=pa.fps, gfps=pa.gfps, start_frame=pa.start_frame)
-    r.fini()
+    re = rednerer(vs=pa.vs, fs=pa.fs, go=mo)
+    re.texture_reset()
+    re.loop(pa.fps)
+
+    re.fini()

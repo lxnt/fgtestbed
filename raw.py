@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import os, os.path, glob, sys, xml.parsers.expat, time, math
+import os, os.path, glob, sys, xml.parsers.expat, time, math, mmap
 import numpy as np
 NOMAT = 0xFFFFFFFF
 
@@ -56,64 +56,17 @@ def scan_mats(path):
     #print "{0} inorgs, {1} plants".format(len(inorgs), len(plants))
     return (inorgs, plants) 
 
-def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
-    #mildly esoteric in the presense of NOMAT.
-    # it seems grass & layer stone are mutex by tiletype.
-    # so we just do:
-    if gramount != NOMAT and gramount != 0:
-        stone = grass
-        ore = NOMAT
-    # and define GrassWhatEver tiles within only plant materials
-    
-    # Also since we don't have a plan how to compose ore/cluster tiles yet:
-    if ore != NOMAT:
-        stone = ore
-        ore = NOMAT
 
-    return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
 
+"""
 class mapdump:
-    def __init__(self, fname):
+    def __init__(self, matsfile, tilesfile):
         self.plant_ids = {}
         self.inorg_ids = {}
         self.plant_names = {}
         self.inorg_names = {}
 
-        self._xdim = 96
-        self._ydim = 96
-        self._zdim = 16
-        
-        self._binary_form = np.zeros((self._xdim, self._ydim, self._zdim), np.int32)
-        self._dumb_list = []
-        
-        self._parse(fname)
 
-
-    def _parse(self, mapfile):
-
-        now_map = False
-        origin = None
-       
-        for l in file(mapfile):
-            if l == 'now map\n':
-                now_map = True
-                continue
-            f = l.split()
-            if not now_map:
-                if f[1] == 'INORG':
-                    self.inorg_names[int(f[0])] = ' '.join(f[2:])
-                    self.inorg_ids[' '.join(f[2:])] = int(f[0])
-                elif f[1] == 'PLANT':
-                    self.plant_names[int(f[0])] = ' '.join(f[2:])
-                    self.plant_ids[' '.join(f[2:])] = int(f[0])
-                continue
-
-            x,y,z, tiletype, stone, inorg, grass, gramount = map(lambda x: int(x, 16), f)
-            if origin is None:
-                origin = (x,y,z)
-            self._dumb_list.append((tiletype, stone, inorg, grass, gramount))
-            x, y, z = x-origin[0], y-origin[1], z-origin[2]
-            self._binary_form[x, y, z] = hashit(tiletype, stone, inorg, grass, gramount)
 
     def __str__(self):
         rv = ""
@@ -133,6 +86,7 @@ class mapdump:
         return rv
 
     def stats(self, tile_names):
+        raise Broken
         mathash = {}
         grasshash = {}
         matseen = {}
@@ -198,7 +152,7 @@ class mapdump:
         print_totals("inorgs+plants", ttboth)
         print_totals("particulars", parti)
         print void, stone, nosto, bofma, totgra, totina
-    
+"""
     
 class tilepage:
     def __init__(self, tpname):
@@ -421,158 +375,4 @@ def enumaps(apidir):
             emap[e] = i
         i += 1
     return enums, emap
-
-mapfile = 'fugr.dump'
-matdir = 'objects'
-fgrawdir = 'fgraws'
-pngdir = 'png'
-apidir = ''
-
-class preparer:
-    def __init__(self):
-        unused, self.tile_names = enumaps(apidir)
-        self.gr = graphraws(fgrawdir) # read raws
-        self.madpump = mapdump(mapfile) # read map, but only use 
-
-    def eatpage(self, page):
-        pass
-    
-    def maptile(self, blit):
-        return 1, blit[1], blit[2], 0
-    
-    def first_stage(self):
-        # all used data is available before first map frame is to be
-        # rendered in game.
-        # eatpage receives individual tile pages and puts them into one big one
-        # maptile maps pagename, s, t into tiu, s, t  that correspond to the big one
-        # tile_names map tile names in raws to tile_ids in game
-        # inorg_ids and plant_ids map mat names in raws to effective mat ids in game
-        # (those can change every read of raws)
-        eatpage = self.eatpage
-        maptile = self.maptile
-        
-        inorg_ids, plant_ids = self.madpump.inorg_ids, self.madpump.plant_ids
-        
-        self.blithash_dt = np.dtype({  # GL_RG16UI
-            'names': 's t'.split(),
-            'formats': ['u2', 'u2' ],
-            'offsets': [ 0, 2 ],
-            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
-            
-        self.blitcode_dt = np.dtype({  # GL_RGBA16UI - 64 bits. 8 bytes
-            'names': 's t r g b a'.split(),
-            'formats': ['u2', 'u2', 'u1', 'u1', 'u1', 'u1' ],
-            'offsets': [ 0, 2, 4, 5, 6, 7 ],
-            'titles': ['s-coord in tiles', 't-coord in tiles',
-                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha'] })
-
-        pages, mats = self.gr.get()
-        
-        for page in pages:
-            eatpage(page)
-        
-        tcount = 0
-        for mat in mats:
-            tcount += len(mats[mat].tiles.keys())
-        print "{1} mats  {0} defined tiles".format(tcount, len(mats.keys()))
-        if tcount > 65536:
-            raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
-        
-        self.hashw = 1024 # 20bit hash.
-        self.codew = math.ceil(math.sqrt(tcount))
-        
-        blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
-        blitcode = np.zeros((128, self.codew, self.codew), dtype=self.blitcode_dt)
-        
-        tc = 1 # 0 === undefined.
-        #fd = file("dispatch.text","w")
-        #fb = file("blitcode.text","w")
-        for name, mat in mats.items():
-            if name in inorg_ids:
-                mat_id = inorg_ids[name]
-            elif name in plant_ids:
-                mat_id = plant_ids[name]
-            else:
-                print  "no per-session id for mat '{0}'".format(name)
-                continue
-            for tname, frameseq in mat.tiles.items():
-                x = int (tc % self.codew)
-                y = int (tc / self.codew)
-                
-                tile_id = self.tile_names[tname]
-                hashed  = hashit(tile_id, mat_id)
-                hx = hashed % self.hashw 
-                hy = hashed / self.hashw 
-                blithash[hy, hx]['s'] = x
-                blithash[hy, hx]['t'] = y
-                #fd.write("{:03x} {:03x} {:06x} : {:02x} {:02x} {}\n".format(hx,hy,hashed, x, y, name))
-                
-                frame_no = 0
-                for insn in frameseq:
-                    blit, blend = insn
-                    un, s, t, un = maptile(blit)
-                    r,g,b,a = blend
-                    blitcode[frame_no, y, x]['s'] = s # fortran, motherfucker. do you speak it?
-                    blitcode[frame_no, y, x]['t'] = t
-                    blitcode[frame_no, y, x]['r'] = r
-                    blitcode[frame_no, y, x]['g'] = g
-                    blitcode[frame_no, y, x]['b'] = b
-                    blitcode[frame_no, y, x]['a'] = a
-                    #fb.write("{},{}: {} {} '{}' {} {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a, name))
-                    #break
-                    #if frame_no != -1:
-                    #    fb.write("{},{}: {} {} '{}' {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a))
-                    frame_no += 1
-                tc += 1
-
-        self.blithash, self.blitcode = blithash, blitcode
-
-    def second_stage(self, z):    
-        raise Unused
-        tx, ty, tz, blithash, blitcode = self.tx, self.ty, self.tz, self.blithash, self.blitcode
-       
-        # okay ...
-        # that's how preparing frame for rendering should look like
-        hashedview = self.madpump._binary_form # acquire map data, flatten and hash it..
-        
-        # the hash lookup is to be done in the shader.
-        # decide if it's worth it moving it into separate render pass
-        # esp since it's to be needed for multiple layers.
-        def domap(a, b):
-            return b.get(a, 0)
-        vdomap = np.vectorize(domap, otypes=[np.int32])
-        t = time.time()
-        zview = hashedview[::,::,z]
-        ready_frame = vdomap(zview, blithash)
-        #print "domap: {0:.4f} sec".format(time.time() -t )
-        return ready_frame   
-    
-
-if __name__ == '__main__':
-    if sys.argv[1] == 'map':
-        enums, emap = enumaps(apidir)
-        map = mapdump(mapfile)
-        #map.stats(enums)
-        print map
-    elif sys.argv[1] == 'raws':
-        gr = graphraws(fgrawdir)
-    elif sys.argv[1] == 'prep':
-        p = preparer()
-        p.first_stage()
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
