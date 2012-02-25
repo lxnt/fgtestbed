@@ -21,7 +21,7 @@ void main() {
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
     vec4 tile_color = texture2D(font, texcoords);
     
-    gl_FragColor = mix(tile_color, blend, 1.0 - tile_color.a);
-    //gl_FragColor = debug;
+    //gl_FragColor = mix(tile_color, blend, 1.0 - tile_color.a);
+    gl_FragColor = 0.5*tile_color + 0.5*blend;
     gl_FragColor.a = final_alpha;    
 }

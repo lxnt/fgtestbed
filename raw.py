@@ -299,17 +299,17 @@ class graphraws(object):
     def _parseraw(self, flo):
         def parse_rgba(f):
             if len(f) == 3:
-                r = int(f[0]) << 4
-                g = int(f[1]) << 4
-                b = int(f[2]) << 4
+                r = int(f[0],16) << 4
+                g = int(f[1],16) << 4
+                b = int(f[2],16) << 4
                 a = 0xff
             elif len(f) == 6:
                 r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), 0xff
                 a = 0xff
-            elif len(f[1]) == 8:
+            elif len(f) == 8:
                 r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), int(f[6:8], 16)
             else:
-                raise ParseError
+                raise ValueError(f)
             return (r,g,b,a)
         defs = self.defs
         mats = self.matiles
@@ -496,7 +496,6 @@ class preparer:
                     blit, blend = insn
                     un, s, t, un = maptile(blit)
                     r,g,b,a = blend
-                    r,g,b,a = frame_no, frame_no, frame_no, frame_no
                     blitcode[frame_no, y, x]['s'] = s # fortran, motherfucker. do you speak it?
                     blitcode[frame_no, y, x]['t'] = t
                     blitcode[frame_no, y, x]['r'] = r
