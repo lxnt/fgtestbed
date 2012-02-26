@@ -11,7 +11,7 @@ uniform int dispatch_row_len;
 uniform ivec2 grid;
 uniform vec3 pszar;               // { parx, pary, psz }
 
-in vec2 position; 
+in ivec2 position; 
 in int screen;
 
 flat out vec4 blit;
