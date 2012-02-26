@@ -13,7 +13,7 @@ uniform ivec2 resolution;	 // resolution for normalizing the above.
 uniform ivec2 grid;	 	 // grid size for avoiding artifacts when pre-normalizing position.
 uniform vec3 pszar; 			// { parx, pary, psz }
 
-in vec2 position; // normalized. 
+in vec2 position; 
 in int screen;
 
 flat out vec4 blit;
@@ -22,7 +22,7 @@ flat out vec4 blend;
 void main() {
     vec2 normposn = (position + 0.5)/grid;
     normposn.y = 1.0 - normposn.y;
-    vec2 posn = 2.0 * pszar.xy*normposn - 1.0 - shift/resolution;
+    vec2 posn = 2.0 * pszar.xy*normposn - vec2(shift)/vec2(resolution) - 1.0;
     gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
     gl_PointSize = pszar.z;
 
