@@ -406,8 +406,8 @@ class fbo:
 
     def fini(self):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glDeleteRenderbuffers([self.mapr])
-        glDeleteFramebuffers([self.map, self.hud])
+        glDeleteRenderbuffers(1, [self.mapr])
+        glDeleteFramebuffers(2, [self.map, self.hud])
 
     def reshape(self):
         mapr_w = (self.rr.grid_w + 2) * self.rr.Pszx
@@ -440,7 +440,8 @@ class fbo:
         
         #glUniform2i(self.uloc['shift'], *self.rr.shift)
         #glUniform2i(self.uloc['resolution'], self.rr.viewport_w, self.rr.viewport_h)
-        x0, y0 = self.rr.shift
+        x0 = self.rr.shift[0] + self.rr.Pszx
+        y0 = self.rr.shift[1] + self.rr.Pszy
         x1 = self.rr.surface.get_width() + x0
         y1 = self.rr.surface.get_height() + y0
         print x0,y0
@@ -802,7 +803,8 @@ class rednerer:
         bgc = ( 0.1, 0.1, 0.1, 1 )
         t = pygame.time.get_ticks()
         self.frame_no = frame_no
-    
+        glClearColor(*bgc)
+        glClear(GL_COLOR_BUFFER_BIT)    
         if self.fbo.bind_map(): # 'if' here only to provide an indent
             glClearColor(*bgc)
             glClear(GL_COLOR_BUFFER_BIT)
