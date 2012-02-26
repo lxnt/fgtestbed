@@ -3,15 +3,13 @@
 precision highp int;
 precision highp float;
 
-uniform usampler2D dispatch; 	  // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
+uniform usampler2D dispatch;      // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
 uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA16UI ARRAY
 uniform int frame_no;
-uniform ivec4 txsz;              // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
+uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 uniform int dispatch_row_len;
-uniform ivec2 shift;		 // shift for smooth scrolling, pixels.
-uniform ivec2 resolution;	 // resolution for normalizing the above.
-uniform ivec2 grid;	 	 // grid size for avoiding artifacts when pre-normalizing position.
-uniform vec3 pszar; 			// { parx, pary, psz }
+uniform ivec2 grid;
+uniform vec3 pszar;               // { parx, pary, psz }
 
 in vec2 position; 
 in int screen;
@@ -22,7 +20,7 @@ flat out vec4 blend;
 void main() {
     vec2 normposn = (position + 0.5)/grid;
     normposn.y = 1.0 - normposn.y;
-    vec2 posn = 2.0 * pszar.xy*normposn - vec2(shift)/vec2(resolution) - 1.0;
+    vec2 posn = 2.0 * pszar.xy*normposn - 1.0;
     gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
     gl_PointSize = pszar.z;
 

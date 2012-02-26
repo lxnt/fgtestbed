@@ -23,6 +23,7 @@ import OpenGL.GL.shaders
 from OpenGL.GLU import *
 from OpenGL.GL.ARB import shader_objects
 from OpenGL.GL.ARB.texture_rg import *
+from OpenGL.GL.ARB.framebuffer_object import *
 from glname import glname as glname
 
 import raw
@@ -271,8 +272,6 @@ class mapobject:
 
         return rv
 
-
-
 class shader:
     def __init__(self, renderer, loud=False):
         self.rr = renderer
@@ -339,12 +338,10 @@ class shader:
             glEnableVertexAttribArray(loc) # is it the right place for this?
         
         glUniform1i(self.uloc['frame_no'], self.rr.frame_no)
-        glUniform2i(self.uloc['shift'], *self.rr.shift)
         glUniform1f(self.uloc["final_alpha"], 1.0)
 
         if shape or self.u_shape:
-            glUniform2i(self.uloc['grid'], self.rr.grid_w, self.rr.grid_h)
-            glUniform2i(self.uloc['resolution'], self.rr.viewport_w, self.rr.viewport_h)
+            glUniform2i(self.uloc['grid'], self.rr.grid_w + 2, self.rr.grid_h + 2)
             glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Pszx)
             self.u_shape = False
         
@@ -392,10 +389,77 @@ class shader:
         self.program = None
         self.uloc = {}
         
+        
+class fbo:
+    def __init__(self, renderer):
+        self.rr = renderer
+        self.u_reshape = False
+        
+    def check(self, tgt = GL_FRAMEBUFFER):
+        x = glCheckFramebufferStatus(tgt)
+        if x != GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError("boo! framebuffer's fucked up")
+        
+    def init(self):
+        self.map, self.hud = glGenFramebuffers(2)
+        self.mapr = glGenRenderbuffers(1)
+
+    def fini(self):
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        glDeleteRenderbuffers([self.mapr])
+        glDeleteFramebuffers([self.map, self.hud])
+
+    def reshape(self):
+        mapr_w = (self.rr.grid_w + 2) * self.rr.Pszx
+        mapr_h = (self.rr.grid_h + 2) * self.rr.Pszy
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, self.map)
+        glBindRenderbuffer(GL_RENDERBUFFER, self.mapr)
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, mapr_w, mapr_h)
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, self.mapr)
+        
+        self.check()
+        self.mapr_w, self.mapr_h = mapr_w, mapr_h
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    
+    def bind_map(self):
+        if self.u_reshape:
+            self.reshape()
+            self.u_reshape = False
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self.map)
+        glViewport( 0, 0, self.mapr_w, self.mapr_h)
+        return True
+        
+    def bind_hud(self):
+        #glBindFramebuffer(GL_FRAMEBUFFER_DRAW, self.hud)
+        return True
+    
+    def compose(self):
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, self.map)
+        
+        #glUniform2i(self.uloc['shift'], *self.rr.shift)
+        #glUniform2i(self.uloc['resolution'], self.rr.viewport_w, self.rr.viewport_h)
+        x0, y0 = self.rr.shift
+        x1 = self.rr.surface.get_width() + x0
+        y1 = self.rr.surface.get_height() + y0
+        print x0,y0
+        glBlitFramebuffer( 
+            x0, y0, x1, y1,
+            0, 0, self.rr.surface.get_width(), self.rr.surface.get_height(),
+            GL_COLOR_BUFFER_BIT, GL_NEAREST)
+        
+        " here bind self.hud as texture and crap it out on top of ze default buffer"
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0)
+
+        
+        
 class rednerer:
     def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
         self.vs, self.fs = vs, fs
         self.shader = shader(self, loud=True)
+        self.fbo = fbo(self)
         self.gameobject = go
         
         self.do_update_attrs = True
@@ -473,6 +537,11 @@ class rednerer:
         return True
     
     def grid_allocate(self, w, h):
+        self.grid_w, self.grid_h = w, h # those are 'guaranteed to be visible' tiles,
+                                        # off which reshape calculations are based. 
+                                        # rest is using +2 to make panning real smooth
+        w += 2
+        h += 2
         rv = np.zeros((2*w*h,) , 'f')
         i = 0
         for xt in xrange(0, w):
@@ -480,8 +549,7 @@ class rednerer:
                 rv[2 * i + 0] = xt
                 rv[2 * i + 1] = yt
                 i += 1
-        self.grid_w = w
-        self.grid_h = h
+
         self.grid_tile_count = w*h
         self.grid = rv
     
@@ -499,14 +567,13 @@ class rednerer:
         #glDisable(GL_POINT_SMOOTH)
         glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT)
 
-        #self.map_fbo, self.crap_fbo = glGenFramebuffers(2)
-        #glBindFramebuffer(GL_FRAMEBUFFER)
-        
+        self.fbo.init()
         self.dispatch_txid, self.blitcode_txid, self.font_txid, self.txco_txid = glGenTextures(4)
         self.shader.init(self.vs, self.fs)
         
         self.opengl_initialized = True
-        
+
+
     def opengl_fini(self):
         self.shader.fini()
         #glDeleteTextures()
@@ -650,7 +717,7 @@ class rednerer:
                 self.viewport_w, self.viewport_h, sw, sh, self.viewport_offset_x, 
                 self.viewport_offset_y)
         
-        glViewport(self.viewport_x, self.viewport_y, self.viewport_w, self.viewport_h)
+        self.fbo.u_reshape = True
         self.shader.u_shape = True # request shape uniforms reset
 
     def texture_reset(self):
@@ -731,22 +798,24 @@ class rednerer:
         y = (mouse_y - self.viewport_offset_y) / self.Pszy
         return x,y
 
-    def timed_stuff(self):
-        return
-
     def render(self, mapwindow, frame_no):
         bgc = ( 0.1, 0.1, 0.1, 1 )
         t = pygame.time.get_ticks()
-        self.timed_stuff()
-        
-        glClearColor(*bgc)
-        glClear(GL_COLOR_BUFFER_BIT)
-        
         self.frame_no = frame_no
-        self.update_vbos(mapwindow)
-        self.shader.update_state()
+    
+        if self.fbo.bind_map(): # 'if' here only to provide an indent
+            glClearColor(*bgc)
+            glClear(GL_COLOR_BUFFER_BIT)
+            
+            self.update_vbos(mapwindow)
+            self.shader.update_state()
 
-        glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
+            glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
+            
+        if self.fbo.bind_hud(): # same as above
+            pass
+            
+        self.fbo.compose()
         pygame.display.flip()
         return  pygame.time.get_ticks() - t
         
@@ -784,7 +853,7 @@ class rednerer:
                 frame_no += 1
                 if frame_no > self.cutoff_frame:
                     frame_no = 0
-            render_time = self.render((x, y, z, self.grid_w, self.grid_h), frame_no)
+            render_time = self.render((x, y, z, self.grid_w+2, self.grid_h+2), frame_no)
             
             #print "frame rendered in {0} msec".format(render_time)
             render_time += 1
@@ -884,6 +953,7 @@ class rednerer:
         self.grid_vbo = None
         self.screen_vbo = None
         self.shader.fini()
+        self.fbo.fini()
         glDeleteTextures((self.dispatch_txid, self.font_txid, self.blitcode_txid))
         pygame.quit()
 
