@@ -175,13 +175,8 @@ class mapobject:
         self.blithash, self.blitcode = blithash, blitcode
 
     def upload_font(self, txid_font, txid_txco):
-        
         surf = pygame.image.load(self.tp.file)
         stuff = pygame.image.tostring(surf, "RGBA")
-        
-        glMatrixMode(GL_TEXTURE)
-        glLoadIdentity()
-        glMatrixMode(GL_MODELVIEW)
         
         glBindTexture(GL_TEXTURE_2D,  txid_font)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -204,16 +199,11 @@ class mapobject:
         return self.tp.pdim + self.tp.tdim
 
     def upload_code(self, txid_hash, txid_blit):
-        
         if False:
             for i in (GL_UNPACK_SWAP_BYTES, GL_UNPACK_LSB_FIRST, GL_UNPACK_ROW_LENGTH,
                 GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS,
                 GL_UNPACK_SKIP_IMAGES, GL_UNPACK_ALIGNMENT ):
                 print i, glGetInteger(i)
-        
-        glMatrixMode(GL_TEXTURE)
-        glLoadIdentity()
-        glMatrixMode(GL_MODELVIEW)
         
         glBindTexture(GL_TEXTURE_2D,  txid_hash)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -281,41 +271,154 @@ class mapobject:
 
         return rv
 
-class rednerer(object):
-    def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
-        self.gameobject = go
-        
-        default_res = ( 1280, 800 )
-        
-        self.vs = vs
-        self.fs = fs
-        self.reset_vbos = True
 
-        self.opengl_initialized = False
-        self.snap_to_grid = False
-        self.do_reset_glcontext = False
-        self.do_update_attrs = True
-        self.surface = None
-        self.conf_stretch_tiles = False
-        self.conf_snap_window = False
-       
+
+class shader:
+    def __init__(self, renderer, loud=False):
+        self.rr = renderer
+        self.loud = loud
         self.aloc = {
             'position': 0, 
             'screen': 1
         }
+        self.program = None
+        self.u_vbos = False
+        self.u_shape = False
+        self.u_textures = False
+        
+    def reload(self, vs, fs):
+        if self.program:
+            self.fini()
+        self.init(self, vs, fs)
+        
+    def init(self, vs, fs):
+        try:
+            where = 'vertex'
+            vsp = compileShader(file(vs).read(), GL_VERTEX_SHADER)
+            where = 'fragment'
+            fsp = compileShader(file(fs).read(), GL_FRAGMENT_SHADER)
+        except RuntimeError, e:
+            print where, e[0]#, e[1][0]
+            raise SystemExit
+        
+        program = glCreateProgram()
 
+        for shader in (vsp, fsp):
+            glAttachShader(program, shader)
+            glDeleteShader(shader)
+            
+        for name, loc in self.aloc.items():
+            glBindAttribLocation(program, loc, name)
+        #glBindFragDataLocation(program, 0, 'color')
+
+        glLinkProgram(program)
+    
+        link_status = glGetProgramiv( program, GL_LINK_STATUS )
+        if link_status == GL_FALSE:
+            raise RuntimeError(
+                """Link failure (%s): %s"""%(
+                link_status,
+                glGetProgramInfoLog( program ),
+            ))
+    
+        self.uloc = {}
+        au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
+        for i in xrange(au):
+            name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
+            loc = glGetUniformLocation(program, name)
+            self.uloc[name] = loc
+            if self.loud:
+                print "  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc)
+        
+        self.program = program
+        
+    def update_state(self, shape = False, textures = False, vbos = False):
+        glUseProgram(self.program)
+        
+        for loc in self.aloc.values():
+            glEnableVertexAttribArray(loc) # is it the right place for this?
+        
+        glUniform1i(self.uloc['frame_no'], self.rr.frame_no)
+        glUniform2i(self.uloc['shift'], *self.rr.shift)
+        glUniform1f(self.uloc["final_alpha"], 1.0)
+
+        if shape or self.u_shape:
+            glUniform2i(self.uloc['grid'], self.rr.grid_w, self.rr.grid_h)
+            glUniform2i(self.uloc['resolution'], self.rr.viewport_w, self.rr.viewport_h)
+            glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Pszx)
+            self.u_shape = False
+        
+        if textures or self.u_textures:
+            glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
+            glUniform1i(self.uloc["dispatch_row_len"], 1024);
+            
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.rr.dispatch_txid)
+            glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
+            
+            glActiveTexture(GL_TEXTURE1)
+            glBindTexture(GL_TEXTURE_2D_ARRAY, self.rr.blitcode_txid)
+            glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
+            
+            glActiveTexture(GL_TEXTURE2)
+            glBindTexture(GL_TEXTURE_2D, self.rr.font_txid)
+            glUniform1i(self.uloc["font"], 2) # tilepage tilesizes tiu
+            
+            self.u_textures = False
+            
+        if vbos or self.u_vbos:
+            self.rr.screen_vbo.bind()
+            glVertexAttribIPointer(self.aloc["screen"], 1, GL_INT, 0, self.rr.screen_vbo )
+            self.rr.screen_vbo.unbind()
+            
+            self.rr.grid_vbo.bind()
+            glVertexAttribPointer(self.aloc["position"], 2, GL_FLOAT, GL_FALSE, 0, self.rr.grid_vbo )
+            self.rr.grid_vbo.unbind()
+
+            self.u_vbos = False
+
+    def validate(self):
+        glValidateProgram(self.program)
+        validation = glGetProgramiv( self.program, GL_VALIDATE_STATUS )
+        if validation == GL_FALSE:
+            raise RuntimeError(
+                """Validation failure (%s): %s"""%(
+                validation,
+                glGetProgramInfoLog(self.program ),
+            ))
+
+    def fini(self):
+        glDeleteProgram(self.program)
+        self.program = None
         self.uloc = {}
         
+class rednerer:
+    def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
+        self.vs, self.fs = vs, fs
+        self.shader = shader(self, loud=True)
+        self.gameobject = go
+        
+        self.do_update_attrs = True
+        self.opengl_initialized = False
+        
+        self.snap_to_grid = False
+        self.do_reset_glcontext = True
+        self.conf_stretch_tiles = False
+        self.conf_snap_window = False
+        self.cutoff_frame = anicutoff      
+        self.skip_glinfo = not glinfo
+        self.loud_reshape = True
+
         self.tilesizes = None # txco texture
         self.grid = None # grid vaa/vbo
         self.screen = None # frame data
-
-        self.cutoff_frame = anicutoff
-
+        self.surface = None
+        
         self.viewport_w = 0
         self.viewport_h = 0
         self.viewport_offset_x = 0
         self.viewport_offset_y = 0
+        self.shift = [0, 0] # smooth-panning shift
         self.txsz_w = self.cell_w = self.txsz_h = self.cell_h = 0
         self.tile_w = self.tile_h = None
         self.grid_w = self.grid_h = 0
@@ -323,8 +426,6 @@ class rednerer(object):
         self.Psz = -8
         
         self._fc_key = None
-        self.skip_glinfo = not glinfo
-        self.loud_reshape = True
 
         self.MIN_GRID_X = 20
         self.MIN_GRID_Y = 20
@@ -333,6 +434,8 @@ class rednerer(object):
 
         pygame.display.init()
         pygame.display.set_caption("full-graphics testbed", "fgtestbed")
+        
+        default_res = ( 1280, 800 )
         self.set_mode(*default_res)
         self.gps_allocate(self.MIN_GRID_X, self.MIN_GRID_Y)
         self.Pszx = self.surface.get_width()/self.MIN_GRID_X
@@ -377,7 +480,6 @@ class rednerer(object):
                 rv[2 * i + 0] = xt
                 rv[2 * i + 1] = yt
                 i += 1
-        glUniform2i(self.uloc['grid'], w, h)
         self.grid_w = w
         self.grid_h = h
         self.grid_tile_count = w*h
@@ -397,24 +499,16 @@ class rednerer(object):
         #glDisable(GL_POINT_SMOOTH)
         glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT)
 
-        for loc in self.aloc.values():
-            glEnableVertexAttribArray(loc)
-        
-        #mkay so we have a few composited screens:
-        # 1. ze original renderer
-        # 2. ze new renderer
-        # 3. ?
-        
         #self.map_fbo, self.crap_fbo = glGenFramebuffers(2)
         #glBindFramebuffer(GL_FRAMEBUFFER)
         
         self.dispatch_txid, self.blitcode_txid, self.font_txid, self.txco_txid = glGenTextures(4)
-        self.shader_setup()
+        self.shader.init(self.vs, self.fs)
         
         self.opengl_initialized = True
         
     def opengl_fini(self):
-        self.shader = None
+        self.shader.fini()
         #glDeleteTextures()
         #glDeleteBuffers()
         self.opengl_initialized = False
@@ -424,28 +518,16 @@ class rednerer(object):
         if mapwindow != self._fc_key:
             self._fc_key = mapwindow
             self.screen  = self.gameobject.frame(*mapwindow)
-            #print self.screen.shape
-            #self.screen.fill(32)
             
         if self.do_update_attrs or not self.screen_vbo:
             self.screen_vbo = vbo.VBO(self.screen, usage=GL_STREAM_DRAW)
-            self.screen_vbo.bind()
-            if False:
-                print dir(self.screen_vbo)
-                print self.screen_vbo.size, self.screen_vbo.target, self.screen_vbo.copied
-                file("frame","w").write(self.screen.tostring())
-            glVertexAttribIPointer(self.aloc["screen"], 1, GL_INT, 0, self.screen_vbo )
-            self.screen_vbo.unbind()
-
             self.grid_vbo = vbo.VBO(self.grid, usage=GL_STATIC_DRAW)
-            self.grid_vbo.bind()
-            glVertexAttribPointer(self.aloc["position"], 2, GL_FLOAT, GL_FALSE, 0, self.grid_vbo )
-            self.grid_vbo.unbind()
             self.do_update_attrs = False
+            self.shader.u_vbos = True # request vaap reset
         else:
             self.screen_vbo.set_array(self.screen)
-            self.screen_vbo.bind()
-    
+            self.screen_vbo.bind() # force copyout
+
     def reshape(self, new_grid_w = 0, new_grid_h = 0, new_window_w = -1, new_window_h = -1, 
                 toggle_fullscreen = False, override_snap = False):
 
@@ -492,13 +574,11 @@ class rednerer(object):
         self.Pszx = new_psz_x
         self.Pszy = new_psz_y
         
-        Parx = Pary = 1.0
+        self.Parx = self.Pary = 1.0
         if self.Pszx > self.Pszy:
-            Pary = float(new_psz_y)/new_psz_x
-            glUniform3f(self.uloc['pszar'], Parx, Pary, self.Pszx)
+            self.Pary = float(new_psz_y)/new_psz_x
         else:
-            Parx = float(new_psz_x)/new_psz_y
-            glUniform3f(self.uloc['pszar'], Parx, Pary, self.Pszy)
+            self.Parx = float(new_psz_x)/new_psz_y
             
         self.viewport_w = new_psz_x * new_grid_w
         self.viewport_h = new_psz_y * new_grid_h
@@ -557,90 +637,7 @@ class rednerer(object):
             else:
                 w = ""
             print "{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w)
-        if  "GL_ARB_texture_rectangle" in exts:
-            print "GL_ARB_texture_rectangle: supported"
-        else:
-            print "GL_ARB_texture_rectangle: NOT SUPPORTED"
         
-    def shader_setup(self):
-        
-        #print "Compiling shaders: \n {0}\n {1}".format(self.vs, self.fs)
-        vs = file(self.vs).readlines()
-        fs = file(self.fs).readlines()
-        try:
-            where = 'vertex'
-            vsp = compileShader("\n".join(vs), GL_VERTEX_SHADER)
-            where = 'fragment'
-            fsp = compileShader("\n".join(fs), GL_FRAGMENT_SHADER)
-        except RuntimeError, e:
-            print where, e[0]#, e[1][0]
-            raise SystemExit
-        
-        program = glCreateProgram()
-        glAttachShader(program, vsp)
-        glAttachShader(program, fsp)
-        
-        for name, loc in self.aloc.items():
-            glBindAttribLocation(program, loc, name)
-        glLinkProgram(program)
-    
-        link_status = glGetProgramiv( program, GL_LINK_STATUS )
-        if link_status == GL_FALSE:
-            raise RuntimeError(
-                """Link failure (%s): %s"""%(
-                link_status,
-                glGetProgramInfoLog( program ),
-            ))
-        
-        glUseProgram(program)
-        
-        if not self.skip_glinfo:
-            print "uniform list:"
-            au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
-            for i in xrange(au):
-                name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
-                loc = glGetUniformLocation(program, name)
-                val = None
-                #xval = glGetUniformiv(program, loc, 32)
-                print "  {0}: name={1} type={2} loc={3} val={4}".format(i, name, glname.get(typ, typ), loc, val)
-
-        uniforms = "dispatch blitcode font txsz final_alpha shift resolution grid pszar frame_no dispatch_row_len".split()
-
-        self.uloc = {}
-        for u in uniforms:
-            self.uloc[u] = glGetUniformLocation(program, u)
-        
-        glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
-        glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
-        glUniform1i(self.uloc["font"], 2) # tilepage tiu
-        glUniform1f(self.uloc["final_alpha"], 1.0)
-        glUniform2i(self.uloc["shift"], 0, 0);
-        glUniform2i(self.uloc["resolution"], 42, 23); # set in set_mode()
-        glUniform2i(self.uloc["grid"], 42, 23); # set in grid_allocate()
-        glUniform1i(self.uloc["frame_no"], 0);
-        glUniform1i(self.uloc["dispatch_row_len"], 1024);
-        glUniform4i(self.uloc["txsz"], 16, 16, 16, 16);
-        glUniform3f(self.uloc["pszar"], 16.0, 1.0, 1.0);
-        
-        glValidateProgram(program)
-        validation = glGetProgramiv( program, GL_VALIDATE_STATUS )
-        if validation == GL_FALSE:
-            raise RuntimeError(
-                """Validation failure (%s): %s"""%(
-                validation,
-                glGetProgramInfoLog( program ),
-            ))
-            
-        for shader in (vsp, fsp):
-            glDeleteShader(shader)
-        self.shader = OpenGL.GL.shaders.ShaderProgram( program ) # context mgr        
-
-    def reload_shaders(self, frame, texture, nominal):
-        self.shader = None
-        print "reload_shaders(): shaders dropped, reloading with nominal={0}".format(nominal)
-        self.shader_setup(nominal)
-        self.reset_vbos = True
-
     def set_viewport(self):
         """ this kills artifacts caused by window being a few pixels
             larger than the tiles occupy. """
@@ -654,33 +651,16 @@ class rednerer(object):
                 self.viewport_offset_y)
         
         glViewport(self.viewport_x, self.viewport_y, self.viewport_w, self.viewport_h)
-        glUniform2i(self.uloc['resolution'], self.viewport_w, self.viewport_h)
-
+        self.shader.u_shape = True # request shape uniforms reset
 
     def texture_reset(self):
-        "dispatch blitcode blendcode font txco"
         self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
         self.txsz = self.gameobject.upload_font(self.font_txid, self.txco_txid)
         self.tile_w = self.txsz[2]
         self.tile_h = self.txsz[3]
-    
-        glUniform4i(self.uloc["txsz"],*self.txsz )  # tex size in tiles, tile size in texels
-
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, self.dispatch_txid)
-        glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
-        
-        glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D_ARRAY, self.blitcode_txid)
-        glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
-        
-        glActiveTexture(GL_TEXTURE2)
-        glBindTexture(GL_TEXTURE_2D, self.font_txid)
-        glUniform1i(self.uloc["font"], 2) # tilepage tilesizes tiu
-
 
         self.reshape()
-
+        self.shader.u_textures = True # request TIU rebind
 
     def _zoom(self, zoom, force = 0):
         new_psz  = self.Psz + zoom
@@ -753,25 +733,19 @@ class rednerer(object):
 
     def timed_stuff(self):
         return
-        glUniform1f(self.uloc["final_alpha"], alpha)
 
     def render(self, mapwindow, frame_no):
-        bgc = ( 0.0, 0.0, 0.0, 1 )
+        bgc = ( 0.1, 0.1, 0.1, 1 )
         t = pygame.time.get_ticks()
         self.timed_stuff()
         
         glClearColor(*bgc)
         glClear(GL_COLOR_BUFFER_BIT)
         
-        glUseProgram(self.shader) # is this rly needed?
-        
-        glUniform1i(self.uloc["frame_no"], frame_no)
-        
+        self.frame_no = frame_no
         self.update_vbos(mapwindow)
-        #self.grid_vbo.bind() # are these
-        #self.rebind_textures() # rly needed?
-        
-        glUseProgram(self.shader)
+        self.shader.update_state()
+
         glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
         pygame.display.flip()
         return  pygame.time.get_ticks() - t
@@ -892,8 +866,8 @@ class rednerer(object):
                                 y -= 1
                             elif vpy < -self.Pszy:
                                 y += 1
-                                vpy = self.Pszy + vpy 
-                            glUniform2i(self.uloc["shift"], vpx, vpy)
+                                vpy = self.Pszy + vpy
+                            self.shift = [ vpx, vpy ]
 
                 if next_render_time - pygame.time.get_ticks() < -50:
                     #print "drawing's too slow, {0:.2f} FPS vs {1:.2f} reqd".format(1000.0/render_time, GFPS)
@@ -909,7 +883,7 @@ class rednerer(object):
     def fini(self):
         self.grid_vbo = None
         self.screen_vbo = None
-        glDeleteProgram(self.shader)
+        self.shader.fini()
         glDeleteTextures((self.dispatch_txid, self.font_txid, self.blitcode_txid))
         pygame.quit()
 
