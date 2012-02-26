@@ -853,7 +853,7 @@ class rednerer:
                 frame_no += 1
                 if frame_no > self.cutoff_frame:
                     frame_no = 0
-            render_time = self.render((x, y, z, self.grid_w+2, self.grid_h+2), frame_no)
+            render_time = self.render((x-1, y-1, z, self.grid_w+2, self.grid_h+2), frame_no)
             
             #print "frame rendered in {0} msec".format(render_time)
             render_time += 1
