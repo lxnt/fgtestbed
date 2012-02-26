@@ -398,7 +398,7 @@ class fbo:
     def check(self, tgt = GL_FRAMEBUFFER):
         x = glCheckFramebufferStatus(tgt)
         if x != GL_FRAMEBUFFER_COMPLETE:
-            raise RuntimeError("boo! framebuffer's fucked up")
+            raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x))
         
     def init(self):
         self.map, self.hud = glGenFramebuffers(2)
@@ -438,24 +438,19 @@ class fbo:
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, self.map)
         
-        #glUniform2i(self.uloc['shift'], *self.rr.shift)
-        #glUniform2i(self.uloc['resolution'], self.rr.viewport_w, self.rr.viewport_h)
         x0 = self.rr.shift[0] + self.rr.Pszx
         y0 = self.rr.shift[1] + self.rr.Pszy
         x1 = self.rr.surface.get_width() + x0
         y1 = self.rr.surface.get_height() + y0
-        print x0,y0
+
         glBlitFramebuffer( 
             x0, y0, x1, y1,
             0, 0, self.rr.surface.get_width(), self.rr.surface.get_height(),
             GL_COLOR_BUFFER_BIT, GL_NEAREST)
         
-        " here bind self.hud as texture and crap it out on top of ze default buffer"
 
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0)
 
-        
-        
 class rednerer:
     def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
         self.vs, self.fs = vs, fs
