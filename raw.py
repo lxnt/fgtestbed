@@ -1,13 +1,18 @@
 #!/usr/bin/python
 
-import os, os.path, glob, sys, xml.parsers.expat, time, math, mmap
+import os, os.path, glob, sys, xml.parsers.expat, time, math, mmap, pprint
 import numpy as np
+import pygame.image
+
 NOMAT = 0xFFFFFFFF
 
-class enumparser(object):
+__all__ = [ 'enumparser', 'NOMAT', 'tilepage', 'matiles', 'graphraws', 'enumaps', 'TSCompiler' ]
+
+class Enumparser(object):
     def __init__(self, dfapipath):
         f = os.path.join(dfapipath, 'xml', 'df.tile-types.xml')
         self.enums = []
+        self.emap = {}
         self.gotit = False
         self.parse(f)
 
@@ -33,137 +38,39 @@ class enumparser(object):
         p.EndElementHandler = self.end_element
         p.CharacterDataHandler = self.char_data
         p.Parse(file(fle).read())
-        #print "max(tile_id) = {0}".format(len(self.enums))
-
-def scan_mats(path):
-    inorgs = []
-    plants = []
-    for f in glob.glob(os.path.join(path, '*.txt')):
-        for l in file(f):
-            if l[0] != '[':
-                continue
-            try:
-                tag, tail = l[1:].split(':', 1)
-            except ValueError:
-                continue
-            
-            if tag == 'INORGANIC':
-                inorgs.append(tail[:-2])
-            elif tag == 'PLANT':
-                plants.append(tail[:-2])
-    
-    
-    #print "{0} inorgs, {1} plants".format(len(inorgs), len(plants))
-    return (inorgs, plants) 
-
-
-
-"""
-class mapdump:
-    def __init__(self, matsfile, tilesfile):
-        self.plant_ids = {}
-        self.inorg_ids = {}
-        self.plant_names = {}
-        self.inorg_names = {}
-
-
-
-    def __str__(self):
-        rv = ""
-        z = 0
-        uni = np.unique(self._binary_form)
-
-        tab = {}
         i = 0
-        for u in uni:
-            tab[u] = "{:02x} ".format(i)
+        for e in self.enums:
+            if e is not None:
+                self.emap[e] = i
             i += 1
-        print i
-        for x in xrange(self._xdim):
-            for y in xrange(self._ydim):
-                rv += tab[self._binary_form[x,y,z]]
-            rv += "\n"
-        return rv
 
-    def stats(self, tile_names):
-        raise Broken
-        mathash = {}
-        grasshash = {}
-        matseen = {}
-        tileseen = {}
-        now_map = False
-        bofma = 0
-        ttboth = {}
-        totgra = 0
-        totina = 0
-        void = 0
-        stone = 0
-        nosto = 0 
-        parti = {}
-
-        for t in self._dumb_list:
-            tiletype, stone, inorg, grass, gramount = t
-
-            tt = tile_names[tiletype]
-            grass_mat, inorg_mat, stone_mat = (None, None, None)
-            if inorg != NOMAT:
-                totina += 1
-                inorg_mat = self.inorg_names[inorg]
-                try:
-                    matseen[inorg_mat] += 1
-                except KeyError:
-                    matseen[inorg_mat] = 1
-            if stone != NOMAT:
-                stone_mat = self.inorg_names[stone]
-                try:
-                    matseen[stone_mat] += 1
-                except KeyError:
-                    matseen[stone_mat] = 1
-            else:
-                nosto += 1
-            if grass != NOMAT and gramount > 0:
-                totgra += 1
-                grass_mat = self.plant_names[grass]
-                try:
-                    matseen[grass_mat] += 1
-                except KeyError:
-                    matseen[grass_mat] = 1
-            else:
-                grass = NOMAT
-            try:
-                tileseen[tt] += 1
-            except KeyError:
-                tileseen[tt] = 1
-            try:
-                parti[(tt, stone_mat, inorg_mat, grass_mat)] += 1
-            except KeyError:
-                parti[(tt, stone_mat, inorg_mat, grass_mat)] = 1
-                
-            
-        def print_totals(a_name, a_dict):
-            print a_name
-            a_idx = a_dict.keys()
-            a_idx.sort(cmp=lambda x,y: cmp(a_dict[x], a_dict[y]))
-            for k in a_idx:
-                print k, a_dict[k]
-        
-        print_totals("tiles", tileseen)
-        print_totals("inorgs/plants", matseen)
-        print_totals("inorgs+plants", ttboth)
-        print_totals("particulars", parti)
-        print void, stone, nosto, bofma, totgra, totina
-"""
+    def __getitem__(self, key):
+        if type(key) == int:
+            return self.enums[key]
+        else:
+            return self.emap[key]
     
-class tilepage:
+class Tilepage(object):
     def __init__(self, tpname):
         self.name = tpname
-        self.file = None
+        self.path = None
         self.tdim = None
         self.pdim = None
         self.defs = {}
+        self.surf = None
+        
+    def load(self):
+        if not self.surf:
+            self.surf = pygame.image.load(self.path)
+        w,h = self.surf.get_size()
+        if w != self.tdim[0]*self.pdim[0] or h != self.tdim[1]*self.pdim[1]:
+            raise ValueError("size mismatch on {}: dim={}x{} pdim={}x{} tdim={}x{}".format(
+                self.file, w, h, self.pdim[0], self.pdim[1], self.tdim[0], self.tdim[1]))
 
-class matiles:
-    def __init__(self, matname):
+
+class Mattiles(object):
+    def __init__(self, matname, maxframe=1):
+        assert matname is not None
         self.name = matname
         self.prelimo = []
         self.tiles = {}
@@ -172,16 +79,14 @@ class matiles:
         self._frame = 0
         self._tname = None
         self._keyframe_start = False
+        self._maxframe = maxframe
+        self._cut = False
         
     def xpand(self):
         frameseq = []
         white = (0xff, 0xff, 0xff, 0xff)
         for f in self.prelimo:
-            
             blit, blend, glow, amt = f
-            #print chr(blit[1] + blit[2]*16)
-            #print repr(blit)
-            
             if len(self.prelimo) > 1:
                 nextbli, nextglo= self.prelimo[1][1:3]
             else:
@@ -215,64 +120,510 @@ class matiles:
     def tile(self, tname):
         if self._tname is not None:
             self.fin()
+        assert tname is not None
         self._tname = tname
         
     def fin(self):
-        #print "fin(): {0} {1} {2} {3}".format(self.name, self._tname, len(self.prelimo), self._frame)
         if not self._keyframe_start:
-            self.prelimo.append((self._blit, self._blend, self._glow, 128 - self._frame))
-        #print repr(self.prelimo)
+            self.prelimo.append((self._blit, self._blend, self._glow, self._maxframe - self._frame))
         self.xpand()
-        #print repr(self.tiles[self._tname])
-        #raise SystemExit
         self._frame = 0
+        self._cut = False
         
-    def blit(self, tpage, s, t):
-        self._blit = (tpage, s, t)
+    def blit(self, t):
+        if self._cut: return
+        self._blit = t
         self._keyframe_start = False        
         
     def glow(self, rgba):
+        if self._cut: return
         self._blend = None
         self._glow = rgba
         self._keyframe_start = False
         
     def blend(self, rgba):
+        if self._cut: return
         self._blend = rgba
         self._glow = None
         self._keyframe_start = False
         
-    def key(self, frames):
+    def key(self, frame):
+        if self._cut: return
+        if frame > self._maxframe:
+            frame = self._maxframe
+            self._cut = True
         if not self._keyframe_start:
-            self.prelimo.append((self._blit, self._blend, self._glow, frames - self._frame))
+            self.prelimo.append((self._blit, self._blend, self._glow, frame - self._frame))
         self._keyframe_start = True
-        #print self._frame, frames
-        self._frame = frames
+        self._frame = frame
 
-class graphraws(object):
-    def __init__(self, path):
-        self.defs = {}
-        self.pages = {}
-        self.matiles = {}
-        fl = glob.glob(os.path.join(path, '*.txt'))
-        fl.sort()
-        for f in fl:
-            self._parseraw(file(f))
-            
-    def _tagparse(self, l):
-        l = l.strip()
-        if len(l) < 1 or l[0] != '[':
-            return None
-        l, unused = l[1:].split(']', 1)
 
-        return l.split(':')
+class Pageman(object):
+    """ requires pygame.image to function. 
+        just blits tiles in order of tilepage submission to album_w/max_tdim[0] columns """
+    def __init__(self, std_tileset, album_w = 2048, dump_fname = None):
+        self.mapping = {}
+        self.album = []
+        self.album_w = self.album_h = album_w
+        self.dump_fname = dump_fname
+        self.surf = pygame.Surface( ( album_w, album_w ), 0, 32)
+        self.current_i = self.current_j = 0
         
-    def _parseraw(self, flo):
-        def parse_rgba(f):
+        stdts = Tilepage('std')
+        stdts.pdim = (16, 16)
+        stdts.path = std_tileset
+        stdts.surf = pygame.image.load(std_tileset)
+        w,h = stdts.surf.get_size()
+        stdts.tdim = (w/16, h/16)
+        
+        self.max_tdim = stdts.tdim
+        
+        self.i_span = self.album_w / self.max_tdim[0]
+        
+        self.eatpage(stdts)
+
+    def eatpage(self, page):
+        if page.tdim[0] != self.max_tdim[0] or page.tdim[1] != self.max_tdim[1]:
+            raise ValueError("tilepage {} has tiles of other than std_tdim size({}x{} vs {}x{})".format(
+                page.name, page.tdim[0], page.tdim[1], self.max_tdim[0], self.max_tdim[1]))
+        page.load()
+        for j in xrange(page.pdim[1]):
+            for i in xrange(page.pdim[0]):
+                self.mapping[(page.name, i, j)] = (self.current_i, self.current_j)
+                dx, dy = self.current_i*self.max_tdim[0], self.current_j*self.max_tdim[1]
+                sx, sy = i*page.tdim[0], j*page.tdim[1]
+                cell = pygame.Rect(sx, sy, page.tdim[0], page.tdim[1])
+                self.surf.blit(page.surf, (dx, dy), cell)
+                self.current_i += 1
+                if self.current_i == self.i_span:
+                    self.current_i = 0
+                    self.current_j += 1
+                    if self.current_j * self.max_tdim[1] > self.album_h:
+                        self.reallocate(1024)
+        if self.dump_fname:
+            f.close()
+    def dump(self, fname):
+        sk = self.mapping.keys()
+        sk.sort()
+        with file(fname + '.mapping', 'w') as f:
+            for k in sk:
+                f.write("{}:{}:{} -> {}:{} {}x{}->{}x{}\n".format(
+                        sk[0], sk[1], sk[2], self.mapping[sk][0], self.mapping[sk][1]))
+        pygame.image.save(self.surf, fname + '.png')
+        
+    def reallocate(self, plus_h):
+        self.album_h  += plus_h
+        surf = pygame.Surface( ( self.album_w, self.album_h  ), 0, 32)
+        surf.blit(self.surf, (0, 0))
+        self.surf = surf
+
+    def maptile(self, page, s, t):
+        return self.mapping[(page, s, t)]
+
+    def get_album(self):
+        "returns txsz tuple and bytes for the resulting texture album"
+        min_h = self.max_tdim[1]*(self.current_j + 1)
+        if min_h < self.album_h:
+            print "min_h {} self.album_h {} surf.h {}".format(min_h, self.album_h, self.surf.get_height())
+            self.reallocate(min_h - self.album_h)
+        tw, th = self.max_tdim
+        wt, ht = self.album_w/tw, min_h/th
+        return (wt, ht, tw, th), pygame.image.tostring(self.surf, 'RGBA')
+
+"""
+raws fmt:
+[OBJECT:objtag] defines what tag defines an 'object'
+[objtag:objname] starts an object
+rest of tags belong to that object.
+
+assumes []: are never used in literals.
+don't see any examples to the contrary in 34. 2 raws
+
+[GRASS_TILES:'.':',':'`':''']
+[GRASS_COLORS:2:0:1:2:0:0:6:0:1:6:0:0]    
+[TREE_TILE:23][DEAD_TREE_TILE:255]
+[TREE_COLOR:2:0:1][DEAD_TREE_COLOR:6:0:0]
+[SAPLING_COLOR:2:0:1][DEAD_SAPLING_COLOR:6:0:0]
+[PICKED_TILE:3][DEAD_PICKED_TILE:182]
+[SHRUB_TILE:28][DEAD_SHRUB_TILE:28]
+[PICKED_COLOR:5:0:0]
+[SHRUB_COLOR:5:0:0][DEAD_SHRUB_COLOR:6:0:0]
+"""
+
+class TSCompiler(object):
+    """ compiles parsed standard tilesets """
+    def __init__(self, pageman):
+        self.matiles = {}
+        self.pageman = pageman
+        self.plant_tile_types = { # and default tile - set to '?' for the time being
+            'PICKED':        ( 'Shrub',      15, 03 ), # tile type guessed
+            'DEAD_PICKED':   ( 'ShrubDead',  15, 03 ), # tile type guessed
+            'SHRUB':         ( 'Shrub',      15, 03 ), 
+            'TREE':          ( 'Tree',       15, 03 ), 
+            'SAPLING':       ( 'Sapling',    15, 03 ), 
+            'DEAD_SHRUB':    ( 'ShrubDead',  15, 03 ),
+            'DEAD_TREE':     ( 'TreeDead',   15, 03 ),
+            'DEAD_SAPLING':  ( 'SaplingDead',15, 03 ), 
+        }
+        # formats:
+        # 1. (x,y) - reference to 16x16 tilepage
+        # 2. (x,y,e) - same, but apply effect 'e'
+        # 3. (None, i, e) - use tiledef variant i, apply effect 'e'
+        #
+        # effects are most likely something like lightening/darkening the color.
+        #
+        self.grass_tiles = {
+            'Grass1StairUD':        ( 8,  5),
+            'Grass1StairD':         (14,  3),
+            'Grass1StairU':         (12,  3),
+            'Grass2StairUD':        ( 8,  5),
+            'Grass2StairD':         (14,  3),
+            'Grass2StairU':         (12,  3),
+            'GrassDryRamp':         ( 0,  0, 'dry'),
+            'GrassDeadRamp':        (14,  1, 'dead'),
+            'GrassLightRamp':       (14,  1, 'light'),
+            'GrassDarkRamp':        (14,  1, 'dark'),
+            'GrassDarkFloor1':      (None,  0, 'dark'), # None,0 means replace with tile variant 0
+            'GrassDarkFloor2':      (None,  1, 'dark'),
+            'GrassDarkFloor3':      (None,  2, 'dark'),
+            'GrassDarkFloor4':      (None,  3, 'dark'),
+            'GrassDryFloor1':       (None,  0, 'dry'),
+            'GrassDryFloor2':       (None,  1, 'dry'),
+            'GrassDryFloor3':       (None,  2, 'dry'),
+            'GrassDryFloor4':       (None,  3, 'dry'),
+            'GrassDeadFloor1':      (None,  0, 'dead'),
+            'GrassDeadFloor2':      (None,  1, 'dead'),
+            'GrassDeadFloor3':      (None,  2, 'dead'),
+            'GrassDeadFloor4':      (None,  3, 'dead'),
+            'GrassLightFloor1':     (None,  0, 'light'),
+            'GrassLightFloor2':     (None,  1, 'light'),
+            'GrassLightFloor3':     (None,  2, 'light'),
+            'GrassLightFloor4':     (None,  3, 'light'), }
+        
+        self.soil_tiles = {
+            'SoilWall':              None, # must be defined in raws.
+            'SoilStairUD':          ( 8,  5),
+            'SoilStairD':           (14,  3),
+            'SoilStairU':           (12,  3),
+            'SoilRamp':             (14,  1),
+            'SoilFloor1':           ( 7,  2),
+            'SoilFloor2':           (12,  2),
+            'SoilFloor3':           (14,  2),
+            'SoilFloor4':           ( 0,  6),
+            'SoilWetFloor1':        ( 7,  2, 'wet'),
+            'SoilWetFloor2':        (12,  2, 'wet'),
+            'SoilWetFloor3':        (14,  2, 'wet'),
+            'SoilWetFloor4':        ( 0,  6, 'wet'), }
+        self.stone_tiles = {
+            'StoneWall':             None,  # must defined in raws.
+            # following just inherit DISPLAY_COLOR from raws
+            # 'None' ones are replaced with question mark. (15,  3)
+            'StoneStairUD':        ( 8,  5),
+            'StoneStairD':         (14,  3),
+            'StoneStairU':         (12,  3),
+            'StoneWallSmoothRD2':  ( 5, 13), # sse
+            'StoneWallSmoothR2D':  ( 6, 13), # see
+            'StoneWallSmoothR2U':  (04, 13), # nee
+            'StoneWallSmoothRU2':  ( 3, 13), # nne 
+            'StoneWallSmoothL2U':  (14, 11), # nww
+            'StoneWallSmoothLU2':  (13, 11), # nnw
+            'StoneWallSmoothL2D':  ( 8, 11), # sww
+            'StoneWallSmoothLD2':  ( 7, 11), # ssw
+            'StoneWallSmoothLRUD': (13, 12), # nsew
+            'StoneWallSmoothRUD':  (12, 12), # nse
+            'StoneWallSmoothLRD':  (11, 12), # sew
+            'StoneWallSmoothLRU':  (10, 12), # new
+            'StoneWallSmoothLUD':  ( 9, 11), # nsw
+            'StoneWallSmoothRD':   ( 9, 12), # se
+            'StoneWallSmoothRU':   ( 8, 12), # ne
+            'StoneWallSmoothLU':   (12, 11), # nw
+            'StoneWallSmoothLD':   (11, 11), # sw
+            'StoneWallSmoothUD':   (10, 11), # ns
+            'StoneWallSmoothLR':   (13, 12), # ew
+            'StoneFloor1':         ( 7,  2), 
+            'StoneFloor2':         (12,  2),
+            'StoneFloor3':         (14,  2),
+            'StoneFloor4':         ( 0,  6),
+            'StoneFloorSmooth':    (11,  2),
+            'StoneBoulder':        (12, 14),
+            'StonePebbles1':       (15, 03), # tile unknown: set to ?
+            'StonePebbles2':       (15, 03), # tile unknown: set to ?
+            'StonePebbles3':       (15, 03), # tile unknown: set to ?
+            'StonePebbles4':       (15, 03), # tile unknown: set to ?
+            'StoneWallWorn1':      ( 0, 11),
+            'StoneWallWorn2':      ( 0, 12),
+            'StoneWallWorn3':      ( 0, 13),
+            'StonePillar':         ( 9,  4),
+            'StoneFortification':  (14, 12),
+            'StoneRamp':           (14,  1), }
+        
+        self.mineral_tiles = {}
+        for n,t in self.stone_tiles.items():
+            self.mineral_tiles['Mineral' + n[5:]] = t
+            
+        self.constr_tiles = {}
+        for n,t in self.stone_tiles.items():
+            if n[5:] in ( 'Floor', 'Fortification','Ramp', 'Pillar'):
+                self.constr_tiles['Constructed' + n[5:]] = t
+            elif n.startswith('StoneWallSmooth'):
+                self.constr_tiles['ConstructedWall' + n[len('StoneWallSmooth'):]] = t
+
+    def compile(self, pages, mats):
+        for page in pages:
+            self.pageman.eatpage(page)
+    
+        for mat in mats:
+            if mat is None:
+                continue
+            elif mat.type == 'stone':
+                self._emit(self.stone_tiles, mat)
+                self._emit(self.constr_tiles, mat)
+            elif mat.type == 'soil':
+                self._emit(self.soil_tiles, mat)
+            elif mat.type == 'mineral':
+                self._emit(self.mineral_tiles, mat)
+                self._emit(self.constr_tiles, mat)
+            elif mat.type == 'gem':
+                self._emit(self.mineral_tiles, mat)
+            elif mat.type == 'grass':
+                self._emit(self.grass_tiles, mat)
+            elif mat.type == 'plant':
+                self._emit_plant(mat)
+            elif mat.type == 'tree':
+                self._emit_plant(mat) # fixes up color, must be first
+                self._emit(self.constr_tiles, mat)
+            elif mat.type == 'constr':
+                self._emit(self.constr_tiles, mat)
+        return self.matiles
+    
+    def dump(self, fname):
+        with file(fname, "w") as f:
+            f.write(pprint.pformat(self.stone_tiles))
+            f.write(pprint.pformat(self.soil_tiles))
+            f.write(pprint.pformat(self.mineral_tiles))
+            f.write(pprint.pformat(self.grass_tiles))
+            f.write(pprint.pformat(self.constr_tiles))
+            f.write("\n\n")
+        
+            for mat, mati in self.matiles.items():
+                for tn, fs in mati.tiles.items():
+                    f.write("{} {} {} {}\n".format(mat, tn, fs[0][0], fs[0][1]))
+
+    def _apply_effect(self, effect, color):
+        effects = {
+            'dry':      1.50,
+            'wet':      0.80,
+            'light':    1.25,
+            'dark':     0.75,
+            'dead':     0.50
+        }
+        e = effects[effect]
+        r,g,b,a = color>>24, (color>>16) & 0xff, (color>>8) & 0xff, color & 0xff
+        r,g,b,a = int(r*e) & 0xff, int(g*e) & 0xff, int(g*e) & 0xff, a
+        
+        return (r<<24)|(g<<16)|(b<<8)|a
+    
+    def _emit(self, what, mat):
+        try:
+            mt = self.matiles[mat.name]
+        except KeyError:
+            mt = Mattiles(mat.name)
+            self.matiles[mat.name] = mt
+    
+        for name, tdef in what.items():
+            mt.tile(name)
+            
+            if tdef is not None:
+                if tdef[0] is None:
+                    tdtile = mat.tiles[tdef[1]].tile
+                    s, t = tdtile % 16, tdtile/16
+                    color = mat.tiles[tdef[1]].color
+                else:
+                    s, t = tdef[0:2]
+                    color = mat.color
+                    
+                if len(tdef) == 3:
+                    self._apply_effect(tdef[2], color)
+            else:
+                s, t = mat.tile % 16, mat.tile/16
+                color = mat.color
+            mt.blit(self.pageman.maptile(mat.page, s, t))
+            mt.blend(color)
+        mt.fin()
+    
+    def _emit_plant(self, mat):
+        assert mat.name is not None            
+        try:
+            mt = self.matiles[mat.name]
+        except KeyError:
+            mt = Mattiles(mat.name)
+            self.matiles[mat.name] = mt
+
+        for t, tdef in mat.tiles.items():
+            mt.tile(self.plant_tile_types[t][0])
+            if tdef.tile is None:
+                if tdef.page != 'std':
+                    raise ValueError('default tiles work only in standard tileset')
+                s, t = self.plant_tile_types[t][1], self.plant_tile_types[t][2]
+            else:
+                s, t = tdef.tile%16, tdef.tile/16
+    
+            mt.blit(self.pageman.maptile(mat.page, s, t))
+            mt.blend(tdef.color)
+        mt.fin()
+
+class mat_stub(object):
+    def __init__(self, page, **kwargs):
+        self.type = None
+        if page is None:
+            page = 'std'
+        self.page = page
+        for k,v in kwargs.items():
+            setattr(self,k,v)
+
+
+class Rawsparser0(object):
+    def parse_file(self, fna, handler):
+        lnum = 0
+        for l in file(fna):
+            lnum += 1
+            l = l.strip()
+            if len(l) == 0 or l[0] != '[':
+                continue
+            tags = l.split(']')[:-1]
+            for tag in tags:
+                try:
+                    name, tail = tag.split(':', 1)
+                    name = name[1:]
+                    tail = tail.split(':')
+                except ValueError:
+                    name = tag[1:]
+                    tail = []
+                try:
+                    handler(name, tail)
+                except StopIteration:
+                    return
+                except :
+                    print fna, lnum
+                    print l
+                    raise
+
+    def tileparse(self, t):
+        try:
+            return int(t)
+        except ValueError:
+            pass
+        if  (len(t) != 3 and 
+              (t[0] != "'" or t[2] != "'")):
+            raise ValueError("invalid literal for tile: \"{}\"".format(t))
+        return ord(t[1])
+
+class Initparser(Rawsparser0):
+    def __init__(self, dfprefix):
+        init = os.path.join(dfprefix, 'data', 'init', 'init.txt')
+        colors = os.path.join(dfprefix, 'data', 'init', 'colors.txt')
+        self.dfprefix = dfprefix
+        self.colortab = [0xff]*16
+        self.fontpath = None
+        self.parse_file(init, self.init_handler)
+        self.parse_file(colors, self.colors_handler)
+    
+    def colors_handler(self, name, tail):
+        colorseq = "BLACK BLUE GREEN CYAN RED MAGENTA BROWN LGRAY DGRAY LBLUE LGREEN LCYAN LRED LMAGENTA YELLOW WHITE".split()
+        cshift = { 'R': 24, 'G': 16, 'B': 8, 'A': 0 }
+        color, channel = name.split('_')
+        self.colortab[colorseq.index(color)] |= int(tail[0])<< cshift[channel]
+        
+    def init_handler(self, name, tail):
+        if name == 'FONT':
+            self.fontpath = os.path.join(self.dfprefix, 'data', 'art', tail[0])
+            raise StopIteration
+
+
+class TSParser(Rawsparser0):
+    """ parses standard game raws 
+        outputs whatever fgtestbed::mapobject expects,
+        which is an object with the following attributes:
+            self.pages = {}
+            self.matiles = {}
+        pages map pagenames to:
+                class tilepage:
+                    def __init__(self, tpname):
+                        self.name = tpname
+                        self.file = None
+                        self.tdim = None
+                        self.pdim = None
+                        self.defs = {}
+
+        matiles map material names to matiles objects,
+            which have:
+                self.tiles = {}
+            which maps tilenames to """
+            
+    
+    
+    def __init__(self, colortab):
+        self.mats = []
+        self.colortab = colortab
+        self.otype = None
+        self.mat = None
+        self.default_grass_color = 0x00d000ff
+        self.default_tree_color = 0x00d000ff
+        self.default_wood_color = 0x964B00ff
+        self.plant_tile_types = (
+            'PICKED',
+            'DEAD_PICKED',
+            'SHRUB',
+            'TREE',
+            'SAPLING',
+            'DEAD_SHRUB',
+            'DEAD_TREE',
+            'DEAD_SAPLING' )
+                
+        self.soil_tags = ( 'SOIL', 'SOIL_OCEAN') # inorganics with these tags are marked as soil
+        self.layer_tags = ( # inorganics with these tags are marked as (layer) stone
+            'SEDIMENTARY',
+            'SEDIMENTARY_OCEAN_SHALLOW',
+            'SEDIMENTARY_OCEAN_DEEP',
+            'IGNEOUS_EXTRUSIVE',
+            'IGNEOUS_INTRUSIVE',
+            'METAMORPHIC' )
+        self.stone_tag = 'IS_STONE' # inorganics not matching above but with this tag are markes as minerals
+        """ for the rest of inorganics only Constructed* tiles are defined.
+            plants having [TREE:] tag also get Constructed* tiles defined for them
+            this all is controlled by setting the .type attr to one of:
+                'soil' : soil. generate only soil tiles
+                'stone' : layer stone, generate stone and construction tiles
+                'mineral' : vein stone, generate mineral and construction tiles
+                'grass' : generate grass tiles
+                'plant' : generate plant tiles 
+                'tree'  : generate plant and construction tiles
+                'constr' : generate construction tiles only.
+                
+            The compiler then emits corresponing tile definitions. 
+            
+            For tileset extensions the following overrides are possible:
+            [OBJECT:FULL_GRAPHICS]
+            [MAT:<matname>]
+                [TILE:<tilename>]
+                    ... various FG crap
+            """
+        
+
+    def color_lookup(self, fg, bg, br):
+        return self.colortab[fg + 8*br]
+
+    def parse_rgba(self, f):
             if len(f) == 3:
                 r = int(f[0],16) << 4
                 g = int(f[1],16) << 4
                 b = int(f[2],16) << 4
-                a = 0xff
+                a = 0xff            
+            if len(f) == 4:
+                r = int(f[0],16) << 4
+                g = int(f[1],16) << 4
+                b = int(f[2],16) << 4
+                a = int(f[3],16) << 4
             elif len(f) == 6:
                 r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), 0xff
                 a = 0xff
@@ -280,99 +631,200 @@ class graphraws(object):
                 r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), int(f[6:8], 16)
             else:
                 raise ValueError(f)
-            return (r,g,b,a)
-        defs = self.defs
-        mats = self.matiles
-        pagename = None
-        tiledim = None
-        pagedim = None
-        matname = None
-        in_tilepage = False
-        in_material = False
-        tilename = None
-        tilecode = []
-        skip_all = True
-        for l in flo:
-            f = self._tagparse(l)
-            if f is None: 
-                continue
-            tag = f[0].upper()
-            if tag == 'OBJECT':
-                skip_all = f[1].upper() != 'FULL_GRAPHICS'
+            return (r<<24)|(g<<16)|(b<<8)|a
+
+    def eat(self, *dirs):
+        for path in dirs:
+            for f in glob.glob(os.path.join(path, '*.txt')):
+                self.parse_file(f, self.parse_tag)
+
+    def parse_tag(self, name, tail):
+        if name == 'OBJECT':
+            if tail[0] not in ['INORGANIC', 'PLANT', 'FULL_GRAPHICS']:
+                raise StopIteration
+            self.otype = tail[0]
+            return
+
+        if self.otype == 'INORGANIC':
+            if name == 'INORGANIC':
+                self.mats.append(self.mat)
+                self.mat = mat_stub('std', name = tail[0])
+            elif name == 'TILE':
+                self.mat.tile = self.tileparse(tail[0])
+            elif name == 'DISPLAY_COLOR':
+                self.mat.color = self.color_lookup(*map(int, tail))
+            elif name in self.soil_tags:
+                self.mat.type  = 'soil'
+            elif name in self.layer_tags:
+                self.mat.type = 'stone'
+            elif name in 'IS_STONE' and self.mat.type != 'stone':
+                self.mat.type = 'mineral'
+            elif name in 'IS_GEM':
+                self.mat.type = 'gem'
+            elif name == 'ITEMS_METAL': # bad substitute for IS_METAL, but I don't want to
+                self.mat.type = 'constr' # implement USE_MATERIAL_TEMPLATE just yet
                 
-            if skip_all:
-                matname = None
-                continue
+        elif self.otype == 'PLANT':
+            if name == 'PLANT':
+                self.mats.append(self.mat)
+                self.mat = mat_stub('std', name = tail[0], type = "plant", 
+                                    tiles={}, colors={}, color = self.default_wood_color)
+            elif name == 'GRASS_TILES':
+                i = 0
+                tiles = map(self.tileparse, tail)
+                for tile in tiles:
+                    try:
+                        self.mat.tiles[i].tile = tile
+                    except KeyError:
+                        self.mat.tiles[i] = mat_stub('std', tile = tile)
+                    i += 1
+            elif name == 'GRASS_COLORS':
+                i = 0
+                colors = map(int, tail)
+                fgs = colors[0::3]
+                bgs = colors[1::3]
+                brs = colors[2::3]
+                for fg in fgs:
+                    color = self.color_lookup(fg,bgs.pop(0),brs.pop(0))
+                    try:
+                        self.mat.tiles[i].color = color
+                    except KeyError:
+                        self.mat.tiles[i] = mat_stub('std', color = color)
+                    i += 1
+            elif name == 'GRASS':
+                self.mat.type = 'grass'
+                self.mat.color = self.default_grass_color
+            elif name == 'TREE':
+                self.mat.type = 'tree'
+            elif name == 'DISPLAY_COLOR':
+                self.mat.color = self.color_lookup(*map(int, tail))                
+            elif name.endswith('_TILE'):
+                ttype = name[:-5]
+                tile = self.tileparse(tail[0])
+                if ttype not in self.plant_tile_types:
+                    return
+                try:
+                    self.mat.tiles[ttype].tile = tile
+                except KeyError:
+                    self.mat.tiles[ttype] = mat_stub('std', tile = tile, color = self.default_tree_color) # set default color
+            elif name.endswith('_COLOR'):
+                ttype = name[:-6]
+                if ttype not in self.plant_tile_types:
+                    return
+                color = self.color_lookup(*map(int, tail))
+                try:
+                    self.mat.tiles[ttype].color = color
+                except KeyError:
+                    self.mat.tiles[ttype] = mat_stub('std', color = color, tile = None)
             
-            if tag== 'TILE_PAGE':
-                if matname is not None:
-                    mats[matname].fin()
-                    matname = None
-                    mat = None
-                in_tilepage = True
-                pagename = f[1]
-                self.pages[pagename] = tilepage(pagename)
-                continue
-            elif tag == 'MAT':
-                in_material = True
-                in_tilepage = False
-                if matname is not None:
-                    mats[matname].fin()
-                matname = f[1].upper()
-                mat = mats[matname] = matiles(matname)
-                continue
-            if in_tilepage:
-                if tag == 'FILE':
-                    self.pages[pagename].file = f[1]
-                elif tag == 'TILE_DIM':
-                    self.pages[pagename].tdim = (int(f[1]), int(f[2]))
-                elif tag == 'PAGE_DIM':
-                    self.pages[pagename].pdim = (int(f[1]), int(f[2]))
-                elif tag == 'DEF':
-                    if f[3] == '':
-                        continue
-                    elif len(f) == 4:
-                        self.pages[pagename].defs[f[3]] = (int(f[1]), int(f[2]))
-                    elif len(f) == 3:
-                        idx = int(f[1])
-                        s = idx % self.pages[pagename].pdim[1]
-                        t = idx / self.pages[pagename].pdim[0]
-                        self.pages[pagename].defs[f[2]] = ( s, t )
-                    else:
-                        raise ParseError
-            elif in_material:
-                if tag == 'TILE':
-                    mat.tile(f[1])
-                elif tag == 'BLIT':
-                    if len(f) == 4:
-                        pagename, s, t = f[1:]
-                        s = int(s) ; t = int(t)
-                    elif len(f) == 3:
-                        pagename, defname = f[1:]
-                        s, t = self.pages[pagename].defs[defname]
-                    mat.blit(pagename, s, t)
-                elif tag == 'BLEND':
-                    mat.blend(parse_rgba(f[1]))
-                elif tag == 'GLOW':
-                    mat.glow(parse_rgba(f[1]))
-                elif tag == 'KEY':
-                    mat.key(int(f[1]))
-        if matname is not None:
-            mats[matname].fin()
-        #print mats.keys()
-        #for p in self.pages:
-        #    print "{0}: {1:d} keys".format (p, len(self.pages[p].defs.keys()))
 
     def get(self):
-        return self.pages, self.matiles
+        self.mats.append(self.mat)
+        return self.mats
 
-def enumaps(apidir):
-    enums = enumparser(apidir).enums
-    i = 0
-    emap = {}
-    for e in enums:
-        if e is not None:
-            emap[e] = i
-        i += 1
-    return enums, emap
+def FGParser(Rawsparser0):
+    """ not functional yet """
+    def __init__(self):
+        self.fgmat = None
+        self.fgmats = []
+        self.fgtile = None
+
+    def parse_tag(self, name, tail):
+        if name == 'OBJECT':
+            if tail[0] not in ['FULL_GRAPHICS']:
+                raise StopIteration
+            self.otype = tail[0]
+            return
+
+        if self.otype == 'FULL_GRAPHICS':
+            if name == 'TILEPAGE':
+                if self.page is not None:
+                    self.pages[self.page.name] = self.page
+                self.page = Tilepage(tail[0])
+                self.fg_state = 'tilepage'
+                return
+            elif name == 'MAT':
+                self.fg_state = 'material'
+                self.fgmats.append(self.fgmat)
+                self.fgmat = mat_stub(self.page_name, name = tail[0], tiles = [])
+                return
+            elif name == 'TILE':
+                self.fg_state = 'tiledef'
+                self.fgmat.tiles.append(self.tile)
+                self.tile = mat_stub(self.page_name, name = tail[0], frames = [])
+                return
+            if self.fg_state == 'tilepage':
+                if tag == 'FILE':
+                    self.page.file = tail[1]
+                elif tag == 'TILE_DIM':
+                    self.page.tdim = (int(tail[1]), int(tail[2]))
+                elif tag == 'PAGE_DIM':
+                    self.page.pdim = (int(tail[1]), int(tail[2]))
+                elif tag == 'DEF':
+                    if f[3] == '':
+                        return
+                    elif len(tail) == 4:
+                        self.page.defs[tail[3]] = (int(tail[1]), int(tail[2]))
+                    elif len(tail) == 3:
+                        idx = int(f[1])
+                        s = idx % self.page.pdim[1]
+                        t = idx / self.page.pdim[0]
+                        self.page.defs[tail[2]] = ( s, t )
+                    else:
+                        raise ValueError("Incomprehensible DEF")
+            elif self.fg_state == 'material':
+                pass
+            elif self.fg_state == 'tiledef':
+                if name == 'BLIT':
+                    """ revised blitdef: 
+                      [BLIT:args]
+                      args: 
+                        one of:
+                          defname
+                          cel_index
+                          cel_s:cel_t
+                      pagenames are implicit for now.
+                    """
+                    
+                    try:
+                        tmp = int(tail[0])
+                    except ValueError:
+                        s, t = self.page.defs[tail[0]]
+                    else:
+                        if len(tail) == 1:
+                            s = tmp % self.page.pdim[0]
+                            t = tmp / self.page.pdim[1]
+                        else:
+                            s = tmp
+                            t = int(tail[1])
+                    self.tile.frames.append(('blit', self.page.name, s, t))
+                elif tag == 'BLEND':
+                    self.tile.frames.append(('blend', self.parse_rgba(tail[1])))
+                elif tag == 'GLOW':
+                    self.tile.frames.append(('glow', self.parse_rgba(tail[1])))
+                elif tag == 'KEY':
+                    frameno = int(tail[1])
+                    self.tile.frames.append(('key', frameno))
+                    if self.maxframeno < frameno:
+                        self.maxframeno = frameno
+
+
+def work(dfprefix, moar_raws = []):
+    init = Initparser(dfprefix)
+    rawsdirs = [ os.path.join(dfprefix, 'raw', 'objects') ] + moar_raws
+    pageman = Pageman(init.fontpath)
+    parser = TSParser(init.colortab)
+    map(parser.eat, rawsdirs)
+    mats = parser.get()
+    compiler = TSCompiler(pageman)
+    matiles = compiler.compile([], mats)
+    maxframe = 0
+    return pageman, matiles, maxframe
+
+
+def main():
+    work(sys.argv[1], sys.argv[2:]) 
+
+if __name__ == '__main__':
+    main()
 

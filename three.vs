@@ -40,6 +40,7 @@ void main() {
 
     blit.zw = 1.0 / vec2(txsz.xy) ; // for as long as we don't support tiles-smaller-than-txsz.zw
     
-    blend = vec4(insn.z >> 8u, insn.z & 0xffu, insn.w >> 8u, insn.w & 0xffu) / 256.0;
+    /* insn halfbytes are swapped due two last insn components submitted as one uint32 */
+    blend = vec4(insn.w >> 8u, insn.w & 0xffu, insn.z >> 8u, insn.z & 0xffu) / 256.0;
    
 }

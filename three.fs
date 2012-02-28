@@ -18,11 +18,10 @@ void main() {
     if ((pc.x > 1.0) || (pc.y > 1.0) || (blit.z == 0)) {
         discard;
     }
-    
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
     vec4 tile_color = texture2D(font, texcoords);
     
-    //color = mix(tile_color, blend, 1.0 - tile_color.a);
-    color = 0.5*tile_color + 0.5*blend;
+    //color = mix(tile_color * blend, vec4(0.5, 0.5, 0.5, 1.0), 1.0 - tile_color.a);
+    color = blend * tile_color;
     color.a = final_alpha;    
 }

@@ -30,14 +30,11 @@ from glname import glname as glname
 import raw
 
 class mapobject(object):
-    def __init__(self, fgrawdir, matsfile, tilesfile, pngdir='png', apidir=''):
-        self.gr = raw.graphraws(fgrawdir)
-        self.tile_names, self.tile_ids = raw.enumaps(apidir)
+    def __init__(self, font, matiles, matsfile, tilesfile, apidir='', cutoff=127):
+        self.tileresolve = raw.Enumparser(apidir)
         self.parse_matsfile(matsfile)
-        self.assemble_blitcode()
-        
-        self.tp = self.gr.pages[self.gr.pages.keys()[0]]
-        self.txco = self.tp.pdim + self.tp.tdim
+        self.assemble_blitcode(matiles, cutoff)
+        self.txsz, self.fontdata = font
 
         if os.name == 'nt':
             self._map_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
@@ -45,13 +42,6 @@ class mapobject(object):
             self._map_fd = os.open(tilesfile, os.O_RDONLY)
 
         self._map_mmap = mmap.mmap(self._map_fd, 0, access = mmap.ACCESS_READ)
-
-
-    def eatpage(self, page):
-        pass
-    
-    def maptile(self, blit):
-        return 1, blit[1], blit[2], 0
 
     def parse_matsfile(self, matsfile):
         self.inorg_names = {}
@@ -76,7 +66,7 @@ class mapobject(object):
                 self.plant_names[int(f[0])] = ' '.join(f[2:])
                 self.plant_ids[' '.join(f[2:])] = int(f[0])
 
-    def assemble_blitcode(self):
+    def assemble_blitcode(self, mats, cutoff_frame = 127):
         # all used data is available before first map frame is to be
         # rendered in game.
         # eatpage receives individual tile pages and puts them into one big one
@@ -91,22 +81,21 @@ class mapobject(object):
             'offsets': [ 0, 2 ],
             'titles': ['blitcode s-coord', 'blitcode t-coord'] })
             
+        """self.blitcode_dt = np.dtype({  # GL_RGBA16UI - 64 bits. 8 bytes
+            'names': 's t blend r g b a'.split(),
+            'formats': ['u2', 'u2', 'u4', 'u1', 'u1', 'u1', 'u1'],
+            'offsets': [ 0, 2, 4, 4, 5, 6, 7 ],
+            'titles': ['s-coord in tiles', 't-coord in tiles', 'blend-rgba', 'br', 'bg', 'bb', 'ba' ] })"""
         self.blitcode_dt = np.dtype({  # GL_RGBA16UI - 64 bits. 8 bytes
-            'names': 's t r g b a'.split(),
-            'formats': ['u2', 'u2', 'u1', 'u1', 'u1', 'u1' ],
-            'offsets': [ 0, 2, 4, 5, 6, 7 ],
-            'titles': ['s-coord in tiles', 't-coord in tiles',
-                       'blend-red', 'blend-blue', 'blend-green', 'blend-alpha'] })
-
-        pages, mats = self.gr.get()
-        
-        for page in pages:
-            self.eatpage(page)
+            'names': 's t blend'.split(),
+            'formats': ['u2', 'u2', 'u4'],
+            'offsets': [ 0, 2, 4 ],
+            'titles': ['s-coord in tiles', 't-coord in tiles', 'blend-rgba'] })
         
         tcount = 0
-        for mat in mats:
-            tcount += len(mats[mat].tiles.keys())
-        print "{1} mats  {0} defined tiles".format(tcount, len(mats.keys()))
+        for mat in mats.values():
+            tcount += len(mat.tiles)
+        print "{1} mats  {0} defined tiles\nAssembling...".format(tcount, len(mats.keys()))
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
         
@@ -133,9 +122,7 @@ class mapobject(object):
 
             return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
         
-        tc = 1 # 0 === undefined.
-        #fd = file("dispatch.text","w")
-        #fb = file("blitcode.text","w")
+        tc = 1
         for name, mat in mats.items():
             if name in self.inorg_ids:
                 mat_id = self.inorg_ids[name]
@@ -148,45 +135,38 @@ class mapobject(object):
                 x = int (tc % self.codew)
                 y = int (tc / self.codew)
                 
-                tile_id = self.tile_ids[tname]
+                try:
+                    tile_id = self.tileresolve[tname]
+                except KeyError:
+                    print "unk tname {} in mat {}".format(tname, mat.name)
+                    raise
                 hashed  = hashit(tile_id, mat_id)
                 hx = hashed % self.hashw 
                 hy = hashed / self.hashw 
                 blithash[hy, hx]['s'] = x
-                blithash[hy, hx]['t'] = y
-                #fd.write("{:03x} {:03x} {:06x} : {:02x} {:02x} {}\n".format(hx,hy,hashed, x, y, name))
-                
+                blithash[hy, hx]['t'] = y               
                 frame_no = 0
                 for insn in frameseq:
                     blit, blend = insn
-                    un, s, t, un = self.maptile(blit)
-                    r,g,b,a = blend
-                    blitcode[frame_no, y, x]['s'] = s # fortran, motherfucker. do you speak it?
+                    s, t  = blit
+                    blitcode[frame_no, y, x]['s'] = s
                     blitcode[frame_no, y, x]['t'] = t
-                    blitcode[frame_no, y, x]['r'] = r
-                    blitcode[frame_no, y, x]['g'] = g
-                    blitcode[frame_no, y, x]['b'] = b
-                    blitcode[frame_no, y, x]['a'] = a
-                    #fb.write("{},{}: {} {} '{}' {} {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a, name))
-                    #break
-                    #if frame_no != -1:
-                    #    fb.write("{},{}: {} {} '{}' {} {} {} {}\n".format( x, y, s, t, chr(s+t*16), r, g, b, a))
+                    blitcode[frame_no, y, x]['blend'] = blend
                     frame_no += 1
+                    if frame_no > cutoff_frame:
+                        break
                 tc += 1
-
         self.blithash, self.blitcode = blithash, blitcode
 
     def upload_font(self, txid_font, txid_txco):
-        surf = pygame.image.load(self.tp.file)
-        stuff = pygame.image.tostring(surf, "RGBA")
         
         glBindTexture(GL_TEXTURE_2D,  txid_font)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, surf.get_width(), surf.get_height(), 
-            0, GL_RGBA, GL_UNSIGNED_BYTE, stuff)        
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],
+            0, GL_RGBA, GL_UNSIGNED_BYTE, self.fontdata)        
             
         if False:
             txcos = "\x10\x10\x10\x10" * self.tp.pdim[0] * self.tp.pdim[1]
@@ -198,21 +178,14 @@ class mapobject(object):
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.tp.pdim[0], self.tp.pdim[1],
                 0, GL_RGBA, GL_UNSIGNED_BYTE, txcos)
         
-        return self.tp.pdim + self.tp.tdim
+        return self.txsz
 
     def upload_code(self, txid_hash, txid_blit):
-        if False:
-            for i in (GL_UNPACK_SWAP_BYTES, GL_UNPACK_LSB_FIRST, GL_UNPACK_ROW_LENGTH,
-                GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_ROWS, GL_UNPACK_SKIP_PIXELS,
-                GL_UNPACK_SKIP_IMAGES, GL_UNPACK_ALIGNMENT ):
-                print i, glGetInteger(i)
-        
         glBindTexture(GL_TEXTURE_2D,  txid_hash)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        
 
         ptr = ctypes.c_void_p(self.blithash.__array_interface__['data'][0])
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16UI, self.hashw, self.hashw, 
@@ -227,12 +200,7 @@ class mapobject(object):
         ptr = ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
         glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16UI, self.codew, self.codew, 128,
                      0, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, ptr )
-        
-        print "dispatch: {0}x{1} blitcode: {2}x{3}x{4}".format(self.hashw, self.hashw, self.codew, self.codew, 128)
-        if False:
-            file("dispatch","w").write(self.blithash.tostring())
-            file("blitcode","w").write(self.blitcode.tostring())
-        
+
     def frame(self, x,y,z,w,h ):
         rv = np.zeros((w, h), np.int32)
         if x + w < 0 or y+h < 0 or x > self.xdim or y > self.ydim:
@@ -277,7 +245,7 @@ class mapobject(object):
         mat_id = ( hash >> 10 ) & 0x3ff
         matname = self.inorg_names.get(mat_id, self.plant_names.get(mat_id, '(unk:0x{:03x})'.format(mat_id)))
         try:
-            tilename = self.tile_names[tile_id]
+            tilename = self.tileresolve[tile_id]
             if tilename is None:
                 tilename = '(unk:0x{:03x})'.format(tile_id)
         except IndexError:
@@ -440,7 +408,7 @@ class Hud(object):
         self.strs = (
             "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d}",
             "zoom: {psz} grid: {gx}x{gy}",
-            "x={tx} y={ty} z={z} [{xdim}x{ydim}x{zdim}]",
+            "x={tx:03d} y={ty:03d} z={z:03d} [{xdim}x{ydim}x{zdim}] color: #{color:08x}",
             "mat:  {mat}",
             "tile: {tile}" )
             
@@ -449,7 +417,7 @@ class Hud(object):
         self.txid = glGenTextures(1)
         self.hud_w = 2*self.padding + self.font.size(self.strs[-1] + "m"*25)[0]
         self.hud_h = 2*self.padding + self.font.get_linesize() * len(self.strs)
-        self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
+        self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), 0, 32)
         self.quad_vbo = vbo.VBO(np.array( [
             [0,0], [0,1], [1,0],
             [0,1], [1,1], [1,0] ] , dtype=np.float ))
@@ -463,13 +431,13 @@ class Hud(object):
         return 1000.0/self.ema_rendertime
 
     def update(self):
-        txy = self.rr.tileundermouse()
+        tx, ty, material, tilename, color = self.rr.tileundermouse()
         data = {
             'fps': self.rr.anim_fps,
             'gfps': self.ema_fps(),
             'fno':  self.rr.frame_no,
-            'tx': txy[0],
-            'ty': txy[1],
+            'tx': tx,
+            'ty': ty,
             'z': self.rr.zlevel,
             'psz': self.rr.Psz,
             'gx': self.rr.grid_w,
@@ -477,19 +445,24 @@ class Hud(object):
             'xdim': self.rr.gameobject.xdim,
             'ydim': self.rr.gameobject.ydim,
             'zdim': self.rr.gameobject.zdim,
-            'mat': txy[2],
-            'tile': txy[3]
+            'mat': material,
+            'tile': tilename,
+            'color': color
         }
-        
+
         self.hudsurf.fill(pygame.Color(0x00000060))
         i = 0
         ystep = self.font.get_linesize()
         for s in self.strs:
-            surf = self.font.render(s.format(**data), True, pygame.Color(0xf0f0f0f0))
+            try:
+                surf = self.font.render(s.format(**data), True, pygame.Color(0xf0f0f0f0))
+            except ValueError, e:
+                print e
+                print s, repr(data)
             self.hudsurf.blit(surf, (self.padding, self.padding + i * ystep) )
             i += 1
             
-        pygame.image.save(self.hudsurf, "kaka.png")
+        #pygame.image.save(self.hudsurf, "kaka.png")
 
         glBindTexture(GL_TEXTURE_2D,  self.txid)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -573,12 +546,12 @@ class Fbo(object):
         glViewport( 0, 0, self.rr.surface.get_width(), self.rr.surface.get_height())
 
 class Rednerer(object):
-    def __init__(self, vs, fs, go, glinfo=False, anicutoff=128):
+    def __init__(self, vs, fs, go, loud=[], anicutoff=128):
         self.vs, self.fs = vs, fs
         self.fbo = Fbo(self)
         self.hud = Hud(self)
-        self.mapshader = Tile_shader(self, loud=True)
-        self.hudshader = Hud_shader(self.hud, loud=True)
+        self.mapshader = Tile_shader(self, loud='shaders' in loud)
+        self.hudshader = Hud_shader(self.hud, loud='shaders' in loud)
         self.gameobject = go
         
         self.do_update_attrs = True
@@ -589,8 +562,8 @@ class Rednerer(object):
         self.conf_stretch_tiles = False
         self.conf_snap_window = False
         self.cutoff_frame = anicutoff      
-        self.skip_glinfo = not glinfo
-        self.loud_reshape = True
+        self.loud_gl      = 'gl' in loud
+        self.loud_reshape = 'reshape' in loud
 
         self.tilesizes = None # txco texture
         self.grid = None # grid vaa/vbo
@@ -626,6 +599,7 @@ class Rednerer(object):
         self.gps_allocate(self.MIN_GRID_X, self.MIN_GRID_Y)
         self.Pszx = self.surface.get_width()/self.MIN_GRID_X
         self.Pszy = self.surface.get_height()/self.MIN_GRID_Y
+        self.reshape()
 
     def gps_allocate(self, w, h):
         self.grid_allocate(w, h)
@@ -675,7 +649,8 @@ class Rednerer(object):
         self.grid = rv
     
     def opengl_init(self):
-        self.glinfo()
+        if self.loud_gl:
+            self.glinfo()
 
         glEnable(GL_ALPHA_TEST)
         glAlphaFunc(GL_NOTEQUAL, 0)
@@ -691,11 +666,10 @@ class Rednerer(object):
         self.fbo.init()
         self.hud.init()
         self._txids = glGenTextures(4)
-        print self._txids
         self.dispatch_txid, self.blitcode_txid, self.font_txid, self.txco_txid = self._txids
         self.mapshader.init(self.vs, self.fs)
         self.hudshader.init("hud.vs", "hud.fs")
-        
+        self.texture_reset()
         self.opengl_initialized = True
 
     def opengl_fini(self):
@@ -799,8 +773,6 @@ class Rednerer(object):
         self.set_viewport()
 
     def glinfo(self):
-        if self.skip_glinfo:
-            return
         strs = {
             GL_VENDOR: "vendor",
             GL_RENDERER: "renderer",
@@ -850,8 +822,6 @@ class Rednerer(object):
         self.txsz = self.gameobject.upload_font(self.font_txid, self.txco_txid)
         self.tile_w = self.txsz[2]
         self.tile_h = self.txsz[3]
-
-        self.reshape()
 
     def _zoom(self, zoom, force = 0):
         new_psz  = self.Psz + zoom
@@ -924,11 +894,14 @@ class Rednerer(object):
         
     def tileundermouse(self):
         tx,ty = self.get_mouse_coords()
+        mx,my = pygame.mouse.get_pos()
+
         mat,tile = self.gameobject.gettile(tx, ty, self.zlevel)
-        return tx, ty, mat, tile
+        color = int(glReadPixels(mx, self.surface.get_height() - my, 1, 1, GL_RGBA , GL_UNSIGNED_INT_8_8_8_8)[0][0])
+        return tx, ty, mat, tile, color
         
     def render(self, mapwindow, frame_no):
-        bgc = ( 0.1, 0.1, 0.1, 1 )
+        bgc = ( 0.5, 0.1, 0.1, 1 )
         t = pygame.time.get_ticks()
         self.frame_no = frame_no
         glClearColor(*bgc)
@@ -1174,17 +1147,28 @@ keypad +/- : adjust FPS
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
-    ap.add_argument('dumpfx', metavar="dumpfx", nargs='?', help="dump name prefix (foobar in foobar.mats/foobar.tiles)", default='fugrdump')
-    ap.add_argument('-raws', metavar="fgraws", default="fgraws", help="fg raws directory")
-    ap.add_argument('--glinfo', action='store_true', help="spit info about GL driver capabilities")
-    ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
-        
+    ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset from")
+    ap.add_argument('dumpfx', metavar="dump-prefix", help="dump name prefix (foobar in foobar.mats/foobar.tiles)")
+    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="raws dirs to parse")
+    ap.add_argument('--loud', action='store_true', help="spit lots of useless info")
+    ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
+
+    pageman, matiles, maxframe = raw.work(pa.dfprefix)
+    if pa.cutoff_frame > maxframe:
+        cutoff = maxframe
+    else:
+        cutoff = pa.cutoff_frame
     
-    mo = mapobject(matsfile=pa.dumpfx+'.mats', tilesfile = pa.dumpfx + '.tiles', fgrawdir=pa.raws)
-        
-    re = Rednerer(vs=pa.vs, fs=pa.fs, go=mo, glinfo=pa.glinfo, anicutoff = pa.cutoff_frame)
-    re.texture_reset()
+    mo = mapobject( font = pageman.get_album(),
+                    matiles = matiles,
+                    matsfile = pa.dumpfx + '.mats', 
+                    tilesfile = pa.dumpfx + '.tiles', cutoff = cutoff)
+    loud = ()
+    if pa.loud:
+        loud = ("gl", "reshape", "shaders")
+    
+    re = Rednerer(vs=pa.vs, fs=pa.fs, go=mo, loud = loud, anicutoff = cutoff)
     re.loop(pa.afps, pa.choke)
     re.fini()
     
