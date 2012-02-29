@@ -43,7 +43,9 @@ CONTROLS = """
 
 class mapobject(object):
     def __init__(self, font, matiles, fnprefix, apidir='', cutoff=127):
-        self.tileresolve = raw.Enumparser(apidir)
+        self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
+        self.building_t = raw.DfapiEnum(apidir, 'building_type')
+        
         self.parse_matsfile(fnprefix + '.materials')
         self.assemble_blitcode(matiles, cutoff)
         self.txsz, self.fontdata = font

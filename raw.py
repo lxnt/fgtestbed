@@ -6,16 +6,27 @@ import pygame.image
 
 __all__ = [ 'enumparser', 'tilepage', 'matiles', 'graphraws', 'enumaps', 'TSCompiler' ]
 
-class Enumparser(object):
-    def __init__(self, dfapipath):
-        f = os.path.join(dfapipath, 'xml', 'df.tile-types.xml')
+class DfapiEnum(object):
+    def __init__(self, dfapipath, name):
+        names2files = {
+            'tiletype': 'df.tile-types.xml',
+            'building_type': 'df.buildings.xml',
+            'furnace_type': 'df.buildings.xml',
+            'workshop_type': 'df.buildings.xml',
+            'construction_type': 'df.buildings.xml',
+            'shop_type': 'df.buildings.xml',
+            'siegeengine_type': 'df.buildings.xml',
+            'trap_type': 'df.buildings.xml',
+        }
+        f = os.path.join(dfapipath, 'xml', names2files[name])
         self.enums = []
         self.emap = {}
         self.gotit = False
+        self.name = name
         self.parse(f)
 
     def start_element(self, tagname, attrs):
-        if tagname == 'enum-type' and attrs['type-name'] == 'tiletype':
+        if tagname == 'enum-type' and attrs['type-name'] == self.name:
             self.gotit = True
         elif tagname == 'enum-item' and self.gotit:
             try:
