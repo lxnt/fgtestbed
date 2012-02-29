@@ -331,23 +331,23 @@ class TSCompiler(object):
             'StoneStairU':         (12,  3, 'ramp'),
             'StoneWallSmoothRD2':  ( 5, 13), # sse
             'StoneWallSmoothR2D':  ( 6, 13), # see
-            'StoneWallSmoothR2U':  (04, 13), # nee
+            'StoneWallSmoothR2U':  ( 4, 13), # nee
             'StoneWallSmoothRU2':  ( 3, 13), # nne 
             'StoneWallSmoothL2U':  (14, 11), # nww
             'StoneWallSmoothLU2':  (13, 11), # nnw
             'StoneWallSmoothL2D':  ( 8, 11), # sww
             'StoneWallSmoothLD2':  ( 7, 11), # ssw
-            'StoneWallSmoothLRUD': (13, 12), # nsew
-            'StoneWallSmoothRUD':  (12, 12), # nse
-            'StoneWallSmoothLRD':  (11, 12), # sew
-            'StoneWallSmoothLRU':  (10, 12), # new
-            'StoneWallSmoothLUD':  ( 9, 11), # nsw
-            'StoneWallSmoothRD':   ( 9, 12), # se
-            'StoneWallSmoothRU':   ( 8, 12), # ne
-            'StoneWallSmoothLU':   (12, 11), # nw
-            'StoneWallSmoothLD':   (11, 11), # sw
-            'StoneWallSmoothUD':   (10, 11), # ns
-            'StoneWallSmoothLR':   (13, 12), # ew
+            'StoneWallSmoothLRUD': (14, 12), # nsew | xx
+            'StoneWallSmoothRUD':  (12, 12), # nse  | nnssee
+            'StoneWallSmoothLRD':  (11, 12), # sew  | sseeww
+            'StoneWallSmoothLRU':  (10, 12), # new  | nneeww
+            'StoneWallSmoothLUD':  ( 9, 11), # nsw  | nnssww
+            'StoneWallSmoothRD':   ( 9, 12), # se   | ssee
+            'StoneWallSmoothRU':   ( 8, 12), # ne   | nnee
+            'StoneWallSmoothLU':   (12, 11), # nw   | nnww
+            'StoneWallSmoothLD':   (11, 11), # sw   | ssww
+            'StoneWallSmoothUD':   (10, 11), # ns   | nnss
+            'StoneWallSmoothLR':   (13, 12), # ew   | eeww
             'StoneFloor1':         ( 7,  2, 'floor'), 
             'StoneFloor2':         (12,  2, 'floor'),
             'StoneFloor3':         (14,  2, 'floor'),
