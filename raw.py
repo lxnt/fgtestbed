@@ -592,8 +592,6 @@ class TSParser(Rawsparser0):
             which have:
                 self.tiles = {}
             which maps tilenames to """
-            
-    
     
     def __init__(self):
         self.mats = []

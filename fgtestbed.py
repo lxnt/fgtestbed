@@ -666,6 +666,7 @@ class Rednerer(object):
         self._frame_cache = {}
         self._zeddown = zeddown
         self.cheat = True
+        self.had_input = False
 
         self.recenter()
 
@@ -903,9 +904,9 @@ class Rednerer(object):
         fbx, fby = mx + self.viewpos[0], my + self.viewpos[1]
         mtx, mty = fbx/self.Pszx, fby/self.Pszy
 
-        self.mouse_in_world = ( mtx + self.render_origin[0], 
+        self.mouse_in_world = [ mtx + self.render_origin[0], 
                                 self.grid_h - mty + self.render_origin[1] - 1, # no idea where this -1 comes from. srsly.
-                                self.render_origin[2] )
+                                self.render_origin[2] ]
         
     def getpixel(self, posn):
         return  int(glReadPixels(posn[0], posn[1], 1, 1, GL_RGBA, 
@@ -946,6 +947,7 @@ class Rednerer(object):
             self.render_origin[2] = 0
         elif self.render_origin[2] > self.gameobject.zdim - 1:
             self.render_origin[2] = self.gameobject.zdim - 1
+        self.mouse_in_world[2] = self.render_origin[2]
             
     def recenter(self):
         self.render_origin = [ self.gameobject.xdim/2, 
@@ -995,6 +997,9 @@ class Rednerer(object):
             while  True: # eat events
                 for ev in pygame.event.get():
                     if ev.type == pygame.KEYDOWN:
+                        if not self.had_input:
+                            self.had_input = True
+                            self.cheat = False
                         if ev.key == pygame.K_SPACE:
                             paused = not paused
                         elif ev.key == pygame.K_F1:
@@ -1036,6 +1041,10 @@ class Rednerer(object):
                     elif ev.type ==  pygame.VIDEORESIZE:
                         self.reshape((ev.w, ev.h))
                     elif ev.type == pygame.MOUSEBUTTONDOWN:
+                        if not self.had_input:
+                            self.had_input = True
+                            self.cheat = False
+                        
                         if ev.button == 4: # wheel forward
                             if pygame.key.get_mods() & pygame.KMOD_CTRL:
                                 self.zoom("zoom_out", ev.pos)
