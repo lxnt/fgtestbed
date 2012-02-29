@@ -498,12 +498,8 @@ class TSCompiler(object):
         except KeyError:
             mt = Mattiles(mat.name)
             self.matiles[mat.name] = mt
-
-        v = mat.name == 'VINE_WHIP'
             
-
         for ttype, tdef in mat.tiles.items():
-            
             mt.tile(self.plant_tile_types[ttype][0])
             if tdef.tile is None:
                 if tdef.page != 'std':
@@ -511,7 +507,7 @@ class TSCompiler(object):
                 s, t = self.plant_tile_types[ttype][1], self.plant_tile_types[ttype][2]
             else:
                 s, t = tdef.tile%16, tdef.tile/16
-            if v: print ttype, self.plant_tile_types[ttype], tdef.tile, s, t
+            
             mt.blit(self.pageman.maptile(mat.page, s, t))
             mt.blend(self.mapcolor(tdef.color))
         mt.fin()
@@ -744,9 +740,6 @@ class TSParser(Rawsparser0):
                     self.mat.tiles[ttype].tile = tile
                 except KeyError:
                     self.mat.tiles[ttype] = mat_stub('std', tile = tile, color = self.default_tree_color) # set default color
-                if self.mat.name == 'VINE_WHIP':
-                    for k,v in self.mat.tiles.items():
-                        print k, v.tile, v.color
                         
             elif name.endswith('_COLOR'):
                 ttype = name[:-6]
