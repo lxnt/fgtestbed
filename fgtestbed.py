@@ -276,19 +276,16 @@ class mapobject(object):
         mat_id = ( hash >> 10 ) & 0x3ff
         try:
             tilename = self.tileresolve[tile_id]
-            if tilename is None:
-                return '(unk:0x{:03x})'.format(mat_id), '(unk:0x{:03x})'.format(tile_id) 
         except IndexError:
-            return '(unk:0x{:03x})'.format(mat_id), '(unk:0x{:03x})'.format(tile_id)
-        if tilename == "OpenSpace":
-            return "", tilename
-        matname = self.inorg_names.get(mat_id, '(unk:0x{:03x})'.format(mat_id))
+            raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
+
+        matname = self.inorg_names.get(mat_id, None)
         for prefix in ( 'Grass', 'Tree', 'Shrub', 'Sapling'):
             if tilename.startswith(prefix):
-                matname = self.plant_names.get(mat_id, '(unk:0x{:03x})'.format(mat_id))
+                matname = self.plant_names.get(mat_id, None)
                 break
         
-        return matname, tilename
+        return ( (mat_id, matname), (tile_id, tilename) )
 
 
 
@@ -454,8 +451,8 @@ class Hud(object):
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
             "x={tx:03d} y={ty:03d} z={z:03d}  ",
             "color: #{color:08x}",
-            "mat:  {mat}",
-            "tile: {tile}" )
+            "mat:  {mat} ({mat_id})",
+            "tile: {tile} ({tile_id})" )
             
     def init(self):
 
@@ -493,7 +490,7 @@ class Hud(object):
 
     def update(self):
         tx, ty, tz =  self.rr.mouse_in_world
-        material, tilename = self.rr.gameobject.gettile((tx,ty,tz))
+        material, tile = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouseco)
         data = {
             'fps': self.rr.anim_fps,
@@ -508,8 +505,10 @@ class Hud(object):
             'xdim': self.rr.gameobject.xdim,
             'ydim': self.rr.gameobject.ydim,
             'zdim': self.rr.gameobject.zdim,
-            'mat': material,
-            'tile': tilename,
+            'mat': material[1],
+            'tile': tile[1],
+            'mat_id': material[0],
+            'tile_id': tile[0],
             'color': color,
             'vp': self.rr.viewpos,
             'pszx': self.rr.Pszx,
