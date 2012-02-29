@@ -1,14 +1,16 @@
 #version 130
 #line 2 0
 
-uniform vec2 resolution;
-uniform vec2 size;
+// lt rt rb lb
 
-in ivec2 position; 
+uniform ivec2 resolution;
+
+in ivec4 position; 
 out vec2 coord;
 
-void main() {
-    gl_Position = vec4(2.0*position.x/resolution.x- 1.0, 2.0*position.y/resolution.y - 1.0, 0.0, 1.0);
-    coord = vec2((resolution - position)/size);
-    coord.x = 1.0 - coord.x;
+void main() {	
+    vec2 posn = 2.0 * vec2(position.xy) / vec2(resolution) - 1.0;
+    gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
+    
+    coord = vec2(position.zw);
 }

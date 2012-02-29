@@ -4,7 +4,7 @@ precision highp int;
 precision highp float;
 
 uniform usampler2D dispatch;      // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
-uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA16UI ARRAY
+uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA32UI ARRAY
 uniform int frame_no;
 uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 uniform int dispatch_row_len;
@@ -15,7 +15,9 @@ in ivec2 position;
 in int screen;
 
 flat out vec4 blit;
-flat out vec4 blend;
+flat out vec4 fg;
+flat out vec4 bg;
+flat out float mode;
 
 void main() {
     vec2 normposn = (position + 0.5)/grid;
@@ -30,17 +32,19 @@ void main() {
 
     if ((addr.x + addr.y) == 0u) {
 	blit = vec4(0,0,0,0);
-	blend = vec4(0,0,0,0);
+	fg = vec4(0,0,0,0);
+	bg = vec4(0,0,0,0);
+	mode = -1;
 	return;
     }
 
     uvec4 insn = texelFetch(blitcode, ivec3(addr.xyz), 0);
     
-    blit.xy = vec2(insn.xy)/ vec2(txsz.xy) ;
-
+    blit.xy = vec2(insn.x>>24u, (insn.x>>16u ) &0xffu)/ vec2(txsz.xy) ;
     blit.zw = 1.0 / vec2(txsz.xy) ; // for as long as we don't support tiles-smaller-than-txsz.zw
-    
-    /* insn halfbytes are swapped due two last insn components submitted as one uint32 */
-    blend = vec4(insn.w >> 8u, insn.w & 0xffu, insn.z >> 8u, insn.z & 0xffu) / 256.0;
-   
+    // when we do: blit.zw = vec2( (insn.x>>8u)&0xffu,insn.x&0xffu )/vec2(txsz.xy);
+    mode = insn.y;
+    fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
+    bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
+
 }

@@ -7,9 +7,12 @@ uniform sampler2D font;
 
 uniform float final_alpha;
 uniform vec3 pszar;             // { Parx, Pary, Psz }
+uniform float darken;  // drawing lower levels.
 
 flat in vec4 blit;   // fka 'tile', but zw are pre-divided with txsz.xy
-flat in vec4 blend;
+flat in vec4 fg;
+flat in vec4 bg;
+flat in float mode;
 
 out vec4 color;
 
@@ -20,8 +23,10 @@ void main() {
     }
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
     vec4 tile_color = texture2D(font, texcoords);
-    
-    //color = mix(tile_color * blend, vec4(0.5, 0.5, 0.5, 1.0), 1.0 - tile_color.a);
-    color = blend * tile_color;
+    if (mode > 0) {
+	color = fg * tile_color * darken;
+    } else {
+	color = mix(tile_color * fg, bg, 1.0 - tile_color.a) * darken;
+    }
     color.a = final_alpha;    
 }

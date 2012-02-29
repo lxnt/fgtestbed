@@ -4,9 +4,7 @@ import os, os.path, glob, sys, xml.parsers.expat, time, math, mmap, pprint
 import numpy as np
 import pygame.image
 
-NOMAT = 0xFFFFFFFF
-
-__all__ = [ 'enumparser', 'NOMAT', 'tilepage', 'matiles', 'graphraws', 'enumaps', 'TSCompiler' ]
+__all__ = [ 'enumparser', 'tilepage', 'matiles', 'graphraws', 'enumaps', 'TSCompiler' ]
 
 class Enumparser(object):
     def __init__(self, dfapipath):
@@ -87,6 +85,11 @@ class Mattiles(object):
         white = (0xff, 0xff, 0xff, 0xff)
         for f in self.prelimo:
             blit, blend, glow, amt = f
+            if blend is not None and glow is not None:
+                # this is an old-school fg/bg blended tile.
+                frameseq.append((blit, blend, glow))
+                break
+            
             if len(self.prelimo) > 1:
                 nextbli, nextglo= self.prelimo[1][1:3]
             else:
@@ -141,10 +144,14 @@ class Mattiles(object):
         self._glow = rgba
         self._keyframe_start = False
         
-    def blend(self, rgba):
+    def blend(self, color):
         if self._cut: return
-        self._blend = rgba
-        self._glow = None
+        if type(color) is tuple:
+            self._blend = color[0]
+            self._glow = color[1]
+        else:
+            self._blend = color
+            self._glow = None
         self._keyframe_start = False
         
     def key(self, frame):
@@ -207,8 +214,8 @@ class Pageman(object):
         sk.sort()
         with file(fname + '.mapping', 'w') as f:
             for k in sk:
-                f.write("{}:{}:{} -> {}:{} {}x{}->{}x{}\n".format(
-                        sk[0], sk[1], sk[2], self.mapping[sk][0], self.mapping[sk][1]))
+                f.write("{}:{}:{} -> {}:{} \n".format(
+                        k[0], k[1], k[2], self.mapping[k][0], self.mapping[k][1]))
         pygame.image.save(self.surf, fname + '.png')
         
     def reallocate(self, plus_h):
@@ -224,31 +231,28 @@ class Pageman(object):
         "returns txsz tuple and bytes for the resulting texture album"
         min_h = self.max_tdim[1]*(self.current_j + 1)
         if min_h < self.album_h:
-            print "min_h {} self.album_h {} surf.h {}".format(min_h, self.album_h, self.surf.get_height())
             self.reallocate(min_h - self.album_h)
         tw, th = self.max_tdim
         wt, ht = self.album_w/tw, min_h/th
         return (wt, ht, tw, th), pygame.image.tostring(self.surf, 'RGBA')
 
-"""
-raws fmt:
-[OBJECT:objtag] defines what tag defines an 'object'
-[objtag:objname] starts an object
-rest of tags belong to that object.
+""" raws fmt:
+    [OBJECT:objtag] defines what tag defines an 'object'
+    [objtag:objname] starts an object
+    rest of tags belong to that object.
 
-assumes []: are never used in literals.
-don't see any examples to the contrary in 34. 2 raws
+    assumes []: are never used in literals.
+    don't see any examples to the contrary in 34. 2 raws
 
-[GRASS_TILES:'.':',':'`':''']
-[GRASS_COLORS:2:0:1:2:0:0:6:0:1:6:0:0]    
-[TREE_TILE:23][DEAD_TREE_TILE:255]
-[TREE_COLOR:2:0:1][DEAD_TREE_COLOR:6:0:0]
-[SAPLING_COLOR:2:0:1][DEAD_SAPLING_COLOR:6:0:0]
-[PICKED_TILE:3][DEAD_PICKED_TILE:182]
-[SHRUB_TILE:28][DEAD_SHRUB_TILE:28]
-[PICKED_COLOR:5:0:0]
-[SHRUB_COLOR:5:0:0][DEAD_SHRUB_COLOR:6:0:0]
-"""
+    [GRASS_TILES:'.':',':'`':''']
+    [GRASS_COLORS:2:0:1:2:0:0:6:0:1:6:0:0]    
+    [TREE_TILE:23][DEAD_TREE_TILE:255]
+    [TREE_COLOR:2:0:1][DEAD_TREE_COLOR:6:0:0]
+    [SAPLING_COLOR:2:0:1][DEAD_SAPLING_COLOR:6:0:0]
+    [PICKED_TILE:3][DEAD_PICKED_TILE:182]
+    [SHRUB_TILE:28][DEAD_SHRUB_TILE:28]
+    [PICKED_COLOR:5:0:0]
+    [SHRUB_COLOR:5:0:0][DEAD_SHRUB_COLOR:6:0:0] """
 
 class TSCompiler(object):
     """ compiles parsed standard tilesets """
@@ -397,19 +401,27 @@ class TSCompiler(object):
         return self.matiles
     
     def dump(self, fname):
-        with file(fname, "w") as f:
-            f.write(pprint.pformat(self.stone_tiles))
-            f.write(pprint.pformat(self.soil_tiles))
-            f.write(pprint.pformat(self.mineral_tiles))
-            f.write(pprint.pformat(self.grass_tiles))
-            f.write(pprint.pformat(self.constr_tiles))
-            f.write("\n\n")
+        with file(fname + '.ir', "w") as f:
+            if False:
+                f.write(pprint.pformat(self.stone_tiles))
+                f.write(pprint.pformat(self.soil_tiles))
+                f.write(pprint.pformat(self.mineral_tiles))
+                f.write(pprint.pformat(self.grass_tiles))
+                f.write(pprint.pformat(self.constr_tiles))
+                f.write("\n\n")
         
             for mat, mati in self.matiles.items():
                 for tn, fs in mati.tiles.items():
-                    f.write("{} {} {} {}\n".format(mat, tn, fs[0][0], fs[0][1]))
+                    blit = fs[0][0]
+                    if len(fs[0]) == 3:
+                        f.write("{} {} {} {:08x} {:08x}\n".format(mat, tn, blit, fs[0][1], fs[0][2]))
+                    else:
+                        f.write("{} {} {} {:08x}\n".format(mat, tn, blit, fs[0][1]))
+
+                    
 
     def _apply_effect(self, effect, color):
+        return color
         effects = {
             'dry':      1.50,
             'wet':      0.80,
@@ -417,11 +429,17 @@ class TSCompiler(object):
             'dark':     0.75,
             'dead':     0.50
         }
+        bg = None
+        if type(color) is tuple:
+            bg = color[1]
+            color = color[0]
         e = effects[effect]
         r,g,b,a = color>>24, (color>>16) & 0xff, (color>>8) & 0xff, color & 0xff
         r,g,b,a = int(r*e) & 0xff, int(g*e) & 0xff, int(g*e) & 0xff, a
-        
-        return (r<<24)|(g<<16)|(b<<8)|a
+        if bg is None:
+            return (r<<24)|(g<<16)|(b<<8)|a
+        else:
+            return ( (r<<24)|(g<<16)|(b<<8)|a, bg )
     
     def _emit(self, what, mat):
         try:
@@ -443,7 +461,7 @@ class TSCompiler(object):
                     color = mat.color
                     
                 if len(tdef) == 3:
-                    self._apply_effect(tdef[2], color)
+                    color = self._apply_effect(tdef[2], color)
             else:
                 s, t = mat.tile % 16, mat.tile/16
                 color = mat.color
@@ -567,9 +585,9 @@ class TSParser(Rawsparser0):
         self.colortab = colortab
         self.otype = None
         self.mat = None
-        self.default_grass_color = 0x00d000ff
-        self.default_tree_color = 0x00d000ff
-        self.default_wood_color = 0x964B00ff
+        self.default_grass_color = self.color_lookup(2, 0, 1)
+        self.default_tree_color  = self.color_lookup(2, 0, 0)
+        self.default_wood_color  = self.color_lookup(6, 0, 0)
         self.plant_tile_types = (
             'PICKED',
             'DEAD_PICKED',
@@ -611,7 +629,7 @@ class TSParser(Rawsparser0):
         
 
     def color_lookup(self, fg, bg, br):
-        return self.colortab[fg + 8*br]
+        return (self.colortab[fg + 8*br], self.colortab[bg])
 
     def parse_rgba(self, f):
             if len(f) == 3:
@@ -809,7 +827,7 @@ def FGParser(Rawsparser0):
                         self.maxframeno = frameno
 
 
-def work(dfprefix, moar_raws = []):
+def work(dfprefix, moar_raws = [], dumpfile=None):
     init = Initparser(dfprefix)
     rawsdirs = [ os.path.join(dfprefix, 'raw', 'objects') ] + moar_raws
     pageman = Pageman(init.fontpath)
@@ -818,12 +836,16 @@ def work(dfprefix, moar_raws = []):
     mats = parser.get()
     compiler = TSCompiler(pageman)
     matiles = compiler.compile([], mats)
+    if dumpfile:
+        compiler.dump(dumpfile)
+        pageman.dump(dumpfile)
     maxframe = 0
     return pageman, matiles, maxframe
 
 
 def main():
-    work(sys.argv[1], sys.argv[2:]) 
+    p,m,ma = work(sys.argv[1], sys.argv[2:], 'matidu') 
+    
 
 if __name__ == '__main__':
     main()
