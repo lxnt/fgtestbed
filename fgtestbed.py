@@ -42,19 +42,29 @@ CONTROLS = """
 
 
 class mapobject(object):
-    def __init__(self, font, matiles, matsfile, tilesfile, apidir='', cutoff=127):
+    def __init__(self, font, matiles, fnprefix, apidir='', cutoff=127):
         self.tileresolve = raw.Enumparser(apidir)
-        self.parse_matsfile(matsfile)
+        self.parse_matsfile(fnprefix + '.materials')
         self.assemble_blitcode(matiles, cutoff)
         self.txsz, self.fontdata = font
         self.maxframes = cutoff + 1
-
+        tilesfile = fnprefix + '.tiles'
+        header = file(tilesfile).read(4096)
+        if not header.startswith("count_blocks:"):
+            raise TypeError("Wrong trousers")
+        l, unused = header.split("\n", 1)
+        un, x, y, z = l.split(':')
+        self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
+        self.xdim *= 16
+        self.ydim *= 16
+        
         if os.name == 'nt':
             self._map_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
         else:
             self._map_fd = os.open(tilesfile, os.O_RDONLY)
 
-        self._map_mmap = mmap.mmap(self._map_fd, 0, access = mmap.ACCESS_READ)
+        self._map_mmap = mmap.mmap(self._map_fd, 0, 
+            offset = 4096, access = mmap.ACCESS_READ)
 
     def parse_matsfile(self, matsfile):
         self.inorg_names = {}
@@ -62,15 +72,6 @@ class mapobject(object):
         self.plant_names = {}
         self.plant_ids = {}
         for l in file(matsfile):
-            if l.startswith("count_block:"):
-                continue
-            elif l.startswith("region:"):
-                continue
-            elif l.startswith("count:"):
-                un, x, y, z = l.split(':')
-                self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
-                continue
-                
             f = l.split()
             if f[1] == 'INORG':
                 self.inorg_names[int(f[0])] = ' '.join(f[2:])
@@ -279,7 +280,8 @@ class mapobject(object):
                 return '(unk:0x{:03x})'.format(mat_id), '(unk:0x{:03x})'.format(tile_id) 
         except IndexError:
             return '(unk:0x{:03x})'.format(mat_id), '(unk:0x{:03x})'.format(tile_id)
-            
+        if tilename == "OpenSpace":
+            return "", tilename
         matname = self.inorg_names.get(mat_id, '(unk:0x{:03x})'.format(mat_id))
         for prefix in ( 'Grass', 'Tree', 'Shrub', 'Sapling'):
             if tilename.startswith(prefix):
@@ -1100,8 +1102,8 @@ if __name__ == "__main__":
     
     mo = mapobject( font = pageman.get_album(),
                     matiles = matiles,
-                    matsfile = pa.dumpfx + '.mats', 
-                    tilesfile = pa.dumpfx + '.tiles', cutoff = cutoff)
+                    fnprefix = pa.dumpfx, 
+                    cutoff = cutoff)
     loud = ()
     if pa.loud:
         loud = ("gl", "reshape", "shaders")

@@ -59,7 +59,10 @@ class Tilepage(object):
         
     def load(self):
         if not self.surf:
-            self.surf = pygame.image.load(self.path)
+                surf = pygame.image.load(self.path)
+                surf.convert_alpha()
+                surf.set_alpha(None)
+                self.surf = surf
         w,h = self.surf.get_size()
         if w != self.tdim[0]*self.pdim[0] or h != self.tdim[1]*self.pdim[1]:
             raise ValueError("size mismatch on {}: dim={}x{} pdim={}x{} tdim={}x{}".format(
@@ -147,8 +150,7 @@ class Mattiles(object):
     def blend(self, color):
         if self._cut: return
         if type(color) is tuple:
-            self._blend = color[0]
-            self._glow = color[1]
+            self._blend, self._glow = color
         else:
             self._blend = color
             self._glow = None
@@ -173,7 +175,7 @@ class Pageman(object):
         self.album = []
         self.album_w = self.album_h = album_w
         self.dump_fname = dump_fname
-        self.surf = pygame.Surface( ( album_w, album_w ), 0, 32)
+        self.surf = pygame.Surface( ( album_w, album_w ), pygame.SRCALPHA, 32)
         self.current_i = self.current_j = 0
         
         stdts = Tilepage('std')
@@ -220,7 +222,8 @@ class Pageman(object):
         
     def reallocate(self, plus_h):
         self.album_h  += plus_h
-        surf = pygame.Surface( ( self.album_w, self.album_h  ), 0, 32)
+        surf = pygame.Surface( ( self.album_w, self.album_h  ), pygame.SRCALPHA, 32)
+        self.surf.set_alpha(None)
         surf.blit(self.surf, (0, 0))
         self.surf = surf
 
@@ -256,18 +259,19 @@ class Pageman(object):
 
 class TSCompiler(object):
     """ compiles parsed standard tilesets """
-    def __init__(self, pageman):
+    def __init__(self, pageman, colortab):
         self.matiles = {}
+        self.colortab = colortab
         self.pageman = pageman
         self.plant_tile_types = { # and default tile - set to '?' for the time being
-            'PICKED':        ( 'Shrub',      15, 03 ), # tile type guessed
-            'DEAD_PICKED':   ( 'ShrubDead',  15, 03 ), # tile type guessed
-            'SHRUB':         ( 'Shrub',      15, 03 ), 
-            'TREE':          ( 'Tree',       15, 03 ), 
-            'SAPLING':       ( 'Sapling',    15, 03 ), 
-            'DEAD_SHRUB':    ( 'ShrubDead',  15, 03 ),
-            'DEAD_TREE':     ( 'TreeDead',   15, 03 ),
-            'DEAD_SAPLING':  ( 'SaplingDead',15, 03 ), 
+            #'PICKED':        ( 'Shrub',       2,  2 ), # tile type guessed
+            #'DEAD_PICKED':   ( 'ShrubDead',   2,  2 ), # tile type guessed
+            'SHRUB':         ( 'Shrub',       2,  2 ), 
+            'TREE':          ( 'Tree',       15,  3 ), 
+            'SAPLING':       ( 'Sapling',     7, 14 ), 
+            'DEAD_SHRUB':    ( 'ShrubDead',  15, 12 ),
+            'DEAD_TREE':     ( 'TreeDead',   15, 15 ),
+            'DEAD_SAPLING':  ( 'SaplingDead', 7, 14 ), 
         }
         # formats:
         # 1. (x,y) - reference to 16x16 tilepage
@@ -306,25 +310,25 @@ class TSCompiler(object):
         
         self.soil_tiles = {
             'SoilWall':              None, # must be defined in raws.
-            'SoilStairUD':          ( 8,  5),
-            'SoilStairD':           (14,  3),
-            'SoilStairU':           (12,  3),
-            'SoilRamp':             (14,  1),
-            'SoilFloor1':           ( 7,  2),
-            'SoilFloor2':           (12,  2),
-            'SoilFloor3':           (14,  2),
-            'SoilFloor4':           ( 0,  6),
-            'SoilWetFloor1':        ( 7,  2, 'wet'),
-            'SoilWetFloor2':        (12,  2, 'wet'),
-            'SoilWetFloor3':        (14,  2, 'wet'),
-            'SoilWetFloor4':        ( 0,  6, 'wet'), }
+            'SoilStairUD':          ( 8,  5, 'ramp'),
+            'SoilStairD':           (14,  3, 'ramp'),
+            'SoilStairU':           (12,  3, 'ramp'),
+            'SoilRamp':             (14,  1, 'ramp'),
+            'SoilFloor1':           ( 7,  2, 'floor'),
+            'SoilFloor2':           (12,  2, 'floor'),
+            'SoilFloor3':           (14,  2, 'floor'),
+            'SoilFloor4':           ( 0,  6, 'floor'),
+            'SoilWetFloor1':        ( 7,  2, 'wetfloor'),
+            'SoilWetFloor2':        (12,  2, 'wetfloor'),
+            'SoilWetFloor3':        (14,  2, 'wetfloor'),
+            'SoilWetFloor4':        ( 0,  6, 'wetfloor'), }
         self.stone_tiles = {
             'StoneWall':             None,  # must defined in raws.
             # following just inherit DISPLAY_COLOR from raws
             # 'None' ones are replaced with question mark. (15,  3)
-            'StoneStairUD':        ( 8,  5),
-            'StoneStairD':         (14,  3),
-            'StoneStairU':         (12,  3),
+            'StoneStairUD':        ( 8,  5, 'ramp'),
+            'StoneStairD':         (14,  3, 'ramp'),
+            'StoneStairU':         (12,  3, 'ramp'),
             'StoneWallSmoothRD2':  ( 5, 13), # sse
             'StoneWallSmoothR2D':  ( 6, 13), # see
             'StoneWallSmoothR2U':  (04, 13), # nee
@@ -344,22 +348,22 @@ class TSCompiler(object):
             'StoneWallSmoothLD':   (11, 11), # sw
             'StoneWallSmoothUD':   (10, 11), # ns
             'StoneWallSmoothLR':   (13, 12), # ew
-            'StoneFloor1':         ( 7,  2), 
-            'StoneFloor2':         (12,  2),
-            'StoneFloor3':         (14,  2),
-            'StoneFloor4':         ( 0,  6),
-            'StoneFloorSmooth':    (11,  2),
-            'StoneBoulder':        (12, 14),
-            'StonePebbles1':       (15, 03), # tile unknown: set to ?
-            'StonePebbles2':       (15, 03), # tile unknown: set to ?
-            'StonePebbles3':       (15, 03), # tile unknown: set to ?
-            'StonePebbles4':       (15, 03), # tile unknown: set to ?
+            'StoneFloor1':         ( 7,  2, 'floor'), 
+            'StoneFloor2':         (12,  2, 'floor'),
+            'StoneFloor3':         (14,  2, 'floor'),
+            'StoneFloor4':         ( 0,  6, 'floor'),
+            'StoneFloorSmooth':    (11,  2, 'floor'),
+            'StoneBoulder':        (12, 14, 'ramp'),
+            'StonePebbles1':       ( 7,  2, 'floor'), # same
+            'StonePebbles2':       (12,  2, 'floor'), # as
+            'StonePebbles3':       (14,  2, 'floor'), # floor
+            'StonePebbles4':       ( 0,  6, 'floor'), 
             'StoneWallWorn1':      ( 0, 11),
             'StoneWallWorn2':      ( 0, 12),
             'StoneWallWorn3':      ( 0, 13),
-            'StonePillar':         ( 9,  4),
+            'StonePillar':         ( 7, 12),
             'StoneFortification':  (14, 12),
-            'StoneRamp':           (14,  1), }
+            'StoneRamp':           (14,  1, 'ramp')}
         
         self.mineral_tiles = {}
         for n,t in self.stone_tiles.items():
@@ -371,6 +375,12 @@ class TSCompiler(object):
                 self.constr_tiles['Constructed' + n[5:]] = t
             elif n.startswith('StoneWallSmooth'):
                 self.constr_tiles['ConstructedWall' + n[len('StoneWallSmooth'):]] = t
+
+    def mapcolor(self, color):
+        try:
+            return ( self.colortab[color[0]+8*color[2]], self.colortab[color[1]] )
+        except IndexError:
+            raise ValueError("unknown color {}".format(repr(color)))
 
     def compile(self, pages, mats):
         for page in pages:
@@ -420,26 +430,27 @@ class TSCompiler(object):
 
                     
 
-    def _apply_effect(self, effect, color):
-        return color
-        effects = {
-            'dry':      1.50,
-            'wet':      0.80,
-            'light':    1.25,
-            'dark':     0.75,
-            'dead':     0.50
-        }
-        bg = None
-        if type(color) is tuple:
-            bg = color[1]
-            color = color[0]
-        e = effects[effect]
-        r,g,b,a = color>>24, (color>>16) & 0xff, (color>>8) & 0xff, color & 0xff
-        r,g,b,a = int(r*e) & 0xff, int(g*e) & 0xff, int(g*e) & 0xff, a
-        if bg is None:
-            return (r<<24)|(g<<16)|(b<<8)|a
-        else:
-            return ( (r<<24)|(g<<16)|(b<<8)|a, bg )
+    def _apply_effect(self, tname, effect, color):
+        if effect == 'floor':
+            if tname.startswith('Stone'):
+                return (0, 0, 1)
+            return (color[0], 0, 0)
+        elif effect == 'ramp':
+            return (color[0], 0, 0)
+        elif effect == 'wetfloor':
+            return color
+        elif effect == 'light':
+            return color
+            return (color[0], color[1], 1)
+        elif effect == 'dark':
+            return color
+            return (color[0], color[1], 0)
+        elif effect == 'dry':
+            return color
+            return (6, 6, 0)
+        elif effect == 'dead':
+            return (6, 6, 0)
+        raise ValueError("Unknown effect '{}'".format(effect))
     
     def _emit(self, what, mat):
         try:
@@ -461,12 +472,12 @@ class TSCompiler(object):
                     color = mat.color
                     
                 if len(tdef) == 3:
-                    color = self._apply_effect(tdef[2], color)
+                    color = self._apply_effect(name, tdef[2], color)
             else:
                 s, t = mat.tile % 16, mat.tile/16
                 color = mat.color
             mt.blit(self.pageman.maptile(mat.page, s, t))
-            mt.blend(color)
+            mt.blend(self.mapcolor(color))
         mt.fin()
     
     def _emit_plant(self, mat):
@@ -477,17 +488,21 @@ class TSCompiler(object):
             mt = Mattiles(mat.name)
             self.matiles[mat.name] = mt
 
-        for t, tdef in mat.tiles.items():
-            mt.tile(self.plant_tile_types[t][0])
+        v = mat.name == 'VINE_WHIP'
+            
+
+        for ttype, tdef in mat.tiles.items():
+            
+            mt.tile(self.plant_tile_types[ttype][0])
             if tdef.tile is None:
                 if tdef.page != 'std':
                     raise ValueError('default tiles work only in standard tileset')
-                s, t = self.plant_tile_types[t][1], self.plant_tile_types[t][2]
+                s, t = self.plant_tile_types[ttype][1], self.plant_tile_types[ttype][2]
             else:
                 s, t = tdef.tile%16, tdef.tile/16
-    
+            if v: print ttype, self.plant_tile_types[ttype], tdef.tile, s, t
             mt.blit(self.pageman.maptile(mat.page, s, t))
-            mt.blend(tdef.color)
+            mt.blend(self.mapcolor(tdef.color))
         mt.fin()
 
 class mat_stub(object):
@@ -548,9 +563,9 @@ class Initparser(Rawsparser0):
     
     def colors_handler(self, name, tail):
         colorseq = "BLACK BLUE GREEN CYAN RED MAGENTA BROWN LGRAY DGRAY LBLUE LGREEN LCYAN LRED LMAGENTA YELLOW WHITE".split()
-        cshift = { 'R': 24, 'G': 16, 'B': 8, 'A': 0 }
+        cshift = { 'R': 24, 'G': 16, 'B': 8, 'A': 0 }        
         color, channel = name.split('_')
-        self.colortab[colorseq.index(color)] |= int(tail[0])<< cshift[channel]
+        self.colortab[colorseq.index(color)] = self.colortab[colorseq.index(color)] | int(tail[0])<< cshift[channel]
         
     def init_handler(self, name, tail):
         if name == 'FONT':
@@ -580,17 +595,16 @@ class TSParser(Rawsparser0):
             
     
     
-    def __init__(self, colortab):
+    def __init__(self):
         self.mats = []
-        self.colortab = colortab
         self.otype = None
         self.mat = None
-        self.default_grass_color = self.color_lookup(2, 0, 1)
-        self.default_tree_color  = self.color_lookup(2, 0, 0)
-        self.default_wood_color  = self.color_lookup(6, 0, 0)
+        self.default_grass_color = (2, 0, 1)
+        self.default_tree_color  = (2, 0, 0)
+        self.default_wood_color  = (6, 0, 0)
         self.plant_tile_types = (
-            'PICKED',
-            'DEAD_PICKED',
+            #'PICKED',
+            #'DEAD_PICKED',
             'SHRUB',
             'TREE',
             'SAPLING',
@@ -626,10 +640,6 @@ class TSParser(Rawsparser0):
                 [TILE:<tilename>]
                     ... various FG crap
             """
-        
-
-    def color_lookup(self, fg, bg, br):
-        return (self.colortab[fg + 8*br], self.colortab[bg])
 
     def parse_rgba(self, f):
             if len(f) == 3:
@@ -670,7 +680,7 @@ class TSParser(Rawsparser0):
             elif name == 'TILE':
                 self.mat.tile = self.tileparse(tail[0])
             elif name == 'DISPLAY_COLOR':
-                self.mat.color = self.color_lookup(*map(int, tail))
+                self.mat.color = map(int, tail)
             elif name in self.soil_tags:
                 self.mat.type  = 'soil'
             elif name in self.layer_tags:
@@ -703,7 +713,7 @@ class TSParser(Rawsparser0):
                 bgs = colors[1::3]
                 brs = colors[2::3]
                 for fg in fgs:
-                    color = self.color_lookup(fg,bgs.pop(0),brs.pop(0))
+                    color = (fg,bgs.pop(0),brs.pop(0))
                     try:
                         self.mat.tiles[i].color = color
                     except KeyError:
@@ -715,7 +725,7 @@ class TSParser(Rawsparser0):
             elif name == 'TREE':
                 self.mat.type = 'tree'
             elif name == 'DISPLAY_COLOR':
-                self.mat.color = self.color_lookup(*map(int, tail))                
+                self.mat.color = map(int, tail)
             elif name.endswith('_TILE'):
                 ttype = name[:-5]
                 tile = self.tileparse(tail[0])
@@ -725,11 +735,15 @@ class TSParser(Rawsparser0):
                     self.mat.tiles[ttype].tile = tile
                 except KeyError:
                     self.mat.tiles[ttype] = mat_stub('std', tile = tile, color = self.default_tree_color) # set default color
+                if self.mat.name == 'VINE_WHIP':
+                    for k,v in self.mat.tiles.items():
+                        print k, v.tile, v.color
+                        
             elif name.endswith('_COLOR'):
                 ttype = name[:-6]
                 if ttype not in self.plant_tile_types:
                     return
-                color = self.color_lookup(*map(int, tail))
+                color = map(int, tail)
                 try:
                     self.mat.tiles[ttype].color = color
                 except KeyError:
@@ -831,10 +845,10 @@ def work(dfprefix, moar_raws = [], dumpfile=None):
     init = Initparser(dfprefix)
     rawsdirs = [ os.path.join(dfprefix, 'raw', 'objects') ] + moar_raws
     pageman = Pageman(init.fontpath)
-    parser = TSParser(init.colortab)
+    parser = TSParser()
     map(parser.eat, rawsdirs)
     mats = parser.get()
-    compiler = TSCompiler(pageman)
+    compiler = TSCompiler(pageman, init.colortab)
     matiles = compiler.compile([], mats)
     if dumpfile:
         compiler.dump(dumpfile)
