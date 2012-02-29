@@ -32,13 +32,15 @@ CONTROLS = """
     F1: toggle this text
     Right mouse button drag: panning
     Mouse wheel: up/down Z-level
+    Shift+mouse wheel: up/down 10 Z-levels
     Ctrl+Mouse wheel: zoom in/out
     Arrow keys, PgUp/PgDn/Home/End: scroll
     Shift+same: faster scroll
     < >: Up/Down z-level
     Backspace: recenter map
     Keypad +/-: adjust animation FPS
-    Left mouse button, Space: toggle animation"""
+    Left mouse button, Space: toggle animation
+    Esc: quit"""
 
 
 class mapobject(object):
@@ -265,7 +267,9 @@ class mapobject(object):
         rowlen = ex-sx
         
         for rownum in xrange( ey - sy ):
-            offs = zedoffs + yoffs + rownum*self.xdim*4 + xskip 
+            offs = zedoffs + yoffs + rownum*self.xdim*4 + xskip
+            if offs < 0:
+                raise ValueError("offs {} request {}:{}:{} {}x{}".format(offs, origin[0], origin[1], origin[2], size[0], size[1]))
             buf = buffer(self._map_mmap, offs, rowlen*4)
             rv[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)        
         return rv
@@ -279,7 +283,10 @@ class mapobject(object):
         try:
             tilename = self.tileresolve[tile_id]
         except IndexError:
-            raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
+            if tile_id == 0x3ff:
+                tilename = "-no-data-"
+            else:
+                raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
 
         matname = self.inorg_names.get(mat_id, None)
         for prefix in ( 'Grass', 'Tree', 'Shrub', 'Sapling'):
@@ -288,7 +295,11 @@ class mapobject(object):
                 break
         
         return ( (mat_id, matname), (tile_id, tilename) )
-
+    
+    def inside(self, x, y, z):
+        return (  (x < self.xdim) and (x >= 0 ) 
+                and  ( y < self.ydim) and (y >= 0)
+                and (z < self.zdim) and (z>= 0))
 
 
 class Shader0(object):
@@ -396,6 +407,12 @@ class Tile_shader(Shader0):
         glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
         glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
         
+        glUniform2i(self.uloc["mouse_pos"], *self.rr.mouse_in_grid);
+        
+        mc = abs ( (self.rr.tick % 1000)/500.0 - 1)
+        
+        glUniform4f(self.uloc["mouse_color"], mc, mc, mc, 1.0)
+        
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.rr.dispatch_txid)
         glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
@@ -458,7 +475,7 @@ class Hud(object):
             
     def init(self):
 
-        self.font = pygame.font.SysFont("sans", 16, True)
+        self.font = pygame.font.SysFont("ubuntumono", 18, False)
         self.ystep = self.font.get_linesize()
         self.txid = glGenTextures(1)
         self.hud_w = 2*self.padding + self.font.size(self.strs[-1] + "m"*25)[0]
@@ -493,7 +510,7 @@ class Hud(object):
     def update(self):
         tx, ty, tz =  self.rr.mouse_in_world
         material, tile = self.rr.gameobject.gettile((tx,ty,tz))
-        color = self.rr.getpixel(self.rr.mouseco)
+        color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
             'fps': self.rr.anim_fps,
             'gfps': self.ema_fps(),
@@ -662,7 +679,8 @@ class Rednerer(object):
         self.surface = None
         self.grid_w = self.grid_h = None
         self.mouse_in_world = (0, 0, 0)
-        self.mouseco = (0, 0)
+        self.mouse_in_grid = (100500, 100500)
+        self.mouse_in_gl = (0, 0)
         self.anim_fps = 12
         self._frame_cache = {}
         self._zeddown = zeddown
@@ -901,13 +919,18 @@ class Rednerer(object):
     def update_mouse(self):
         mx, my = pygame.mouse.get_pos()
         my = self.surface.get_height() -  my
-        self.mouseco = (mx, my)
+        self.mouse_in_gl = (mx, my)
         fbx, fby = mx + self.viewpos[0], my + self.viewpos[1]
         mtx, mty = fbx/self.Pszx, fby/self.Pszy
 
-        self.mouse_in_world = [ mtx + self.render_origin[0], 
+        mwx, mwy, mwz =  ( mtx + self.render_origin[0], 
                                 self.grid_h - mty + self.render_origin[1] - 1, # no idea where this -1 comes from. srsly.
-                                self.render_origin[2] ]
+                                self.render_origin[2] )
+        if self.gameobject.inside(mwx, mwy, mwz):
+            self.mouse_in_grid = ( mtx, self.grid_h -  mty - 1)
+        else:
+            self.mouse_in_grid = ( 100500, 100500 )
+        self.mouse_in_world = [ mwx, mwy, mwz ]
         
     def getpixel(self, posn):
         return  int(glReadPixels(posn[0], posn[1], 1, 1, GL_RGBA, 
@@ -927,6 +950,8 @@ class Rednerer(object):
         zd = self._zdtab[self._zeddown]
         for i in xrange(1-len(zd), 1): # draw starting from -zeddown zlevels and up
             # draw the map.
+            if i + zed < 0:
+                continue
             self.render_origin[2] = i + zed
             self.update_mapdata()
             falpha = 1.0
@@ -967,7 +992,7 @@ class Rednerer(object):
         
         last_animflip_ts = 0
         anim_period = 1000.0 / self.anim_fps
-        
+                
         paused = False
         finished = False
         panning = False
@@ -984,29 +1009,30 @@ class Rednerer(object):
         while not finished:
             now = pygame.time.get_ticks()
             self.last_render_time = now - last_render_ts
-            last_render_ts = now
-            
+            last_render_ts = self.tick = now
+
             if not paused:
                 if now - last_animflip_ts > anim_period:
                     frame_no += 1
                     last_animflip_ts = now
                     if frame_no > self.cutoff_frame:
                         frame_no = 0
+                        
             
             render_time = self.render(frame_no)
             
             while  True: # eat events
                 for ev in pygame.event.get():
                     if ev.type == pygame.KEYDOWN:
-                        if not self.had_input:
-                            self.had_input = True
-                            self.cheat = False
                         if ev.key == pygame.K_SPACE:
                             paused = not paused
                         elif ev.key == pygame.K_F1:
                             self.cheat = not self.cheat
                         elif ev.key == pygame.K_ESCAPE:
-                            finished = True 
+                            if self.cheat:
+                                self.cheat = False
+                            else:
+                                finished = True 
                         elif ev.key == pygame.K_PERIOD and ev.mod & 3:
                             self.zpan(-1)
                         elif ev.key == pygame.K_COMMA  and ev.mod & 3:
@@ -1036,6 +1062,9 @@ class Rednerer(object):
                             anim_period = 1000.0 / self.anim_fps
                         else:
                             print repr(ev.key), repr(ev)
+                        if not self.had_input:
+                            self.had_input = True
+                            self.cheat = False
 
                     elif ev.type == pygame.QUIT:
                         finished = True
@@ -1049,11 +1078,15 @@ class Rednerer(object):
                         if ev.button == 4: # wheel forward
                             if pygame.key.get_mods() & pygame.KMOD_CTRL:
                                 self.zoom("zoom_out", ev.pos)
+                            elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                                self.zpan(-10)
                             else:
                                 self.zpan(-1)
                         elif ev.button == 5: # wheel back
                             if pygame.key.get_mods() & pygame.KMOD_CTRL:
                                 self.zoom("zoom_in", ev.pos)
+                            elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                                self.zpan(10)
                             else:
                                 self.zpan(1)
                         elif ev.button == 3: # RMB
@@ -1066,8 +1099,8 @@ class Rednerer(object):
                     elif ev.type == pygame.MOUSEMOTION:
                         if panning:
                             self.pan(ev.rel)
-                        else:
-                            self.update_mouse()
+                        
+                        self.update_mouse()
                             
                 elapsed_ticks = pygame.time.get_ticks() - last_render_ts
                 if elapsed_ticks > render_choke:

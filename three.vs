@@ -10,6 +10,7 @@ uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h 
 uniform int dispatch_row_len;
 uniform ivec2 grid;
 uniform vec3 pszar;               // { parx, pary, psz }
+uniform ivec2 mouse_pos;
 
 in ivec2 position; 
 in int screen;
@@ -18,6 +19,7 @@ flat out vec4 blit;
 flat out vec4 fg;
 flat out vec4 bg;
 flat out float mode;
+flat out float mouse_here;
 
 void main() {
     vec2 normposn = (position + 0.5)/grid;
@@ -46,5 +48,10 @@ void main() {
     mode = insn.y;
     fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
     bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
-
+    
+    if  (mouse_pos == position) { 
+	mouse_here = 23.0;
+    } else {
+	mouse_here = 0.0;
+    }
 }
