@@ -14,12 +14,14 @@ uniform ivec2 mouse_pos;
 
 in ivec2 position; 
 in int screen;
+in uint designation;
 
 flat out vec4 blit;
 flat out vec4 fg;
 flat out vec4 bg;
-flat out float mode;
-flat out float mouse_here;
+flat out int mode;
+flat out int mouse_here;
+flat out uint des;
 
 void main() {
     vec2 normposn = (position + 0.5)/grid;
@@ -27,6 +29,7 @@ void main() {
     vec2 posn = 2.0 * pszar.xy*normposn - 1.0;
     gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
     gl_PointSize = pszar.z;
+    des = designation;
 
     uvec4 addr;
     addr = texelFetch(dispatch, ivec2( screen % dispatch_row_len, screen / dispatch_row_len ), 0 );
@@ -45,13 +48,18 @@ void main() {
     blit.xy = vec2(insn.x>>24u, (insn.x>>16u ) &0xffu)/ vec2(txsz.xy) ;
     blit.zw = 1.0 / vec2(txsz.xy) ; // for as long as we don't support tiles-smaller-than-txsz.zw
     // when we do: blit.zw = vec2( (insn.x>>8u)&0xffu,insn.x&0xffu )/vec2(txsz.xy);
-    mode = insn.y;
-    fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
-    bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
+    
+    mode = int(insn.y) + 1;
+    if ((screen & 0x3ff) == 32) { // Open space tile, provisional
+	mode = 0; 
+    } else {
+	fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
+	bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
+    }
     
     if  (mouse_pos == position) { 
-	mouse_here = 23.0;
+	mouse_here = 23;
     } else {
-	mouse_here = 0.0;
+	mouse_here = 0;
     }
 }

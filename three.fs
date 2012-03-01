@@ -9,27 +9,48 @@ uniform float final_alpha;
 uniform vec3 pszar;             // { Parx, Pary, Psz }
 uniform float darken;  // drawing lower levels.
 uniform vec4 mouse_color;
+uniform int show_hidden;
 
 flat in vec4 blit;   // fka 'tile', but zw are pre-divided with txsz.xy
 flat in vec4 fg;
 flat in vec4 bg;
-flat in float mode;
-flat in float mouse_here;
+flat in int mode;  /* -1 - no tile ; 0 - open space ; 1 - classic ; 2 - just blit */
+flat in int mouse_here;
+flat in uint des;
 
 out vec4 color;
 
 void main() {
     vec2 pc = gl_PointCoord/pszar.xy;
-    if ((pc.x > 1.0) || (pc.y > 1.0) || (blit.z == 0)) {
+    if ((pc.x > 1.0) || (pc.y > 1.0)) {
         discard;
+    }
+    
+    if ( ( show_hidden == 0) && (((des >>9u) & 1u) == 1u)) {
+	discard;
     }
     
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
     vec4 tile_color = texture2D(font, texcoords);
-    if (mode > 0) {
-	color = fg * tile_color * darken;
-    } else {
-	color = mix(tile_color * fg, bg, 1.0 - tile_color.a) * darken;
+    
+    switch (mode) {
+	case 2:
+	    color = fg * tile_color * darken;
+	    break;
+	case 1:
+	    color = mix(tile_color * fg, bg, 1.0 - tile_color.a) * darken;
+	    break;
+	case 0:
+	    color = vec4(1.0,1.0,1.0,1.0);
+	    break;
+	case -1:
+	default:
+	    discard;
+    }
+    color.a = final_alpha;
+    
+    if ((des & 7u) > 0u) {
+	color = mix(vec4(0.0, 0.0, float(des & 7u)/7.0, 1.0), color, 0.5);
     }
     
     if (mouse_here > 0) {
@@ -41,5 +62,5 @@ void main() {
 	    color = mouse_color;
 	}
     }
-    color.a = final_alpha;    
+
 }

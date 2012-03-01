@@ -53,6 +53,7 @@ class mapobject(object):
         self.txsz, self.fontdata = font
         self.maxframes = cutoff + 1
         tilesfile = fnprefix + '.tiles'
+        designationsfile = fnprefix + '.designations'
         header = file(tilesfile).read(4096)
         if not header.startswith("count_blocks:"):
             raise TypeError("Wrong trousers")
@@ -63,12 +64,14 @@ class mapobject(object):
         self.ydim *= 16
         
         if os.name == 'nt':
-            self._map_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
+            self._tiles_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
+            self._designations_fd = os.open(designationsfile, os.O_RDWR|os.O_BINARY)
         else:
-            self._map_fd = os.open(tilesfile, os.O_RDONLY)
+            self._tiles_fd = os.open(tilesfile, os.O_RDONLY)
+            self._designations_fd = os.open(designationsfile, os.O_RDWR)
 
-        self._map_mmap = mmap.mmap(self._map_fd, 0, 
-            offset = 4096, access = mmap.ACCESS_READ)
+        self._tiles_mmap = mmap.mmap(self._tiles_fd, 0, offset = 4096, access = mmap.ACCESS_READ)
+        self._designations_mmap = mmap.mmap(self._designations_fd, 0, access = mmap.ACCESS_WRITE)
 
     def parse_matsfile(self, matsfile):
         self.inorg_names = {}
@@ -233,13 +236,13 @@ class mapobject(object):
                      
         print "hashtable {}K code {}K".format(4*self.hashw*self.hashw>>10, 16*self.codew*self.codew*self.maxframes >>10)
 
-    def getmap(self, origin, size ):
+    def getmap(self, origin, size, verbose=False):
         x,y,z = origin
         w,h = size
-        rv = np.zeros((w, h), np.int32)
+        tiles = np.zeros((w, h), np.int32)
+        designations = np.zeros((w, h), np.int32)
         if x + w < 0 or y+h < 0 or x > self.xdim or y > self.ydim:
-            # black screen
-            return rv
+            return tiles, liquids
         sx = x
         left = 0
         if sx < 0:
@@ -260,24 +263,30 @@ class mapobject(object):
         if ey > self.ydim:
             bottom = self.ydim - ey
             ey = self.ydim
-        
-        zedoffs = self.xdim*self.ydim*4*z
-        yoffs = sy*self.xdim*4
-        xskip = sx*4
+                
+        static_unit_offs = self.xdim*self.ydim*z + sy*self.xdim
+        xskip = sx
         rowlen = ex-sx
         
+        if verbose:
+            print "static_unit_offs {} xskip {} rowlen {}".format(static_unit_offs, xskip,  rowlen)
+        
         for rownum in xrange( ey - sy ):
-            offs = zedoffs + yoffs + rownum*self.xdim*4 + xskip
-            if offs < 0:
-                raise ValueError("offs {} request {}:{}:{} {}x{}".format(offs, origin[0], origin[1], origin[2], size[0], size[1]))
-            buf = buffer(self._map_mmap, offs, rowlen*4)
-            rv[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)        
-        return rv
+            unit_offs =  static_unit_offs + rownum*self.xdim + xskip 
+            if unit_offs < 0:
+                raise ValueError("offs {} request {}:{}:{} {}x{}".format(unit_offs, origin[0], origin[1], origin[2], size[0], size[1]))
+
+            buf = buffer(self._tiles_mmap, 4*unit_offs, rowlen*4)
+            tiles[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)
+            buf = buffer(self._designations_mmap, 4*unit_offs, rowlen*4)
+            designations[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)
+        return tiles, designations
         
     def gettile(self, posn):
         x, y, z = posn
-        offs = self.xdim*self.ydim*4*z + y*self.xdim*4 + x*4
-        hash = struct.unpack("<I", self._map_mmap[offs:offs+4])[0]
+        offs = 4*(self.xdim*self.ydim*z + y*self.xdim + x)
+        designation = struct.unpack("<I", self._designations_mmap[offs:offs+4])[0]
+        hash = struct.unpack("<I", self._tiles_mmap[offs:offs+4])[0]
         tile_id = hash & 0x3ff
         mat_id = ( hash >> 10 ) & 0x3ff
         try:
@@ -294,7 +303,7 @@ class mapobject(object):
                 matname = self.plant_names.get(mat_id, None)
                 break
         
-        return ( (mat_id, matname), (tile_id, tilename) )
+        return ( (mat_id, matname), (tile_id, tilename), designation )
     
     def inside(self, x, y, z):
         return (  (x < self.xdim) and (x >= 0 ) 
@@ -338,6 +347,8 @@ class Shader0(object):
             
         for name, loc in self.aloc.items():
             glBindAttribLocation(program, loc, name)
+            if self.loud:
+                print "  {0}: name={1} loc={2}".format('-', name, loc)
         #glBindFragDataLocation(program, 0, 'color')
 
         glLinkProgram(program)
@@ -358,6 +369,8 @@ class Shader0(object):
             self.uloc[name] = loc
             if self.loud:
                 print "  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc)
+        
+        
         
         self.program = program
 
@@ -388,7 +401,8 @@ class Tile_shader(Shader0):
         self.rr = renderer        
         self.aloc = {
             'position': 0, 
-            'screen': 1
+            'screen': 1,
+            'liquids': 2
         }
 
     def update_state(self, falpha=1.0, darken=1.0):
@@ -406,6 +420,7 @@ class Tile_shader(Shader0):
         
         glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
         glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
+        glUniform1i(self.uloc["show_hidden"], self.rr.show_hidden);
         
         glUniform2i(self.uloc["mouse_pos"], *self.rr.mouse_in_grid);
         
@@ -430,7 +445,52 @@ class Tile_shader(Shader0):
         
         self.rr.grid_vbo.bind()
         glVertexAttribIPointer(self.aloc["position"], 2, GL_SHORT, 0, self.rr.grid_vbo )
+        
+        self.rr.liquids_vbo.bind()
+        glVertexAttribIPointer(self.aloc["liquids"], 1, GL_INT, 0, self.rr.liquids_vbo )
+        #print len(self.rr.liquids_vbo), self.rr.grid_w*self.rr.grid_h
 
+class Designation(object):
+    def __init__(self, u32):
+        self.level              =  u32 &   7
+        self.pile               = (u32 >>  3) & 1
+        self.dig                = (u32 >>  4) & 7
+        self.smooth             = (u32 >>  7) & 3
+        self.hidden             = (u32 >>  9) & 1
+        self.geolayer           = (u32 >> 10) & 15
+        self.light              = (u32 >> 14) & 1
+        self.subter             = (u32 >> 15) & 1
+        self.outside            = (u32 >> 16) & 1
+        self.biome              = (u32 >> 17) & 15
+        self.ltype              = (u32 >> 21) & 1
+        self.aquifer            = (u32 >> 22) & 1
+        self.rained             = (u32 >> 23) & 1
+        self.traffic            = (u32 >> 24) & 3
+        self.flow_forbid        = (u32 >> 26) & 1
+        self.liquid_static      = (u32 >> 27) & 1
+        self.feat_local         = (u32 >> 28) & 1
+        self.feat_global        = (u32 >> 29) & 1
+        self.stagnant           = (u32 >> 30) & 1
+        self.salt               = (u32 >> 31) & 1
+        
+    def __str__(self):
+        rv = []
+        if self.level > 0:
+            rv.append([ '', 'stagnant'][self.stagnant])
+            rv.append([ '', 'salt'][self.salt])
+            rv.append(['water', 'magma'][self.ltype])
+            rv.append('level {}'.format(self.level))
+        rv.append(['dark', 'light'][self.light])
+        rv.append(['inside', 'outside'][self.outside])
+        rv.append(['', 'subter'][self.subter])
+        rv.append(['', 'rained'][self.light])
+        rv.append(['', 'aquifer'][self.aquifer])
+        rv.append(['', 'hidden'][self.hidden])
+        
+        return ' '.join(rv)
+
+        
+        
 
 class Hud_shader(Shader0):
     def __init__(self, hud_object, loud=False):
@@ -466,10 +526,10 @@ class Hud(object):
         # same for material   = 23
         # max chars in hud: 31
         self.strs = (
-            "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d}",
+            "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d} color: #{color:08x}",
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
             "x={tx:03d} y={ty:03d} z={z:03d}  ",
-            "color: #{color:08x}",
+            "{designation}",
             "mat:  {mat} ({mat_id})",
             "tile: {tile} ({tile_id})" )
             
@@ -509,7 +569,7 @@ class Hud(object):
 
     def update(self):
         tx, ty, tz =  self.rr.mouse_in_world
-        material, tile = self.rr.gameobject.gettile((tx,ty,tz))
+        material, tile, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
             'fps': self.rr.anim_fps,
@@ -536,6 +596,7 @@ class Hud(object):
             'fbosz': self.rr.fbo.size,
             'fbovsz': self.rr.fbo.viewsize,
             'fbovp': self.rr.fbo.viewpos,
+            'designation': Designation(designation),
             'win': self.rr.surface.get_size(), }
 
         self.hudsurf.fill(self.bg)
@@ -642,10 +703,40 @@ class Fbo(object):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glViewport(0, 0, self.viewsize[0], self.viewsize[1])
 
-class frame_cache_item(object):
-    def __init__(self,s):
-        self.screen = s
-        self.used = 0
+
+class fc_item(object):
+    def __init__(self, age, items):
+        self.age = age
+        self.items = items
+        
+class Framecache(object):
+    def __init__(self, depth):
+        self.depth = depth
+        self.cache = {}
+        self.getc = 0
+    
+    def __str__(self):
+        rv = ""
+        keys = self.cache.keys()
+        keys.sort(lambda x,y: cmp(self.cache[x].used, self.cache[y].used))
+
+        for k in keys:
+            i = self.cache[k]
+            rv += "{k[0]}:{k[1]}:{k[2]} {k[3]}x{k[3]} used={u}\n".format(k=k, u=i.used)
+        return rv
+    
+    def get(self, key):
+        self.getc += 1
+        if key in self.cache:
+            return self.cache[key].items
+        raise KeyError
+        
+    def put(self, key, *items):
+        keys = self.cache.keys()
+        if len(keys) > self.depth:
+            keys.sort(lambda x,y: cmp(self.cache[x].age, self.cache[y].age))
+            del self.cache[keys[0]]
+        self.cache[key] = fc_item(self.getc, items)
 
 class Rednerer(object):
     _zdtab = [  # darkening coefficients for drawing multiple z-levels.
@@ -682,11 +773,13 @@ class Rednerer(object):
         self.mouse_in_grid = (100500, 100500)
         self.mouse_in_gl = (0, 0)
         self.anim_fps = 12
-        self._frame_cache = {}
+        self._frame_cache = Framecache(16)
         self._zeddown = zeddown
         self.cheat = True
         self.had_input = False
-
+        self.crap = False
+        self.show_hidden = 1
+        
         self.recenter()
 
         pygame.font.init()
@@ -742,6 +835,7 @@ class Rednerer(object):
         self.hud.init()
         
         self.screen_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
+        self.liquids_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
         self.grid_vbo = vbo.VBO(None, usage=GL_STATIC_DRAW)
         self._txids = glGenTextures(3)
         self.dispatch_txid, self.blitcode_txid, self.font_txid = self._txids
@@ -764,18 +858,18 @@ class Rednerer(object):
         self.dispatch_txid = self.blitcode_txid = self.font_txid = self._txids = None
         self.opengl_initialized = False
 
-    def update_mapdata(self):
+    def update_mapdata(self, verbose = False):
         fc_key = tuple(self.render_origin + [self.grid_w, self.grid_h])
-        if fc_key not in self._frame_cache:
-            keys = self._frame_cache.keys()
-            if len(keys) > 16:
-                keys.sort(lambda x, y: cmp(self._frame_cache[x].used, self._frame_cache[y].used))
-                del self._frame_cache[keys[0]]
-                
-            self._frame_cache[fc_key] = frame_cache_item(self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h)))
+        try:
+            if verbose:
+                raise KeyError
+            screen, liquids = self._frame_cache.get(fc_key)
+        except KeyError:
+            screen, liquids = self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h), verbose)
+            self._frame_cache.put(fc_key, screen, liquids)
             
-        self.screen_vbo.set_array(self._frame_cache[fc_key].screen)
-        self._frame_cache[fc_key].used += 1
+        self.screen_vbo.set_array(screen)
+        self.liquids_vbo.set_array(liquids)
 
     def update_textures(self):
         self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
@@ -953,14 +1047,14 @@ class Rednerer(object):
             if i + zed < 0:
                 continue
             self.render_origin[2] = i + zed
-            self.update_mapdata()
+            self.update_mapdata(i==0 and self.crap)
             falpha = 1.0
 
             self.mapshader.update_state(falpha, zd[-i])
             glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
 
         self.mapshader.cleanup()
-        
+        self.crap = False
         self.fbo.compose() # blits drawn map into the default FBO.
         
         self.hud.draw()
@@ -1060,6 +1154,8 @@ class Rednerer(object):
                             else:
                                 self.anim_fps /= 2
                             anim_period = 1000.0 / self.anim_fps
+                        elif ev.key == pygame.K_F2:
+                            self.crap = True
                         else:
                             print repr(ev.key), repr(ev)
                         if not self.had_input:
