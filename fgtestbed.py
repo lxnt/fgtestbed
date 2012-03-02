@@ -242,7 +242,7 @@ class mapobject(object):
         tiles = np.zeros((w, h), np.int32)
         designations = np.zeros((w, h), np.int32)
         if x + w < 0 or y+h < 0 or x > self.xdim or y > self.ydim:
-            return tiles, liquids
+            return tiles, designations
         sx = x
         left = 0
         if sx < 0:
@@ -904,8 +904,13 @@ class Rednerer(object):
         if winsize: # if we have to reset mode, likely on resize
             oldsize = self.surface.get_size()
             self.set_mode(winsize)
+            delta_w = oldsize[0] - winsize[0]
+            delta_h = oldsize[1] - winsize[1]
             
         window = self.surface.get_size()
+        
+        orig_pszxy = (self.Pszx, self.Pszy)
+        orig_grid_h = self.grid_h
         
         self.Pszx = int(self.Psz * self.Parx)
         self.Pszy = int(self.Psz * self.Pary)
@@ -922,18 +927,21 @@ class Rednerer(object):
 
         if delta_w != 0 or delta_h != 0: # aha, a resize.
             # center of map viewport should be kept stationary wrt whole display
-            if delta_gw != 0:
-                self.render_origin[0] -= delta_gw/2
-                self.viewpos[0] = self.Pszx
-            if delta_gh != 0:
-                self.render_origin[0] -= delta_gh/2
-                self.viewpos[1] = self.Pszy
+            self.pan((-delta_w/2, -delta_h/2))
+
         elif zoompoint:
             # the zoompoint should be kept stationary wrt whole display
-            self.viewpos = [ self.Pszx, self.Pszy ]
+            # zoom out: delta_psz is negative, render_origin decreases
+            
+            delta_pszx, delta_pszy =  orig_pszxy[0] - self.Pszx, orig_pszxy[1] - self.Pszy
+            mtx, mty = zoompoint[0]/orig_pszxy[0], zoompoint[1]/orig_pszxy[1]
+            mty = orig_grid_h - mty
+            delta_vp =  mtx * delta_pszx, mty * delta_pszy
+            self.pan(delta_vp)
+            self.update_mouse()
         else: 
-            # center of map viewport should be kept stationary wrt whole display
-            self.viewpos = [ self.Pszx, self.Pszy ]
+            # if not zoom and not resize?
+            pass
 
     def pan(self, rel):
         vpx, vpy = self.viewpos
