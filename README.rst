@@ -23,7 +23,7 @@ On the system site, fgtestbed requires OpenGL 3.0/GLSL 1.30 capable hardware and
 On the Dwarf Fortress side, it requires *some* installation of version 31.25. 
 Standard and custom tile sets and graphics sets are supported. 
 
-A special version of print_mode:shader renderer is required for generating map dumps. You can get it `here <http://dffd.fuck.net>`_ (linux only). When running DF with it, press F12 to generate dump. Resulting file is called 'fugr.dump'. 
+A special version of print_mode:shader renderer is required for generating map dumps. You can get it `here <http://dffd.wimbli.com/file.php?id=5763>`_ (linux only). When running DF with it, press F12 to generate dump. Resulting file is called 'fugr.dump'. 
 
 
 Graphics raws format
