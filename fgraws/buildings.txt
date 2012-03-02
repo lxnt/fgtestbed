@@ -1,0 +1,172 @@
+#
+# Building definitions
+#
+# Custom building definitions as in 'building_custom.txt' are understood.
+# 
+#
+# condition tokens:
+#  
+# [c:<cond>[:<cond>[:<cond>] ... ] 
+#
+# <cond>: one of wood,stone,metal,artifact,masterwork,exceptional,superior,fine,well,standard
+#
+# [state:]
+# traps: on/off aka ready/needs_reload
+# bridge, floodgate: closed/closing/opening/open
+# axles, gear assembly, waterwheel, winmill: powered|unpowered
+# for stuff that need architecture: designated, designed
+# for siege engines and screwpumps: north,east,west,south
+# for workshops: active/inactive
+# construction_stage: 0-3
+#  
+# on, ready, active, powered are synonyms 
+# off, needs_reload, inactive, unpowered are synonyms
+
+
+
+#[import:/building_custom.txt]
+
+[BUILDING:AnimalTrap]
+    [cel:15:7]
+[BUILDING:ArcheryTarget]
+[BUILDING:Armorstand]
+    [cel:std:14:0]
+[BUILDING:AxleHorizontal]
+[BUILDING:AxleVertical]
+    [cel:std:9:0]
+[BUILDING:BarsFloor]
+[BUILDING:BarsVertical]
+[BUILDING:Bed]
+    [cel:std:9:14]
+[BUILDING:Box]
+    [cel:std:8:5]
+[BUILDING:Bridge]
+[BUILDING:Cabinet]
+    [cel:std:3:14]
+[BUILDING:Cage]
+[BUILDING:Chain]
+    [cel:std:5:1]
+[BUILDING:Chair]
+[BUILDING:Coffin]
+    [cel:std:0:3]
+[BUILDING:Door]
+    [cel:std:5:12] # [c:none]
+    [c:stone]
+    [cel:std:5:12]
+    [c:metal]
+    [cel:std:8:13]
+    [c:wood]
+    [cel:std:10:11]
+[BUILDING:GearAssembly]
+    [cel:std:15:0]
+[BUILDING:GrateFloor]
+    [cel:std:3:2]
+[BUILDING:GrateWall]
+    [cel:std:7:13]
+[BUILDING:Hatch]
+    [state:open]
+    [state:closed]
+    [cel:std:11:09]
+[BUILDING:Hive]
+    [cel:std:6:1]
+[BUILDING:FarmPlot]
+[BUILDING:Floodgate]
+    [cel:std:8:5]
+[BUILDING:Nest]
+    [cel:std:8:0]
+[BUILDING:NestBox]
+    [cel:std:8:0]
+[BUILDING:RoadDirt]
+    [cel:std:14:7]
+[BUILDING:RoadPaved]
+    [cel:std:11:2]
+[BUILDING:ScrewPump]
+[BUILDING:Slab]
+    [cel:15:14]
+[BUILDING:Shop]
+[BUILDING:Statue]
+    [cel:std:10:14]
+[BUILDING:Support]
+    [cel:std:9:4]
+[BUILDING:Table]
+    [cel:std:1:13]
+[BUILDING:TractionBench]
+[BUILDING:TradeDepot]
+
+[BUILDING:Weapon]
+[BUILDING:Weaponrack]
+[BUILDING:Wagon]
+[BUILDING:WaterWheel]
+[BUILDING:Well]
+    [cel:std:9:0]
+[BUILDING:Windmill]
+[BUILDING:WindowGlass]
+[BUILDING:WindowGem]
+[BUILDING_SIEGEENGINE:Ballista]
+[BUILDING_SiegeEngine:Catapult]
+[BUILDING_Trap:Lever]
+    [state:off]
+    [cel:std:5:9]
+    [state:on]
+    [cel:std:2:10]
+[BUILDING_Trap:PressurePlate]
+    [cel:std:14:5]
+[BUILDING_Trap:CageTrap]
+    [cel:std:14:5]
+[BUILDING_Trap:StoneFallTrap]
+    [cel:std:14:5]
+[BUILDING_Trap:WeaponTrap]
+    [cel:std:14:5]
+    
+[BUILDING:Stockpile]
+[BUILDING:Civzone]
+
+
+[BUILDING_FURNACE:WoodFurnace]
+[BUILDING_FURNACE:Smelter]
+[BUILDING_FURNACE:GlassFurnace]
+[BUILDING_FURNACE:Kiln]
+[BUILDING_FURNACE:MagmaSmelter]
+[BUILDING_FURNACE:MagmaGlassFurnace]
+[BUILDING_FURNACE:MagmaKiln]
+[BUILDING_FURNACE:Custom]
+
+[BUILDING_WORKSHOP:Carpenters]
+[BUILDING_WORKSHOP:Farmers]
+[BUILDING_WORKSHOP:Masons]
+[BUILDING_WORKSHOP:Craftdwarfs]
+[BUILDING_WORKSHOP:Jewelers]
+[BUILDING_WORKSHOP:MetalsmithsForge]
+[BUILDING_WORKSHOP:Bowyers]
+[BUILDING_WORKSHOP:Mechanics]
+[BUILDING_WORKSHOP:Siege]
+[BUILDING_WORKSHOP:Butchers]
+[BUILDING_WORKSHOP:Leatherworks]
+[BUILDING_WORKSHOP:Tanners]
+[BUILDING_WORKSHOP:Clothiers]
+[BUILDING_WORKSHOP:Fishery]
+[BUILDING_WORKSHOP:Still]
+[BUILDING_WORKSHOP:Loom]
+[BUILDING_WORKSHOP:Quern]
+    [cel:std:9:0]
+
+[BUILDING_WORKSHOP:Kennels]
+[BUILDING_WORKSHOP:Kitchen]
+[BUILDING_WORKSHOP:Ashery]
+[BUILDING_WORKSHOP:Dyers]
+[BUILDING_WORKSHOP:Millstone]
+    [dim:1:1] # implied in fact
+    [cel:std:9:0]
+
+[BUILDING_WORKSHOP:Tools
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#

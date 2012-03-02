@@ -1,0 +1,154 @@
+[object:full_graphics]
+#
+# Terminology.
+#   TILE refers to and only to logical tiles the map is composed from.
+#        These are walls, floors, open space, etc.
+#	 Tile names are taken from df/tiletype.h (xml/df.tile-types.xml)
+#
+#   CEL refers to and only to a graphical representation, be it a single
+#        image or an animated sequence.
+# 
+#
+# 'std' is the name of predefined 16x16 'font'
+# anything after coordinates is considered effects
+# undefined effects are ignored
+#
+# Tile definition token [tile:<tile name>[:<cel def]]
+#   permitted tokens under it: [cel]
+#   
+# Cel definition token:
+#   [cel:none] - do not draw anything there (open space, etc.)  
+#   [cel:<blitdef>] - shortcut for [cel][blit:<blitdef]
+#
+#   permitted tokens under it: [blit] [blend] [color] [glow] [key]
+#
+#
+# currently supported effect tokens:
+#
+# [color:<tr,ipl,et>] - classic fg,bg,br. 
+#  Use either numbers, or fg,bg,br literals,
+#  they stand for material's DISPLAY_COLOR values
+#  see tilesets.txt for examples.
+#   
+# [import:path] makes sure named file is processed at this point.
+# relative paths are relative to the current file
+# absolute paths point to raw/objects directory.
+#
+# [material:class:token] applies materials of class 'class',
+#  that have token 'token' in their definition to the 
+#  tilesets listed below. 
+#
+# Material classes:
+#   inorganic
+#   plant
+#   none : none (or, more precisely, any) material, used to define
+#      material-unbound tiles.
+#
+# Examples:
+#  [material:inorganic:SOIL] - soils
+#  [material:inorganic:SEDIMENTARY]       }
+#  [material:inorganic:IGNEOUS_EXTRUSIVE] } layer
+#  [material:inorganic:IGNEOUS_INTRUSIVE] } stone
+#  [material:inorganic:METAMORPHIC]       }
+#    or
+#  [material:inorganic:SEDIMENTARY|IGNEOUS_EXTRUSIVE|IGNEOUS_INTRUSIVE|METAMORPHIC]
+#
+#  minerals are defined like that:
+#
+#  [material:inorganic:IS_STONE:!SEDIMENTARY&!IGNEOUS_EXTRUSIVE&!IGNEOUS_INTRUSIVE&!METAMORPHIC]
+#
+#    or
+#
+#  [material:inorganic:ENVIRONMENT|ENVIRONMENT_SPEC|DEEP_SPECIAL|DEEP_SURFACE]
+#
+#   DEEP_SPECIAL selects adamantine, DEEP_SURFACE - slade
+#
+#
+#  [material:inorganic:WOOD]
+#  [material:inorganic:IS_METAL]
+#  [material:inorganic:IS_GEM]
+#
+#  [material:plant:GRASS]
+#  [material:plant:TREE]
+#  [material:plant:SHRUB_TILE]
+#    or
+#  [material:plant:!GRASS&!TREE]
+#
+# Literal material name can also be used:
+#  [material:inorganic:CERAMIC_PORCELAIN]
+#
+#  
+#  Application consists mostly of taking material's 
+#  DISPLAY_COLOR, processing it with any effects defined
+#  for the tile and emitting the result as blit code.
+#
+# The following tokens are permitted under [material] one:
+#  [emit:<tsname|bsname>]
+#  [tile:<literal_tilename>] (as in tileset def)
+#
+# On the top level, [tile:tilename] explicitly defines a tile. 
+# It will be drawn as defined regardless of what material 
+# the game assigns to it.
+#
+# Buildings definition: see buildings.txt
+#
+
+[import:tilesets.txt]
+[import:buildings.txt]
+#[import:items.txt] not defined yet
+
+
+# emit tiles from tilesets
+[material:inorganic:is_stone]
+ [emit:stonewalls]
+ [emit:smoothwalls]
+ [emit:constructedwalls]
+
+[material:inorganic:is_stone]
+ [emit:stonewalls]
+ [emit:smoothwalls]
+ [emit:constructedwalls]
+
+[material:inorganic:metal]
+ [emit:constructedwalls]
+ 
+[material:inorganic:wood]
+ [emit:constructedwalls]
+
+[material:inorganic:gem]
+ [emit:stonewalls]
+ [emit:smoothwalls]
+
+[material:plant:shrub]
+ [emit:vegetation]
+
+[material:plant:grass]
+ [emit:grass]
+
+[material:plant:tree]
+  [emit:vegetation]
+  
+
+[tileset:nonmat]
+    [tile:Ashes1][cel:std:2:15]
+    [tile:Ashes2][cel:std:3:15]
+    [tile:Ashes3][cel:std:3:15]
+    [tile:Campfire][cel:std:0:0]
+    [tile:Chasm][cel:none]
+    [tile:Driftwood][cel:std:0:15]
+    [tile:EeriePit][cel:std:0:0]
+    [tile:Fire][cel:std:0:0]
+    [tile:GlowingBarrier][cel:std:0:0]
+    [tile:GlowingFloor][cel:std:0:0]
+    [tile:MagmaFlow][cel:std:0:0]
+    [tile:MurkyPool][cel:std:0:0]
+    [tile:OpenSpace][cel:none]
+    [tile:RampTop][cel:std:0:0]
+    [tile:SemiMoltenRock][cel:std:0:11]
+    [tile:Void][cel:none]
+    [tile:Waterfall][cel:none]
+
+[material:none]
+    [emit:nonmat]
+
+

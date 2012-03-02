@@ -3,7 +3,7 @@ Raws format:
  - anything after closing ] is ignored
  - [DEF with missing defname is ignored
 
-[OBJECT:FULL_GRAPHICS]
+[OBJECT:DO_NOT_PARSE:FULL_GRAPHICS]
 
 [TILE_PAGE:curses16sq]
     [FILE:png/curses_square_16x16.png]

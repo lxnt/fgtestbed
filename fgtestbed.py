@@ -44,48 +44,81 @@ CONTROLS = """
 
 
 class mapobject(object):
-    def __init__(self, font, matiles, fnprefix, apidir='', cutoff=127):
+    def __init__(self, font, matiles, dumpfname, apidir='', cutoff=127):
         self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
         self.building_t = raw.DfapiEnum(apidir, 'building_type')
         
-        self.parse_matsfile(fnprefix + '.materials')
+        self.parse_dump(dumpfname)
         self.assemble_blitcode(matiles, cutoff)
         self.txsz, self.fontdata = font
         self.maxframes = cutoff + 1
-        tilesfile = fnprefix + '.tiles'
-        designationsfile = fnprefix + '.designations'
-        header = file(tilesfile).read(4096)
-        if not header.startswith("count_blocks:"):
-            raise TypeError("Wrong trousers")
-        l, unused = header.split("\n", 1)
-        un, x, y, z = l.split(':')
-        self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
-        self.xdim *= 16
-        self.ydim *= 16
-        
+
         if os.name == 'nt':
-            self._tiles_fd = os.open(tilesfile, os.O_RDONLY|os.O_BINARY)
-            self._designations_fd = os.open(designationsfile, os.O_RDWR|os.O_BINARY)
+            self._map_fd = os.open(dumpfname, os.O_RDONLY|os.O_BINARY)
         else:
-            self._tiles_fd = os.open(tilesfile, os.O_RDONLY)
-            self._designations_fd = os.open(designationsfile, os.O_RDWR)
+            self._map_fd = os.open(dumpfname, os.O_RDONLY)
 
-        self._tiles_mmap = mmap.mmap(self._tiles_fd, 0, offset = 4096, access = mmap.ACCESS_READ)
-        self._designations_mmap = mmap.mmap(self._designations_fd, 0, access = mmap.ACCESS_WRITE)
+        self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, offset = self.tiles_offset, access = mmap.ACCESS_READ)
+        self._designations_mmap = mmap.mmap(self._map_fd, self.designations_size, offset = self.designations_offset, access = mmap.ACCESS_READ)
 
-    def parse_matsfile(self, matsfile):
+    def parse_dump(self, dumpfname):
         self.inorg_names = {}
         self.inorg_ids = {}
         self.plant_names = {}
         self.plant_ids = {}
-        for l in file(matsfile):
-            f = l.split()
-            if f[1] == 'INORG':
-                self.inorg_names[int(f[0])] = ' '.join(f[2:])
-                self.inorg_ids[' '.join(f[2:])] = int(f[0])
-            elif f[1] == 'PLANT':
-                self.plant_names[int(f[0])] = ' '.join(f[2:])
-                self.plant_ids[' '.join(f[2:])] = int(f[0])
+    
+        dumpf = file(dumpfname)
+
+        header = dumpf.read(4096).split('\n')
+        
+        l = header.pop(0)
+        if not l.startswith("blocks:"):
+            raise TypeError("Wrong trousers " + l )
+        x, y, z = l[7:].strip().split(':')
+        self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
+        self.xdim *= 16
+        self.ydim *= 16
+        
+        l = header.pop(0)
+        if not l.startswith("tiles:"):
+            raise TypeError("Wrong trousers " + l )
+        self.tiles_offset, self.tiles_size = map(int, l[6:].split(':'))
+        
+        l = header.pop(0)
+        if not l.startswith("designations:"):
+            raise TypeError("Wrong trousers " + l )
+        self.designations_offset, self.designations_size = map(int, l[13:].split(':'))
+        
+        l = header.pop(0)        
+        if not l.startswith("effects:"):
+            raise TypeError("Wrong trousers " + l )
+        self.effects_offset = int(l[8:])
+        
+        lines = dumpf.read(self.tiles_offset).split("\n")
+        dumpf.seek(self.effects_offset)
+        lines.append('section:effects')
+        lines += dumpf.read().split("\n")
+        
+        sections = [ 'materials', 'buildings', 'building_defs', 'constructions', 'effects', 'units' ]
+        section = None
+        for l in lines:
+            if l == '':
+                continue
+            if l.startswith('section:'):
+                unused, section = l.split(':')
+                section = section.lower()
+                if section not in sections:
+                    section = None
+                continue
+            if section == 'materials':
+                print l
+                f = l.split()
+                if f[1] == 'INORG':
+                    self.inorg_names[int(f[0])] = ' '.join(f[2:])
+                    self.inorg_ids[' '.join(f[2:])] = int(f[0])
+                elif f[1] == 'PLANT':
+                    self.plant_names[int(f[0])] = ' '.join(f[2:])
+                    self.plant_ids[' '.join(f[2:])] = int(f[0])
 
     def assemble_blitcode(self, mats, cutoff):
         # all used data is available before first map frame is to be
@@ -1234,7 +1267,7 @@ if __name__ == "__main__":
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset from")
-    ap.add_argument('dumpfx', metavar="dump-prefix", help="dump name prefix (foobar in foobar.mats/foobar.tiles)")
+    ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="raws dirs to parse")
     ap.add_argument('--loud', action='store_true', help="spit lots of useless info")
     ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
@@ -1248,7 +1281,7 @@ if __name__ == "__main__":
     
     mo = mapobject( font = pageman.get_album(),
                     matiles = matiles,
-                    fnprefix = pa.dumpfx, 
+                    dumpfname = pa.dump, 
                     cutoff = cutoff)
     loud = ()
     if pa.loud:

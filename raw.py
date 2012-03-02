@@ -755,92 +755,132 @@ class TSParser(Rawsparser0):
     def get(self):
         self.mats.append(self.mat)
         return self.mats
-
+   
 def FGParser(Rawsparser0):
     """ not functional yet """
     def __init__(self):
+        self.effects = {}
+        self.tilesets = {}
+        self.emits = {}
+        self.matless_tiles = {}
+        
         self.fgmat = None
         self.fgmats = []
         self.fgtile = None
 
     def parse_tag(self, name, tail):
         if name == 'OBJECT':
-            if tail[0] not in ['FULL_GRAPHICS']:
+            if tail[0].upper() not in ['FULL_GRAPHICS']:
                 raise StopIteration
-            self.otype = tail[0]
+            self.otype = tail[0].upper()
             return
-
-        if self.otype == 'FULL_GRAPHICS':
-            if name == 'TILEPAGE':
-                if self.page is not None:
-                    self.pages[self.page.name] = self.page
-                self.page = Tilepage(tail[0])
-                self.fg_state = 'tilepage'
-                return
-            elif name == 'MAT':
-                self.fg_state = 'material'
-                self.fgmats.append(self.fgmat)
-                self.fgmat = mat_stub(self.page_name, name = tail[0], tiles = [])
-                return
-            elif name == 'TILE':
-                self.fg_state = 'tiledef'
-                self.fgmat.tiles.append(self.tile)
-                self.tile = mat_stub(self.page_name, name = tail[0], frames = [])
-                return
-            if self.fg_state == 'tilepage':
-                if tag == 'FILE':
-                    self.page.file = tail[1]
-                elif tag == 'TILE_DIM':
-                    self.page.tdim = (int(tail[1]), int(tail[2]))
-                elif tag == 'PAGE_DIM':
-                    self.page.pdim = (int(tail[1]), int(tail[2]))
-                elif tag == 'DEF':
-                    if f[3] == '':
-                        return
-                    elif len(tail) == 4:
-                        self.page.defs[tail[3]] = (int(tail[1]), int(tail[2]))
-                    elif len(tail) == 3:
-                        idx = int(f[1])
-                        s = idx % self.page.pdim[1]
-                        t = idx / self.page.pdim[0]
-                        self.page.defs[tail[2]] = ( s, t )
+        
+        if name == 'TILESET':
+            self.state = 'tileset'
+            self.name = tail[0].upper()
+            self.tilesets[self.name] = {}
+            return
+        elif name =='EFFECT':
+            self.state = 'effect'
+            self.name = tail[0].upper()
+            self.tilesets[self.name] = {}
+            return
+        elif name == 'BUILDING':
+            self.state = 'building'
+            self.name = tail[0].upper()
+            self.buildings[self.name] = {}
+            return
+        elif name == 'BUILDING_SIEGEENGINE':
+            self.state = 'siege'
+            self.name = tail[0].upper()
+            self.siege[self.name] = {}
+            return
+        elif name == 'BUILDING_FURNACE':
+            self.state = 'furnace'
+            self.name = tail[0].upper()
+            self.furnaces[self.name] = {}
+            return
+        elif name == 'BUILDING_WORKSHOP':
+            self.state = 'workshop'
+            self.name = tail[0].upper()
+            self.workshops[self.name] = {}
+            return
+        elif name == 'TILEPAGE':
+            if self.page is not None:
+                self.pages[self.page.name] = self.page
+            self.page = Tilepage(tail[0])
+            self.fg_state = 'tilepage'
+            return
+        elif name == 'MATERIAL':
+            self.state = 'emit'
+            self.fgmats.append(self.fgmat)
+            self.fgmat = mat_stub(self.page_name, name = tail[0], tiles = [])
+            return
+        elif name == 'TILE':
+            self.fg_state = 'tiledef'
+            self.fgmat.tiles.append(self.tile)
+            self.tile = mat_stub(self.page_name, name = tail[0], frames = [])
+            return
+        elif name == 'CEL':
+            self.fg_state = 'celdef'
+            self.fgmat.tiles.append(self.tile)
+            self.tile = mat_stub(self.page_name, name = tail[0], frames = [])
+            return
+            
+        if self.fg_state == 'tilepage':
+            if tag == 'FILE':
+                self.page.file = tail[1]
+            elif tag == 'TILE_DIM':
+                self.page.tdim = (int(tail[1]), int(tail[2]))
+            elif tag == 'PAGE_DIM':
+                self.page.pdim = (int(tail[1]), int(tail[2]))
+            elif tag == 'DEF':
+                if f[3] == '':
+                    return
+                elif len(tail) == 4:
+                    self.page.defs[tail[3]] = (int(tail[1]), int(tail[2]))
+                elif len(tail) == 3:
+                    idx = int(f[1])
+                    s = idx % self.page.pdim[1]
+                    t = idx / self.page.pdim[0]
+                    self.page.defs[tail[2]] = ( s, t )
+                else:
+                    raise ValueError("Incomprehensible DEF")
+        elif self.fg_state == 'material':
+            pass
+        elif self.fg_state == 'tiledef':
+            if name == 'BLIT':
+                """ revised blitdef: 
+                  [BLIT:args]
+                  args: 
+                    one of:
+                      defname
+                      cel_index
+                      cel_s:cel_t
+                  pagenames are implicit for now.
+                """
+                
+                try:
+                    tmp = int(tail[0])
+                except ValueError:
+                    s, t = self.page.defs[tail[0]]
+                else:
+                    if len(tail) == 1:
+                        s = tmp % self.page.pdim[0]
+                        t = tmp / self.page.pdim[1]
                     else:
-                        raise ValueError("Incomprehensible DEF")
-            elif self.fg_state == 'material':
-                pass
-            elif self.fg_state == 'tiledef':
-                if name == 'BLIT':
-                    """ revised blitdef: 
-                      [BLIT:args]
-                      args: 
-                        one of:
-                          defname
-                          cel_index
-                          cel_s:cel_t
-                      pagenames are implicit for now.
-                    """
-                    
-                    try:
-                        tmp = int(tail[0])
-                    except ValueError:
-                        s, t = self.page.defs[tail[0]]
-                    else:
-                        if len(tail) == 1:
-                            s = tmp % self.page.pdim[0]
-                            t = tmp / self.page.pdim[1]
-                        else:
-                            s = tmp
-                            t = int(tail[1])
-                    self.tile.frames.append(('blit', self.page.name, s, t))
-                elif tag == 'BLEND':
-                    self.tile.frames.append(('blend', self.parse_rgba(tail[1])))
-                elif tag == 'GLOW':
-                    self.tile.frames.append(('glow', self.parse_rgba(tail[1])))
-                elif tag == 'KEY':
-                    frameno = int(tail[1])
-                    self.tile.frames.append(('key', frameno))
-                    if self.maxframeno < frameno:
-                        self.maxframeno = frameno
+                        s = tmp
+                        t = int(tail[1])
+                self.tile.frames.append(('blit', self.page.name, s, t))
+            elif tag == 'BLEND':
+                self.tile.frames.append(('blend', self.parse_rgba(tail[1])))
+            elif tag == 'GLOW':
+                self.tile.frames.append(('glow', self.parse_rgba(tail[1])))
+            elif tag == 'KEY':
+                frameno = int(tail[1])
+                self.tile.frames.append(('key', frameno))
+                if self.maxframeno < frameno:
+                    self.maxframeno = frameno
 
 
 def work(dfprefix, moar_raws = [], dumpfile=None):
