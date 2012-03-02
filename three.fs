@@ -5,7 +5,6 @@ precision highp float;
 
 uniform sampler2D font;
 
-uniform float final_alpha;
 uniform vec3 pszar;             // { Parx, Pary, Psz }
 uniform float darken;  // drawing lower levels.
 uniform vec4 mouse_color;
@@ -21,6 +20,7 @@ flat in uint des;
 out vec4 color;
 
 void main() {
+
     vec2 pc = gl_PointCoord/pszar.xy;
     if ((pc.x > 1.0) || (pc.y > 1.0)) {
         discard;
@@ -41,16 +41,26 @@ void main() {
 	    color = mix(tile_color * fg, bg, 1.0 - tile_color.a) * darken;
 	    break;
 	case 0:
-	    color = vec4(1.0,1.0,1.0,1.0);
+	    color = vec4(1.0,1.0,1.0,0.0);
 	    break;
 	case -1:
 	default:
 	    discard;
     }
-    color.a = final_alpha;
     
     if ((des & 7u) > 0u) {
-	color = mix(vec4(0.0, 0.0, float(des & 7u)/7.0, 1.0), color, 0.5);
+	vec4 liquicolor;
+	if (((des >>21u) & 1u ) == 1u) {
+	    liquicolor = vec4(float(des & 7u)/7.0, 0.1*float(des & 7u)/7.0, 0.0, 1.0);
+	} else {
+	    liquicolor = vec4(0.0, 0.1*float(des & 7u)/7.0, float(des & 7u)/7.0, 1.0);
+	}
+	if (mode != 0) {
+	    color = mix(liquicolor, color, 0.5);
+	} else {
+	    color = liquicolor;
+	    color.a = 0.5*float(des & 7u)/7.0;
+	}
     }
     
     if (mouse_here > 0) {

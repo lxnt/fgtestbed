@@ -412,7 +412,6 @@ class Tile_shader(Shader0):
             glEnableVertexAttribArray(loc) # is it the right place for this?
         
         glUniform1i(self.uloc['frame_no'], self.rr.frame_no)
-        glUniform1f(self.uloc["final_alpha"], falpha)
         glUniform1f(self.uloc["darken"], darken)
 
         glUniform2i(self.uloc['grid'], self.rr.grid_w, self.rr.grid_h)
