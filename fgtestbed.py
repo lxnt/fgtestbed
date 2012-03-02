@@ -402,7 +402,7 @@ class Tile_shader(Shader0):
         self.aloc = {
             'position': 0, 
             'screen': 1,
-            'liquids': 2
+            'designation': 2
         }
 
     def update_state(self, falpha=1.0, darken=1.0):
@@ -445,9 +445,8 @@ class Tile_shader(Shader0):
         self.rr.grid_vbo.bind()
         glVertexAttribIPointer(self.aloc["position"], 2, GL_SHORT, 0, self.rr.grid_vbo )
         
-        self.rr.liquids_vbo.bind()
-        glVertexAttribIPointer(self.aloc["liquids"], 1, GL_INT, 0, self.rr.liquids_vbo )
-        #print len(self.rr.liquids_vbo), self.rr.grid_w*self.rr.grid_h
+        self.rr.designation_vbo.bind()
+        glVertexAttribIPointer(self.aloc["designation"], 1, GL_INT, 0, self.rr.designation_vbo )
 
 class Designation(object):
     def __init__(self, u32):
@@ -834,7 +833,7 @@ class Rednerer(object):
         self.hud.init()
         
         self.screen_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
-        self.liquids_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
+        self.designation_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
         self.grid_vbo = vbo.VBO(None, usage=GL_STATIC_DRAW)
         self._txids = glGenTextures(3)
         self.dispatch_txid, self.blitcode_txid, self.font_txid = self._txids
@@ -852,6 +851,7 @@ class Rednerer(object):
         glDeleteTextures(self._txids)
         self.grid_vbo = None
         self.screen_vbo = None
+        self.designation_vbo = None
         self.maxPsz = None
         self.Parx = self.Pary = self.Psz = self.Pszx = self.Pszy = None
         self.dispatch_txid = self.blitcode_txid = self.font_txid = self._txids = None
@@ -862,13 +862,13 @@ class Rednerer(object):
         try:
             if verbose:
                 raise KeyError
-            screen, liquids = self._frame_cache.get(fc_key)
+            screen, designations = self._frame_cache.get(fc_key)
         except KeyError:
-            screen, liquids = self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h), verbose)
-            self._frame_cache.put(fc_key, screen, liquids)
+            screen, designations = self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h), verbose)
+            self._frame_cache.put(fc_key, screen, designations)
             
         self.screen_vbo.set_array(screen)
-        self.liquids_vbo.set_array(liquids)
+        self.designation_vbo.set_array(designations)
 
     def update_textures(self):
         self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
