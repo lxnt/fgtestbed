@@ -1,7 +1,8 @@
 [object:full_graphics]
 #
 # Terminology.
-#   TILE refers to and only to logical tiles the map is composed from.
+#   TILE refers to and only to logical tiles the map is composed from,
+#        with the exception of TILE_PAGE which is deemed same as CEL_PAGE.
 #        These are walls, floors, open space, etc.
 #	 Tile names are taken from df/tiletype.h (xml/df.tile-types.xml)
 #
@@ -13,7 +14,7 @@
 # anything after coordinates is considered effects
 # undefined effects are ignored
 #
-# Tile definition token [tile:<tile name>[:<cel def]]
+# Tile definition token [tile:<tile name>[:<cel def>]]
 #   permitted tokens under it: [cel]
 #   
 # Cel definition token:
@@ -30,10 +31,6 @@
 #  they stand for material's DISPLAY_COLOR values
 #  see tilesets.txt for examples.
 #   
-# [import:path] makes sure named file is processed at this point.
-# relative paths are relative to the current file
-# absolute paths point to raw/objects directory.
-#
 # [material:class:token] applies materials of class 'class',
 #  that have token 'token' in their definition to the 
 #  tilesets listed below. 
@@ -41,8 +38,8 @@
 # Material classes:
 #   inorganic
 #   plant
-#   none : none (or, more precisely, any) material, used to define
-#      material-unbound tiles.
+#   none : none (or, more precisely, any) material, 
+#      used to define material-unbound tiles.
 #
 # Examples:
 #  [material:inorganic:SOIL] - soils
@@ -51,28 +48,21 @@
 #  [material:inorganic:IGNEOUS_INTRUSIVE] } stone
 #  [material:inorganic:METAMORPHIC]       }
 #    or
-#  [material:inorganic:SEDIMENTARY|IGNEOUS_EXTRUSIVE|IGNEOUS_INTRUSIVE|METAMORPHIC]
+#  [material:inorganic:SEDIMENTARY:IGNEOUS_EXTRUSIVE:IGNEOUS_INTRUSIVE:METAMORPHIC]
 #
 #  minerals are defined like that:
 #
-#  [material:inorganic:IS_STONE:!SEDIMENTARY&!IGNEOUS_EXTRUSIVE&!IGNEOUS_INTRUSIVE&!METAMORPHIC]
-#
-#    or
-#
-#  [material:inorganic:ENVIRONMENT|ENVIRONMENT_SPEC|DEEP_SPECIAL|DEEP_SURFACE]
+#  [material:inorganic:ENVIRONMENT:ENVIRONMENT_SPEC:DEEP_SPECIAL:DEEP_SURFACE]
 #
 #   DEEP_SPECIAL selects adamantine, DEEP_SURFACE - slade
 #
-#
-#  [material:inorganic:WOOD]
 #  [material:inorganic:IS_METAL]
 #  [material:inorganic:IS_GEM]
 #
+#  [material:plant:WOOD] - for like beds and other wooden stuff
 #  [material:plant:GRASS]
 #  [material:plant:TREE]
 #  [material:plant:SHRUB_TILE]
-#    or
-#  [material:plant:!GRASS&!TREE]
 #
 # Literal material name can also be used:
 #  [material:inorganic:CERAMIC_PORCELAIN]
@@ -84,49 +74,67 @@
 #
 # The following tokens are permitted under [material] one:
 #  [emit:<tsname|bsname>]
-#  [tile:<literal_tilename>] (as in tileset def)
+#  [tile:<literal_tilename>[:<cel-def>]] (as in tileset def)
+#  [classic_color:<tr,ipl,et>] - used for wood mostly, since material templates
+#                                and distinction between plants and materials from 
+#                                them are not implemented yet.
 #
 # On the top level, [tile:tilename] explicitly defines a tile. 
 # It will be drawn as defined regardless of what material 
-# the game assigns to it.
+# the game assigns to it, same as under [material:none]
 #
 # Buildings definition: see buildings.txt
 #
+#
+# Coloring rules. 
+#
+# If the cel is is defined by a blit and at least one of blend or glow tokens,
+# color is deemed to be defined by those tokens, and material's [display_color] or
+# [classic_color] are not taken into account unless explicitly mentioned in color
+# definitions (MAT instead of rgb/rgba values)
+#
+# If the cel is just a single blit, and the material has a [display_color], or
+# the [material] token contains a [classic_color] tag, it is drawn in classic mode,
+# using the color triplet or rgba value supplied.
+# 
+# If there is neither [display_color] nor [classic_color] defined, 
+# it is drawn as is, without any extra coloring.
+#
 
-[import:tilesets.txt]
-[import:buildings.txt]
-#[import:items.txt] not defined yet
 
+[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic]
+    [emit:stonewalls]
+    [emit:smoothwalls]
+    [emit:constructedwalls]
 
-# emit tiles from tilesets
-[material:inorganic:is_stone]
- [emit:stonewalls]
- [emit:smoothwalls]
- [emit:constructedwalls]
+[material:inorganic:environment:environment_spec:deep_special]
+    [emit:mineralwalls]
+    [emit:smoothwalls]
 
-[material:inorganic:is_stone]
- [emit:stonewalls]
- [emit:smoothwalls]
- [emit:constructedwalls]
+[material:inorganic:deep_surface]
+    [emit:featurewalls]
 
 [material:inorganic:metal]
- [emit:constructedwalls]
+    [emit:constructedwalls]
+    [emit:metalbuildings]
  
 [material:inorganic:wood]
- [emit:constructedwalls]
+    [classic_color:6,0,0]
+    [emit:constructedwalls]
+    [emit:woodenbuildings]
 
 [material:inorganic:gem]
- [emit:stonewalls]
- [emit:smoothwalls]
+    [emit:stonewalls]
+    [emit:smoothwalls]
 
 [material:plant:shrub]
- [emit:vegetation]
+    [emit:vegetation]
 
 [material:plant:grass]
- [emit:grass]
+    [emit:grass]
 
 [material:plant:tree]
-  [emit:vegetation]
+    [emit:vegetation]
   
 
 [tileset:nonmat]

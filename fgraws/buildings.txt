@@ -1,33 +1,51 @@
+[object:full_graphics]
 #
 # Building definitions
 #
-# Custom building definitions as in 'building_custom.txt' are understood.
-# 
+# Custom building definitions as in 'building_custom.txt' are (yet to be) understood.
 #
-# condition tokens:
+# Conditional token:
 #  
-# [c:<cond>[:<cond>[:<cond>] ... ] 
+# [cond:<cond>[:<cond>[:<cond>] ... ] 
 #
-# <cond>: one of wood,stone,metal,artifact,masterwork,exceptional,superior,fine,well,standard
+# <cond>: one of:
+#    wood, stone, metal - material. 
+#    rough - buildings made of boulders (not blocks)
+#    artifact,masterwork,exceptional,superior,fine,well,standard - quality
+#
+# State token:
 #
 # [state:]
 # traps: on/off aka ready/needs_reload
 # bridge, floodgate: closed/closing/opening/open
 # axles, gear assembly, waterwheel, winmill: powered|unpowered
 # for stuff that need architecture: designated, designed
-# for siege engines and screwpumps: north,east,west,south
+# for bridges, siege engines and screwpumps: north,east,west,south
+# for bridgest only: retract
 # for workshops: active/inactive
 # construction_stage: 0-3
 #  
 # on, ready, active, powered are synonyms 
 # off, needs_reload, inactive, unpowered are synonyms
+#
+#
+# Any celdefs after an uninterrupted series of conditional and state
+# tokens are emitted only for given conditions/states. 
+# Effective values of tokens are OR-ed, that is a sequence of:
+#
+# [cond:metal]
+# [state:active]
+# [cond:wood]
+# [state:north]
+# [cel]
+#  ...
+# for a waterwheel building will emit the following celdef for 
+# wooden and metal waterwheels aligned north-south.
+#
 
-
-
-#[import:/building_custom.txt]
 
 [BUILDING:AnimalTrap]
-    [cel:15:7]
+    [cel:std:15:7]
 [BUILDING:ArcheryTarget]
 [BUILDING:Armorstand]
     [cel:std:14:0]
@@ -51,11 +69,11 @@
     [cel:std:0:3]
 [BUILDING:Door]
     [cel:std:5:12] # [c:none]
-    [c:stone]
+    [cond:stone]
     [cel:std:5:12]
-    [c:metal]
+    [cond:metal]
     [cel:std:8:13]
-    [c:wood]
+    [cond:wood]
     [cel:std:10:11]
 [BUILDING:GearAssembly]
     [cel:std:15:0]
@@ -65,6 +83,7 @@
     [cel:std:7:13]
 [BUILDING:Hatch]
     [state:open]
+    [cel:none]
     [state:closed]
     [cel:std:11:09]
 [BUILDING:Hive]
@@ -82,7 +101,7 @@
     [cel:std:11:2]
 [BUILDING:ScrewPump]
 [BUILDING:Slab]
-    [cel:15:14]
+    [cel:std:15:14]
 [BUILDING:Shop]
 [BUILDING:Statue]
     [cel:std:10:14]
@@ -102,63 +121,56 @@
 [BUILDING:Windmill]
 [BUILDING:WindowGlass]
 [BUILDING:WindowGem]
-[BUILDING_SIEGEENGINE:Ballista]
-[BUILDING_SiegeEngine:Catapult]
-[BUILDING_Trap:Lever]
+[BUILDING:Ballista]
+[BUILDING:Catapult]
+[BUILDING:Lever]
     [state:off]
     [cel:std:5:9]
     [state:on]
     [cel:std:2:10]
-[BUILDING_Trap:PressurePlate]
+[BUILDING:PressurePlate]
     [cel:std:14:5]
-[BUILDING_Trap:CageTrap]
+[BUILDING:CageTrap]
     [cel:std:14:5]
-[BUILDING_Trap:StoneFallTrap]
+[BUILDING:StoneFallTrap]
     [cel:std:14:5]
-[BUILDING_Trap:WeaponTrap]
+[BUILDING:WeaponTrap]
     [cel:std:14:5]
     
-[BUILDING:Stockpile]
-[BUILDING:Civzone]
-
-
-[BUILDING_FURNACE:WoodFurnace]
-[BUILDING_FURNACE:Smelter]
-[BUILDING_FURNACE:GlassFurnace]
-[BUILDING_FURNACE:Kiln]
-[BUILDING_FURNACE:MagmaSmelter]
-[BUILDING_FURNACE:MagmaGlassFurnace]
-[BUILDING_FURNACE:MagmaKiln]
-[BUILDING_FURNACE:Custom]
-
-[BUILDING_WORKSHOP:Carpenters]
-[BUILDING_WORKSHOP:Farmers]
-[BUILDING_WORKSHOP:Masons]
-[BUILDING_WORKSHOP:Craftdwarfs]
-[BUILDING_WORKSHOP:Jewelers]
-[BUILDING_WORKSHOP:MetalsmithsForge]
-[BUILDING_WORKSHOP:Bowyers]
-[BUILDING_WORKSHOP:Mechanics]
-[BUILDING_WORKSHOP:Siege]
-[BUILDING_WORKSHOP:Butchers]
-[BUILDING_WORKSHOP:Leatherworks]
-[BUILDING_WORKSHOP:Tanners]
-[BUILDING_WORKSHOP:Clothiers]
-[BUILDING_WORKSHOP:Fishery]
-[BUILDING_WORKSHOP:Still]
-[BUILDING_WORKSHOP:Loom]
-[BUILDING_WORKSHOP:Quern]
+[BUILDING:WoodFurnace]
+[BUILDING:Smelter]
+[BUILDING:GlassFurnace]
+[BUILDING:Kiln]
+[BUILDING:MagmaSmelter]
+[BUILDING:MagmaGlassFurnace]
+[BUILDING:MagmaKiln]
+[BUILDING:Carpenters]
+[BUILDING:Farmers]
+[BUILDING:Masons]
+[BUILDING:Craftdwarfs]
+[BUILDING:Jewelers]
+[BUILDING:MetalsmithsForge]
+[BUILDING:Bowyers]
+[BUILDING:Mechanics]
+[BUILDING:Siege]
+[BUILDING:Butchers]
+[BUILDING:Leatherworks]
+[BUILDING:Tanners]
+[BUILDING:Clothiers]
+[BUILDING:Fishery]
+[BUILDING:Still]
+[BUILDING:Loom]
+[BUILDING:Quern]
+    [cel:std:9:0]
+[BUILDING:Kennels]
+[BUILDING:Kitchen]
+[BUILDING:Ashery]
+[BUILDING:Dyers]
+[BUILDING:Millstone]
+    [dim:1:1] # implied
     [cel:std:9:0]
 
-[BUILDING_WORKSHOP:Kennels]
-[BUILDING_WORKSHOP:Kitchen]
-[BUILDING_WORKSHOP:Ashery]
-[BUILDING_WORKSHOP:Dyers]
-[BUILDING_WORKSHOP:Millstone]
-    [dim:1:1] # implied in fact
-    [cel:std:9:0]
-
-[BUILDING_WORKSHOP:Tools
+[BUILDING:Tools] # tools workshop in fact
 #
 #
 #

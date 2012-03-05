@@ -1,3 +1,5 @@
+[object:full_graphics]
+#
 # defines arbitrary sets of tiles 
 # and their location in classic 16x16 tile font
 # plus some classic effects.
