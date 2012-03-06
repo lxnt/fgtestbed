@@ -706,7 +706,9 @@ class Keyframe(object):
 def emit_basic_frame(blit, blend):
     return ''
 
-def interpolate_keyframes(self, thisframe, nextframe, material, pageman, colormap):    
+def interpolate_keyframes(self, thisframe, nextframe, material, pageman, colormap):
+    if thisframe == nextframe:
+        return emit_basic_frame(thisframe)
     frameseq = []
     white = (0xff, 0xff, 0xff, 0xff)
     length = nextframe.no - thisframe.no
