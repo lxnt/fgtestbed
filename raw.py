@@ -6,29 +6,15 @@ import numpy as np
 import pygame.image
 
 def parse_color(f):
-    if f == 'MAT':
-        return f
-    if len(f) == 1 and len(f.split(',')) == 3:
-        #classic color.
-        return f.split(',')
-    elif len(f) == 3:
+    if len(f) == 3:
         r = int(f[0],16) << 4
         g = int(f[1],16) << 4
         b = int(f[2],16) << 4
-        a = 0xff            
-    elif len(f) == 4:
-        r = int(f[0],16) << 4
-        g = int(f[1],16) << 4
-        b = int(f[2],16) << 4
-        a = int(f[3],16) << 4
     elif len(f) == 6:
-        r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), 0xff
-        a = 0xff
-    elif len(f) == 8:
-        r, g, b, a = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16), int(f[6:8], 16)
+        r, g, b = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16)
     else:
         raise ValueError(f)
-    return (r<<24)|(g<<16)|(b<<8)|a
+    return (r<<24)|(g<<16)|(b<<8)|0xff
 
 class ParseError(Exception):
     pass
@@ -89,104 +75,6 @@ class DfapiEnum(object):
         else:
             return self.emap[key]
     
-class Mattiles(object):
-    def __init__(self, matname, maxframe=1):
-        assert matname is not None
-        self.name = matname
-        self.prelimo = []
-        self.tiles = {}
-        self._first_frame = True
-        self._blit = self._blend = self._glow = None
-        self._frame = 0
-        self._tname = None
-        self._keyframe_start = False
-        self._maxframe = maxframe
-        self._cut = False
-        
-    def xpand(self):
-        frameseq = []
-        white = (0xff, 0xff, 0xff, 0xff)
-        for f in self.prelimo:
-            blit, blend, glow, amt = f
-            if blend is not None and glow is not None:
-                # this is an old-school fg/bg blended tile.
-                frameseq.append((blit, blend, glow))
-                break
-            
-            if len(self.prelimo) > 1:
-                nextbli, nextglo= self.prelimo[1][1:3]
-            else:
-                nextbli, nextglo = self.prelimo[0][1:3]
-            if glow is not None:
-                if nextbli is None:
-                    if nextglo is None:
-                        glow_to = white
-                    else:
-                        glow_to = nextglo
-                else:
-                    glow_to = nextbli
-                dr = ( glow_to[0] - glow[0] ) / float(amt)
-                dg = ( glow_to[1] - glow[1] ) / float(amt)
-                db = ( glow_to[2] - glow[2] ) / float(amt)
-                da = ( glow_to[3] - glow[3] ) / float(amt)
-            for fno in xrange(amt):
-                if blend is not None:
-                    frameseq.append((blit, blend))
-                elif glow is not None:
-                    frameseq.append( (blit, 
-                        ( glow[0] + dr*fno, 
-                          glow[1] + dg*fno, 
-                          glow[2] + db*fno, 
-                          glow[3] + da*fno ) ) )
-                else:
-                    frameseq.append((blit, white))
-        self.tiles[self._tname] = frameseq
-        self.prelimo = []
-    
-    def tile(self, tname):
-        if self._tname is not None:
-            self.fin()
-        assert tname is not None
-        self._tname = tname
-        
-    def fin(self):
-        if not self._keyframe_start:
-            self.prelimo.append((self._blit, self._blend, self._glow, self._maxframe - self._frame))
-        self.xpand()
-        self._frame = 0
-        self._cut = False
-        
-    def blit(self, t):
-        if self._cut: return
-        self._blit = t
-        self._keyframe_start = False        
-        
-    def glow(self, rgba):
-        if self._cut: return
-        self._blend = None
-        self._glow = rgba
-        self._keyframe_start = False
-        
-    def blend(self, color):
-        if self._cut: return
-        if type(color) is tuple:
-            self._blend, self._glow = color
-        else:
-            self._blend = color
-            self._glow = None
-        self._keyframe_start = False
-        
-    def key(self, frame):
-        if self._cut: return
-        if frame > self._maxframe:
-            frame = self._maxframe
-            self._cut = True
-        if not self._keyframe_start:
-            self.prelimo.append((self._blit, self._blend, self._glow, frame - self._frame))
-        self._keyframe_start = True
-        self._frame = frame
-
-
 class Pageman(object):
     """ requires pygame.image to function. 
         just blits tiles in order of celpage submission to album_w/max_cdim[0] columns """
@@ -249,18 +137,17 @@ class Pageman(object):
 
     def maptile(self, page, ref):
         page = self.pages[pagename]
-        try:
-            tmp = int(ref[0])
-        except ValueError:
-            s, t = page.defs[ref[0]]
-        else:
-            if len(tail) == 1:
+        if len(ref) == 1:
+            try:
+                tmp = int(ref[0])
+            except ValueError: # must be a def
+                s, t = page.defs[ref[0]]
+            except TypeError: # must be an (s,t) tuple
+                s, t  = map(int, ref)
+            else: # it's an index.
                 s = tmp % page.pdim[0]
                 t = tmp / page.pdim[1]
-            else:
-                s = tmp
-                t = int(ref[1])
-        
+    
         return self.mapping[(page, s, t)]
 
     def get_album(self):
@@ -381,27 +268,10 @@ class TSCompiler(object):
                 self.matiles[mat.name] = mt
 
             mt.tile(tile.name)
-            # okay. determine if it's classic or new-style celdef
-            print mt, mat, tile
-            return
-            if False:
-                if tdef is not None:
-                    if tdef[0] is None:
-                        tdtile = mat.tiles[tdef[1]].tile
-                        s, t = tdtile % 16, tdtile/16
-                        color = mat.tiles[tdef[1]].color
-                    else:
-                        s, t = tdef[0:2]
-                        color = mat.color
-                        
-                    if len(tdef) == 3:
-                        color = self._apply_effect(name, tdef[2], color)
-                else:
-                    s, t = mat.tile % 16, mat.tile/16
-                    color = mat.color
-                mt.blit(self.pageman.maptile(mat.page, s, t))
-                mt.blend(self.mapcolor(color))
-            mt.fin()
+            
+            if tile.cel is None: # make celdef from material data
+                tile.cel = Cel(None, [mat.page, mat.tile])
+            mt.expand(tile.cel)
     
     def _emit_plant(self, tile, materialset):
         for mat in materialset.mat_stubs:
@@ -778,64 +648,152 @@ class Tileset(Token):
     def __str__(self):
         return "TILESET({})".format(self.name)
 
-class BlitInsn(Token):
-    tokens = ( 'BLIT', 'BLEND', 'GLOW', 'KEY' )
-    def __init__(self, name, tail):
-        if name == 'BLIT':
-            self.insn = 'blit'
-            self.param = (tail[0], tail[1:])
-        elif name == 'BLEND':
-            self.insn = 'blend'
-            self.param = parse_color(tail[0])
-        elif name == 'GLOW':
-            self.insn = 'glow'
-            self.param = parse_color(tail[0])
-        elif name == 'KEY':
-            self.insn = 'key'
-            self.param = int(tail[0])
+class Keyframe(object):
+    def __init__(self, number, idef = []):
+        self.no = number
+        self.page = None # used for blit, but kept separate
+        self.blit = None # or idx (int), or s,t (int, int) , or def (str)
+        self.effect = None # or str
+        self.blend = 'MAT' # or None, or fg,bg,br (int, int, int) or rgbx,rgbx (int,int) or rgbx value (int)
+        self.glow = False # or True.
+        
+        # parse inline celdef
+        if len(idef) == 1:
+            if idef[0] == 'MAT':
+                self.blit = 'MAT' # material-defined tile from std tileset
+            elif idef[0] != 'NONE':
+                raise ParseError("bad inline celdef '{}'".format(idef[0]))
+        elif len(idef) == 2:# ( page, idx or def) or (mat, effect)
+            if idef[0] == 'MAT':
+                self.blit = 'MAT'
+                self.effect = idef[1]
+            else:
+                self.page = idef[0]
+                try:
+                    self.blit = int(idef[1])
+                except ValueError:
+                    self.blit = idef[1]
+        elif len(idef) == 3: # page, s, t or page, idx, effect
+            self.page = idef[0]
+            try:
+                self.blit = ( int(idef[1]), int(idef[2]) )
+            except ValueError:
+                self.blit = int(idef[1])
+                self.effect = idef[2]
+        elif len(idef) == 4: # page, s, t, effect
+            self.page = idef[0]
+            self.blit = ( int(idef[1]), int(idef[2]) )
+            self.effect = idef[3]
+
+    def blit(self, cref):
+        assert type(color) in ( list, tuple )
+        self.page = cref[0]
+        self.blit = cref[1:]
+
+    def blend(self, color):
+        assert type(color) in ( list, tuple )
+        if len(color) == 1:
+            self.blend = parse_rgba(color[0])
+        elif len(color) == 2:
+            self.blend = (parse_rgba(color[0]), parse_rgba(color[1]))
+        elif len(color) == 3:
+            self.blend = map(int, color)
+        
+    def glow(self):
+        self.glow = True
+
+
+def emit_basic_frame(blit, blend):
+    return ''
+
+def interpolate_keyframes(self, thisframe, nextframe, material, pageman, colormap):    
+    frameseq = []
+    white = (0xff, 0xff, 0xff, 0xff)
+    length = nextframe.no - thisframe.no
+    no = 0
+    while no < length:
+        no += 1
+    for f in self.prelimo:
+        blit, blend, glow, amt = f
+        
+        if len(self.prelimo) > 1:
+            nextble, nextglo= self.prelimo[1][1:3]
         else:
-            raise RuntimeError("wrong token got to BlitInsn: "+name)
-
-
-
+            nextble, nextglo = self.prelimo[0][1:3]
+        if glow is not None:
+            if nextbli is None:
+                if nextglo is None:
+                    glow_to = white
+                else:
+                    glow_to = nextglo
+            else:
+                glow_to = nextbli
+            dr = ( glow_to[0] - glow[0] ) / float(amt)
+            dg = ( glow_to[1] - glow[1] ) / float(amt)
+            db = ( glow_to[2] - glow[2] ) / float(amt)
+            da = ( glow_to[3] - glow[3] ) / float(amt)
+        for fno in xrange(amt):
+            if blend is not None:
+                frameseq.append((blit, blend))
+            elif glow is not None:
+                frameseq.append( (blit, 
+                    ( glow[0] + dr*fno, 
+                      glow[1] + dg*fno, 
+                      glow[2] + db*fno, 
+                      glow[3] + da*fno ) ) )
+            else:
+                frameseq.append((blit, white))
+    self.tiles[self._tname] = frameseq
+    self.prelimo = []
 
 class Cel(Token):
     tokens = ('CEL', )
-    contains = BlitInsn.tokens
+    parses = ( 'BLIT', 'BLEND', 'GLOW', 'KEY' )
     
     def __init__(self, name, tail):
-        self.framecount = 0
-        self.prelimo = []
-        self.effects = []
-        self.no_add = False
-        if len(tail) == 0:
-            return
-        elif len(tail) == 1: 
-            if tail[0] != 'NONE':
-                raise ParseError("short inline def '{}'".format(':'.join(tail)))
-            self.prelimo = [ None ]
-        elif len(tail) == 2: # just page, idx
-            self.prelimo.append = ('blit', tail)
-        elif len(tail) == 3: # page,s,t or page,idx,effect
-            try:
-                int(tail[2])
-                self.prelimo.append(('blit', tail))
-            except ValueError:
-                self.prelimo.append(('blit', tail[:2]))
-                self.prelimo.append(('effect', tail[2]))
+        self.frames = []
+        if len(tail) != 0:
+            self.frames.append(Keyframe(0, tail))
+            self.current_frame = None
         else:
-            self.prelimo.append(('blit', tail[:2]))
-            for e in tail[3:]:
-                self.prelimo.append(e)
+            self.current_frame = Keyframe(0)
     
-    def add(self, token):
-        if type(token) == BlitInsn:
-            self.prelimo.append(token.insn, self.param)
-            return True
+    def parse(self, name, tail):
+        if name == 'BLIT':
+            self.current_frame.blit(tail)
+        elif name == 'BLEND':
+            self.current_frame.blend(tail)
+        elif name == 'GLOW':
+            self.current_frame.glow()
+        elif name == 'KEY':
+            frameno = int(tail[0])
+            if frameno < self.current_frame.no:
+                raise ParseError("can't go backwards in time")
+            self.frames.append(self.current_frame)
+            self.current_frame = Keyframe(int(tail[0]))
+
+    def expand(self, material, pageman, colormap, maxframes):
+        # loop cel's frames to get maxframes frames
+        rv = []
+        frameno = 0
+        
+        while frameno < len(self.frames):
+            f = self.frames[frameno]
+            try:
+                nextf = self.frames[frameno+1]
+            except IndexError:
+                nextf = self.frames[-1]
+            rv += interpolate_frames(f, nextf, material, pageman, colormap)
+            frameno += 1
+
+        while  len(rv) < maxframes:
+            rv += rv
+        return rv[:maxframes]
+                
             
+
     def __str__(self):
-        return "CEL(frames={}, prelimo={}, effects={}, no_add={})".format(
-            self.framecount, len(self.prelimo), len(self.effects), self.no_add)
+        return "CEL({} frames)".format( len(self.frames) )
 
 class MaterialSet(Token):
     tokens = ('MATERIAL', )
@@ -872,8 +830,6 @@ class MaterialSet(Token):
             self.default_color = tail[0].split(',')
 
     def match(self, mat):
-        if mat.name == 'STEEL':
-            print mat.others
         if self.klass != mat.klass:
             return False
         matched = False
@@ -996,7 +952,6 @@ class MaterialTemplate(Token):
         if name == 'DISPLAY_COLOR':
             self.color = map(int, tail)
         elif name in self.parses:
-            print self.name, name
             self.others.append(name)
         
 
@@ -1219,7 +1174,7 @@ def work(dfprefix, fgraws, dumpfile=None):
     pageman = Pageman(init.fontpath)
     
     mtparser = AdvRawsParser( MaterialTemplates, MaterialTemplate )
-    fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, BlitInsn, Building, MaterialSet )
+    fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, Building, MaterialSet )
     gsparser = AdvRawsParser( CreaGraphics, CreaGraphicsSet, CelPage )
     
     map(mtparser.eat, [stdraws])

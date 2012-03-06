@@ -12,16 +12,53 @@
 #
 # 'std' is the name of predefined 16x16 'font'
 # anything after coordinates is considered effects
-# undefined effects are ignored
 #
 # Tile definition token [tile:<tile name>[:<cel def>]]
 #   permitted tokens under it: [cel]
 #   
 # Cel definition token:
 #   [cel:none] - do not draw anything there (open space, etc.)  
-#   [cel:<blitdef>] - shortcut for [cel][blit:<blitdef]
+#   [cel:<clablide>] - shortcut for [cel][classic:<clablide>]
 #
-#   permitted tokens under it: [blit] [blend] [color] [glow] [key]
+#   permitted tokens under it: [blit] [blend] [glow] [key] [classic]
+#
+# [blit:<celref>] blits given cel with current frame's blend 
+# or glow settings. Celref is one of:
+#  [blit:<pagename>:<celdefname>] - refers to an alias defined in [tilepage]
+#  [blit:<pagename>:<index>] - cel by index
+#  [blit:<pagename>:<s>:<t>] - cel by column, row
+#  [blit:none]   - don't blit anything (same as omitting [blit] for the keyframe)
+#
+# [blend:<colordef>] mixes given color with cel being blitted this frame.
+#  Colordef is one of:
+#
+#  [blend:rgb] 
+#  [blend:rgb] 
+#  [blend:rrggbb]
+#    where r, g and b are single-character hex numbers. Same as in CSS.
+#    blending here is plain multiplication: color * tile_color
+#
+#  [blend:rgb:rgb] 
+#  [blend:rrggbb:rrggbb]
+#  [blend:fg:bg:br] - classic color triplet looked up in data/init/colors.txt
+#  These work just like the original renderers, namely:
+#       color = mix(tile_color * fg, bg, 1.0 - tile_color.a)
+#  basically, the 'background' color 'shines through' translucent/transparent
+#  parts of the tile, while tile's own color is multiplied by 'foreground' color.
+#
+#  [blend:mat] - uses material's DISPLAY_COLOR. This is implied.
+#  [blend:none] - Blits the cel as is.
+#
+#  [glow] Both this and next keyframe must have non-none and different blend 
+#  defined. Linearly interpolates blend color for each frame in between, 
+#  for both fore and background colors.
+#
+#  [key:<frameno>] signals that instructions following this token refer to 
+#  key frame number <frameno>. [key:0] is implicitly inserted at the start 
+#  of the celdef.
+#
+#
+#
 #
 #
 # currently supported effect tokens:
@@ -29,7 +66,15 @@
 # [color:<tr,ipl,et>] - classic fg,bg,br. 
 #  Use either numbers, or fg,bg,br literals,
 #  they stand for material's DISPLAY_COLOR values
-#  see tilesets.txt for examples.
+#  see tilesets.txt for examples. Work only for 'classic' celdefs.
+#
+# 'Classic' celdef is the one that has only a single "classic" insn
+# in its definition, optionally with an effect.
+#
+# 'New-style' or 'Full-graphics' celdef is any that has multiple
+# blitter insns in its definition.
+#
+#
 #   
 # [material:class:token] applies materials of class 'class',
 #  that have token 'token' in their definition to the 
@@ -75,9 +120,6 @@
 # The following tokens are permitted under [material] one:
 #  [emit:<tsname|bsname>]
 #  [tile:<literal_tilename>[:<cel-def>]] (as in tileset def)
-#  [classic_color:<tr,ipl,et>] - used for wood mostly, since material templates
-#                                and distinction between plants and materials from 
-#                                them are not implemented yet.
 #
 # On the top level, [tile:tilename] explicitly defines a tile. 
 # It will be drawn as defined regardless of what material 
