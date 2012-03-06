@@ -102,40 +102,37 @@
 #
 
 
-[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic]
-    [emit:stonewalls]
-    [emit:smoothwalls]
-    [emit:constructedwalls]
+[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem]
+    [tilesets:stone:constructed]
+    [buildings]
 
-[material:inorganic:environment:environment_spec:deep_special]
-    [emit:mineralwalls]
-    [emit:smoothwalls]
+[material:inorganic:environment:environment_spec:deep_special:!is_gem]
+    [tilesets:mineral:constructed]
+    [buildings]
 
 [material:inorganic:deep_surface]
-    [emit:featurewalls]
+    [tilesets:feature]
 
-[material:inorganic:metal]
-    [emit:constructedwalls]
-    [emit:metalbuildings]
+[material:inorganic:is_metal]
+    [tilesets:constructed]
+    [buildings]
  
-[material:inorganic:wood]
+[material:derived:wood]
     [classic_color:6,0,0]
-    [emit:constructedwalls]
-    [emit:woodenbuildings]
+    [tilesets:constructed]
+    [buildings]
 
-[material:inorganic:gem]
-    [emit:stonewalls]
-    [emit:smoothwalls]
+[material:inorganic:is_gem]
+    [tilesets:stone]
 
-[material:plant:shrub]
-    [emit:vegetation]
+[material:plant:shrub_tile]
+    [tilesets:vegetation]
 
 [material:plant:grass]
-    [emit:grass]
+    [tilesets:grass]
 
-[material:plant:tree]
-    [emit:vegetation]
-  
+[material:plant:tree_tile]
+    [tilesets:vegetation]
 
 [tileset:nonmat]
     [tile:Ashes1][cel:std:2:15]
@@ -157,6 +154,6 @@
     [tile:Waterfall][cel:none]
 
 [material:none]
-    [emit:nonmat]
+    [tilesets:nonmat]
 
 

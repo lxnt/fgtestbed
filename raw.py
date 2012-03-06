@@ -8,7 +8,7 @@ import pygame.image
 def parse_color(f):
     if f == 'MAT':
         return f
-    if len(f) == 1 and len(f.split(',') == 3:
+    if len(f) == 1 and len(f.split(',')) == 3:
         #classic color.
         return f.split(',')
     elif len(f) == 3:
@@ -29,7 +29,6 @@ def parse_color(f):
     else:
         raise ValueError(f)
     return (r<<24)|(g<<16)|(b<<8)|a
-
 
 class ParseError(Exception):
     pass
@@ -304,24 +303,33 @@ class TSCompiler(object):
         except IndexError:
             raise ValueError("unknown color {}".format(repr(color)))
 
-    def compile(self, materials, tilesets, celeffects, buildings):
-        for material in materials:
-            for emit in mat.emits:
-                if type(emit) == Tileset:
-                    tlist =  emit.tiles
-                elif type(emit) == Tile:
-                    tlist = [ emit ]
-                else:
-                    raise CompileError("unknown emit type '{}'".format(emit.__class__.__name__)
+    def compile(self, materialsets, tilesets, celeffects, buildings):
+        for materialset in materialsets:
+            x = []
+            for tileset in materialset.tilesets:
+                x.append(tilesets[tileset])
+            materialset.tilesets = x
+            if len(materialset.tiles) > 0:
+                d = Tileset('TILESET', ['__IMPLIED'])
+                for tile in materialset.tiles:
+                    d.add(tile)
+                materialset.tilesets.append(d)
+                
+        for materialset in materialsets:
+            print "MATSET", materialset
+            for tileset in materialset.tilesets:
+                tlist =  tileset.tiles
                 for tile in tlist:
-                    if mat.klass == 'NONE':
+                    if materialset.klass == 'NONE':
                         self._emit_none(tile)
-                    elif mat.klass = 'INORGANIC':
-                        self._emit_inorg(tile, mat)
-                    elif mat.klass = 'PLANT':
-                        self._emit_plant(tile, mat)
+                    elif materialset.klass == 'INORGANIC':
+                        self._emit_inorg(tile, materialset)
+                    elif materialset.klass == 'PLANT':
+                        self._emit_plant(tile, materialset)
+                    elif materialset.klass == 'DERIVED':
+                        self._emit_inorg(tile, materialset)
                     else:
-                        raise CompileError("unknown mat class '{}'".format(mat.klass)
+                        raise CompileError("unknown mat class '{}'".format(materialset.klass))
         return self.matiles
     
     def dump(self, fname):
@@ -364,55 +372,63 @@ class TSCompiler(object):
             # return presumably rgba value
             return effect
     
-    def _emit_inorg(self, tile, mat):
-        try:
-            mt = self.matiles[mat.name]
-        except KeyError:
-            mt = Mattiles(mat.name)
-            self.matiles[mat.name] = mt
-    
-            mt.tile(tile.name)
-            
-            if tdef is not None:
-                if tdef[0] is None:
-                    tdtile = mat.tiles[tdef[1]].tile
-                    s, t = tdtile % 16, tdtile/16
-                    color = mat.tiles[tdef[1]].color
-                else:
-                    s, t = tdef[0:2]
-                    color = mat.color
-                    
-                if len(tdef) == 3:
-                    color = self._apply_effect(name, tdef[2], color)
-            else:
-                s, t = mat.tile % 16, mat.tile/16
-                color = mat.color
-            mt.blit(self.pageman.maptile(mat.page, s, t))
-            mt.blend(self.mapcolor(color))
-        mt.fin()
-    
-    def _emit_plant(self, mat):
-        try:
-            mt = self.matiles[mat.name]
-        except KeyError:
-            mt = Mattiles(mat.name)
-            self.matiles[mat.name] = mt
-            
-        for ttype, tdef in mat.tiles.items():
-            mt.tile(self.plant_tile_types[ttype][0])
-            if tdef.tile is None:
-                if tdef.page != 'std':
-                    raise ValueError('default tiles work only in standard tileset')
-                s, t = self.plant_tile_types[ttype][1], self.plant_tile_types[ttype][2]
-            else:
-                s, t = tdef.tile%16, tdef.tile/16
-            
-            mt.blit(self.pageman.maptile(mat.page, s, t))
-            mt.blend(self.mapcolor(tdef.color))
-        mt.fin()
+    def _emit_inorg(self, tile, materialset):
+        for mat in materialset.mat_stubs:
+            try:
+                mt = self.matiles[mat.name]
+            except KeyError:
+                mt = Mattiles(mat.name)
+                self.matiles[mat.name] = mt
 
-    def _emit_none(self, tile)
-        pass
+            mt.tile(tile.name)
+            # okay. determine if it's classic or new-style celdef
+            print mt, mat, tile
+            return
+            if False:
+                if tdef is not None:
+                    if tdef[0] is None:
+                        tdtile = mat.tiles[tdef[1]].tile
+                        s, t = tdtile % 16, tdtile/16
+                        color = mat.tiles[tdef[1]].color
+                    else:
+                        s, t = tdef[0:2]
+                        color = mat.color
+                        
+                    if len(tdef) == 3:
+                        color = self._apply_effect(name, tdef[2], color)
+                else:
+                    s, t = mat.tile % 16, mat.tile/16
+                    color = mat.color
+                mt.blit(self.pageman.maptile(mat.page, s, t))
+                mt.blend(self.mapcolor(color))
+            mt.fin()
+    
+    def _emit_plant(self, tile, materialset):
+        for mat in materialset.mat_stubs:
+            try:
+                mt = self.matiles[mat.name]
+            except KeyError:
+                mt = Mattiles(mat.name)
+                self.matiles[mat.name] = mt
+                
+            print mt, mat, tile
+            return
+            for ttype, tdef in mat.tiles.items():
+                mt.tile(self.plant_tile_types[ttype][0])
+                if tdef.tile is None:
+                    if tdef.page != 'std':
+                        raise ValueError('default tiles work only in standard tileset')
+                    s, t = self.plant_tile_types[ttype][1], self.plant_tile_types[ttype][2]
+                else:
+                    s, t = tdef.tile%16, tdef.tile/16
+                
+                mt.blit(self.pageman.maptile(mat.page, s, t))
+                mt.blend(self.mapcolor(tdef.color))
+            mt.fin()
+
+    def _emit_none(self, tile):
+        print 'nonemat', tile
+        return
         
 class mat_stub(object):
     def __init__(self, page, **kwargs):
@@ -422,7 +438,12 @@ class mat_stub(object):
         self.page = page
         for k,v in kwargs.items():
             setattr(self,k,v)
-
+    def __str__(self):
+        try:
+            name = self.name
+        except AttributeError:
+            name = None
+        return "{}:{}".format(self.klass, name)
 
 class Rawsparser0(object):
     def parse_file(self, fna, handler):
@@ -516,50 +537,54 @@ class Initparser(Rawsparser0):
 class TSParser(Rawsparser0):
     """ parses standard game raws 
         outputs whatever materials are defined there """
-    
-    def __init__(self, materials):
+    template_delimiters = ( 'USE_MATERIAL_TEMPLATE', 'BASIC_MAT', 'EXTRACT_BARREL',
+        'DRINK', 'SEED','MILL', 'TREE', 'LEAVES', 'EXTRACT_STILL_VIAL', 'THREAD',
+        'EXTRACT_VIAL')
+    def __init__(self, templates, materialsets):
         self.all = []
         self.otype = None
         self.mat = None
-        self.materials = materials
-        
-        self.plant_tile_types = (
-            #'PICKED',
-            #'DEAD_PICKED',
-            'SHRUB',
-            'TREE',
-            'SAPLING',
-            'DEAD_SHRUB',
-            'DEAD_TREE',
-            'DEAD_SAPLING' )
-                
+        self.base_mat = None
+        self.materialsets = materialsets
+        self.templates = templates
+        #print templates
+        #print materialsets
+
     def select(self, mat):
-        for sel in self.materials:
+        for sel in self.materialsets:
             sel.match(mat)
 
     def parse_token(self, name, tail):
         if name == 'OBJECT':
-            if tail[0] not in ['INORGANIC', 'PLANT', 'FULL_GRAPHICS']:
+            if tail[0] not in ['INORGANIC', 'PLANT']:
                 raise StopIteration
             self.otype = tail[0]
             return
 
         if self.otype == 'INORGANIC':
             if name == 'INORGANIC':
-                self.select(self.mat)
-                self.mat = mat_stub('std', name = tail[0], klass=name)
+                if self.mat:
+                    self.select(self.mat)
+                self.mat = mat_stub('std', name = tail[0], klass=name, others = [])
             elif name == 'TILE':
                 self.mat.tile = self.tileparse(tail[0])
             elif name == 'DISPLAY_COLOR':
                 self.mat.color = map(int, tail)
-            else:
+            elif name == 'USE_MATERIAL_TEMPLATE':
+                if len(tail) != 1:
+                    raise ParseError('2-parameter USE_MATERIAL_TEMPLATE in INORGANIC: WTF?.')
+                self.mat.color =  self.templates[tail[0]].color
+                self.mat.others = self.templates[tail[0]].others
+            elif name not in self.mat.others:
                 self.mat.others.append(name)
                 
         elif self.otype == 'PLANT':
             if name == 'PLANT':
-                self.select(self.mat)
-                self.mat = mat_stub('std', name = tail[0], , klass=name, 
-                                    tiles={}, colors={}, color = self.default_wood_color)
+                if self.base_mat is not None:
+                    raise ParseError('USE_MATERIAL_TEMPLATE delimiter missing.')
+                if self.mat:
+                    self.select(self.mat)
+                self.mat = mat_stub('std', name = tail[0], klass=name, others = [], tiles={}, colors={}, color=None)
             elif name == 'GRASS_TILES':
                 i = 0
                 tiles = map(self.tileparse, tail)
@@ -567,7 +592,7 @@ class TSParser(Rawsparser0):
                     try:
                         self.mat.tiles[i].tile = tile
                     except KeyError:
-                        self.mat.tiles[i] = mat_stub('std', tile = tile)
+                        self.mat.tiles[i] = mat_stub('std', tile = tile, others = [])
                     i += 1
             elif name == 'GRASS_COLORS':
                 i = 0
@@ -580,22 +605,45 @@ class TSParser(Rawsparser0):
                     try:
                         self.mat.tiles[i].color = color
                     except KeyError:
-                        self.mat.tiles[i] = mat_stub('std', color = color)
+                        self.mat.tiles[i] = mat_stub('std', color = color, others = [])
                     i += 1
+            elif name == 'USE_MATERIAL_TEMPLATE':
+                if len(tail) != 2:
+                    raise ParseError('Non-2-parameter USE_MATERIAL_TEMPLATE in PLANT: WTF?.')
+                if self.base_mat is not None:
+                    #print "implicitly delimited template in {}, skipping".format(self.base_mat.name)
+                    #self.mat.name = "{} {}".format(self.base_mat.name, 'SOAP')
+                    #print 'emitted ', self.mat.name
+                    #self.select(self.mat)
+                    self.mat = self.base_mat
+                self.base_mat = self.mat
+                self.mat = mat_stub('std', klass = 'DERIVED', 
+                    others = self.templates[tail[1]].others, 
+                    color = self.templates[tail[1]].color)
+            elif name in self.template_delimiters:
+                if name == 'BASIC_MAT': # merge base_mat and mat
+                    self.base_mat.others += self.mat.others
+                    self.base_mat.color = self.mat.color
+                else: # emit derived mat. 
+                    self.mat.name = "{} {}".format(self.base_mat.name, name)
+                    #print 'emitted ', self.mat.name
+                    self.select(self.mat)
+                    
+                self.mat = self.base_mat
+                self.base_mat = None
             elif name == 'DISPLAY_COLOR':
                 self.mat.color = map(int, tail)
-                
             elif name.endswith('_TILE'):
                 self.mat.others.append(name)
                 ttype = name[:-5]
                 tile = self.tileparse(tail[0])
-                if ttype not in self.plant_tile_types:
-                    return
+                #print 'base ', self.base_mat, 'mat', self.mat
                 try:
                     self.mat.tiles[ttype].tile = tile
                 except KeyError:
-                    self.mat.tiles[ttype] = mat_stub('std', tile = tile, color = self.default_tree_color) # set default color
-                        
+                    self.mat.tiles[ttype] = mat_stub('std', tile = tile, others = [])
+            elif name == 'STATE_COLOR':
+                return
             elif name.endswith('_COLOR'):
                 self.mat.others.append(name)
                 ttype = name[:-6]
@@ -603,7 +651,8 @@ class TSParser(Rawsparser0):
                 try:
                     self.mat.tiles[ttype].color = color
                 except KeyError:
-                    self.mat.tiles[ttype] = mat_stub('std', color = color, tile = None)
+                    self.mat.tiles[ttype] = mat_stub('std', color = color, 
+                        tile = None, others = [])
             else:
                 self.mat.others.append(name)
                     
@@ -611,13 +660,14 @@ class TSParser(Rawsparser0):
 
     def get(self):
         self.select(self.mat)
-        return self.mats
+        return self.materialsets
 
 
 class Token(object):
     tokens = ()
     parses = ()
     contains = ()
+    ignores_unknown = False
     def __init_(self, name, tail):
         self.name = name
         
@@ -707,6 +757,10 @@ class Tile(Token):
         if type(token) == Cel:
             self.cel = token
             return True
+            
+    def __str__(self):
+        return "TILE({}, {})".format(self.name, str(self.cel))
+        
         
 class Tileset(Token):
     tokens = ('TILESET', )
@@ -720,6 +774,9 @@ class Tileset(Token):
         if type(token) == Tile:
             self.tiles.append(token)
             return True
+
+    def __str__(self):
+        return "TILESET({})".format(self.name)
 
 class BlitInsn(Token):
     tokens = ( 'BLIT', 'BLEND', 'GLOW', 'KEY' )
@@ -754,7 +811,7 @@ class Cel(Token):
         if len(tail) == 0:
             return
         elif len(tail) == 1: 
-            if tail[0] != 'none':
+            if tail[0] != 'NONE':
                 raise ParseError("short inline def '{}'".format(':'.join(tail)))
             self.prelimo = [ None ]
         elif len(tail) == 2: # just page, idx
@@ -762,12 +819,12 @@ class Cel(Token):
         elif len(tail) == 3: # page,s,t or page,idx,effect
             try:
                 int(tail[2])
-                self.prelimo.append('blit', tail)
+                self.prelimo.append(('blit', tail))
             except ValueError:
-                self.prelimo.append('blit', tail[:2])
-                self.prelimo.append('effect', tail[2])
+                self.prelimo.append(('blit', tail[:2]))
+                self.prelimo.append(('effect', tail[2]))
         else:
-            self.prelimo.append('blit', tail:2])
+            self.prelimo.append(('blit', tail[:2]))
             for e in tail[3:]:
                 self.prelimo.append(e)
     
@@ -775,10 +832,14 @@ class Cel(Token):
         if type(token) == BlitInsn:
             self.prelimo.append(token.insn, self.param)
             return True
+            
+    def __str__(self):
+        return "CEL(frames={}, prelimo={}, effects={}, no_add={})".format(
+            self.framecount, len(self.prelimo), len(self.effects), self.no_add)
 
-class Material(Token):
+class MaterialSet(Token):
     tokens = ('MATERIAL', )
-    parses = ('EMIT', 'COLOR_CLASSIC' )
+    parses = ('TILESETS', 'CLASSIC_COLOR', 'BUILDINGS' )
     contains = ('TILE', )
     def __init__(self, name, tail):
         if tail[0] == 'none':
@@ -786,33 +847,52 @@ class Material(Token):
             self.klass = 'nomat'
             return
         self.nomat = False
-        if tail[0] not in ( 'INORGANIC', 'PLANT', 'NONE' ):
+        if tail[0] not in ( 'INORGANIC', 'PLANT', 'NONE', 'DERIVED' ):
             raise ParseError("unknown material class " + tail[0])
         self.klass = tail[0]
         self.tokenset = tail[1:]
-        self.emits = []
+        self.tiles = []
+        self.tilesets = []
         self.mat_stubs = []
+        self.default_color = None
+        self.buildings = False
         
     def add(self, token):
         if type(token) == Tile:
-            self.emits.append(token)
+            self.tiles.append(token)
             return True
 
     def parse(self, name, tail):
-        if name == 'EMIT':
-            self.emits.append(tail)
+        if name == 'TILESETS':
+            self.tilesets += tail
             return True
+        elif name == 'BUILDINGS':
+            self.buildings = True
         elif name == 'COLOR_CLASSIC':
             self.default_color = tail[0].split(',')
 
     def match(self, mat):
+        if mat.name == 'STEEL':
+            print mat.others
         if self.klass != mat.klass:
             return False
-        for token in self.tokenset
-            if token in mat.others:
-                self.mat_stubs.append(mat)
-                return True
-        return False
+        matched = False
+        for token in self.tokenset:
+            if token[0] == '!':
+                if token[1:] in mat.others:
+                    return False
+            elif token in mat.others:
+                matched = True
+        if matched:
+            self.mat_stubs.append(mat)
+        return matched
+
+    def __str__(self):
+        rv =  "MATERIAL(class={}, tokenset={}, defcolor={}, emits={})\n".format(
+            self.klass, self.tokenset, self.default_color, map(str, self.tilesets) )
+        for m in self.mat_stubs:
+            rv += "  "+m.name
+        return rv
 
 class Building(Token):
     tokens = ('BUILDING', )
@@ -855,7 +935,7 @@ class FullGraphics(Token):
             raise StopIteration
         self.toplevel_tileset = Tileset(None, '__toplevel__')
         self.tilesets = {}
-        self.materials = []
+        self.materialsets = []
         self.celpages = []
         self.celeffects = {}
         self.buildings = {}
@@ -869,8 +949,8 @@ class FullGraphics(Token):
             self.celeffects[token.name] = token
         elif type(token) == CelPage:
             self.celpages[token.name] = token
-        elif type(token) == Material:
-            self.materials.append(token)
+        elif type(token) == MaterialSet:
+            self.materialsets.append(token)
         elif type(token) == Building:
             self.buildings[token.name] = token
         elif type(token) == FullGraphics:
@@ -888,6 +968,37 @@ class FullGraphics(Token):
         rv += 'buildings: {}\n'.format(' '.join(self.buildings.keys()))
         
         return rv
+
+class MaterialTemplates(Token):
+    tokens = ('OBJECT',)
+    contains = ( 'MATERIAL_TEMPLATE',)
+                 
+    def __init__(self, name, tail):
+        if tail[0] != 'MATERIAL_TEMPLATE':
+            raise StopIteration
+        self.templates = {}
+    
+    def add(self, token):
+        if type(token) == MaterialTemplate:
+            self.templates[token.name] = token    
+    
+class MaterialTemplate(Token):
+    tokens = ('MATERIAL_TEMPLATE',)
+    parses = ('DISPLAY_COLOR', 'IS_METAL','WOOD','BONE', 'LEATHER', 'SOAP')
+    ignores_unknown = True
+
+    def __init__(self, name, tail):
+        self.name = tail[0]
+        self.color = None
+        self.others = []
+        
+    def parse(self, name, tail):
+        if name == 'DISPLAY_COLOR':
+            self.color = map(int, tail)
+        elif name in self.parses:
+            print self.name, name
+            self.others.append(name)
+        
 
 class AdvRawsParser(Rawsparser0):
     """ container tokens:
@@ -916,7 +1027,7 @@ class AdvRawsParser(Rawsparser0):
                 self.dispatch[tokname] = klass
 
     def parse_token(self, name, tail):
-        loud = False
+        self.loud = False
         if name == 'VERSION': # ugly kludge
             return
         if len(self.stack) == 0:
@@ -943,16 +1054,26 @@ class AdvRawsParser(Rawsparser0):
             self.stack.append(o)
             if self.loud: print "{} contains {}".format(self.stack[-1].__class__.__name__, name)
             return True
+        
         if self.loud: print "{} does not contain {}".format(self.stack[-1].__class__.__name__, name)
         
         if self.loud: print 'stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
+
+        # so it's an unknown token for this level. see if we're to ignore it
+        if self.stack[-1].ignores_unknown:
+            een = False
+            for s in self.stack:
+                if name in s.tokens:
+                    een = True
+            if not een:
+                return not een
 
         if len(self.stack) == 1: # got root only.
             # insidious kludge. :(
             try:
                 o = self.dispatch[name](name, tail)
             except KeyError:
-                # NEH
+                # NEH aka HFS
                 raise ParseError("unknown token '{}'".format(name))
             if type(o) == type(self.root):
                 return True
@@ -1097,17 +1218,22 @@ def work(dfprefix, fgraws, dumpfile=None):
     stdraws = os.path.join(dfprefix, 'raw')
     pageman = Pageman(init.fontpath)
     
-    stdparser = TSParser()
-    fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, BlitInsn, Building, Material )
+    mtparser = AdvRawsParser( MaterialTemplates, MaterialTemplate )
+    fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, BlitInsn, Building, MaterialSet )
     gsparser = AdvRawsParser( CreaGraphics, CreaGraphicsSet, CelPage )
     
-    map(stdparser.eat, [stdraws])
+    map(mtparser.eat, [stdraws])
     map(gsparser.eat, [stdraws])
     map(fgparser.eat, fgraws)
     
-    mats = stdparser.get()
+    mtset = mtparser.get()
     fgdef = fgparser.get()
     cgset = gsparser.get()
+    
+    stdparser = TSParser(mtset.templates, fgdef.materialsets)
+    map(stdparser.eat, [stdraws])
+    materialsets = stdparser.get()
+    
     
     for page in fgdef.celpages: # + cgset.celpages: uncomment when creatures become supported
         self.pageman.eatpage(page)
@@ -1115,7 +1241,7 @@ def work(dfprefix, fgraws, dumpfile=None):
     #print str(fgdef)
     #print "\n".join(map(lambda x: str(x), cgset.pages))
     compiler = TSCompiler(pageman, init.colortab)
-    matiles = compiler.compile(mats, fgdef)
+    matiles = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings)
     
     if dumpfile:
         compiler.dump(dumpfile)

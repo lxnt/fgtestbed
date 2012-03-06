@@ -2,6 +2,9 @@
 #
 # Building definitions
 #
+# [building:<type>]
+# 
+#
 # Custom building definitions as in 'building_custom.txt' are (yet to be) understood.
 #
 # Conditional token:
