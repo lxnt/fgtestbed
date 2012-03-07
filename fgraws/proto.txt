@@ -50,16 +50,23 @@
 #  basically, the 'background' color 'shines through' translucent/transparent
 #  parts of the tile, while tile's own color is multiplied by 'foreground' color.
 #
-#  [blend:mat] - uses material's DISPLAY_COLOR. This is implied.
+#  [blend:mat] - uses material's DISPLAY_COLOR triplet. This is implied.
 #  [blend:none] - Blits the cel as is.
 #
 #  [glow] Both this and next keyframe must have non-none and different blend 
 #  defined. Linearly interpolates blend color for each frame in between, 
-#  for both fore and background colors.
+#  for both fore and background colors. Blit is replicated from this frame.
+#  (possibly add alpha interpolation for blit)
 #
 #  [key:<frameno>] signals that instructions following this token refer to 
 #  key frame number <frameno>. [key:0] is implicitly inserted at the start 
-#  of the celdef.
+#  of the celdef. Final keyframe definition that consists of single [key]
+#  token loops back to the zeroeth frame. 
+#
+# [key:0][blit:...][blend:...]
+# [key:2][blit:...][blend:...]
+# [key:4][blit:...][blend:...][glow]
+# [key:6] <- assume it's [key:0], glow frame 4 in 6-4 = two frames to frame 0's blend.
 #
 # currently supported effect tokens:
 #
@@ -126,9 +133,12 @@
     [tilesets:stone:constructed]
     [buildings]
 
-[material:inorganic:environment:environment_spec:deep_special:!is_gem]
+[material:inorganic:environment:environment_spec:!is_gem]
     [tilesets:mineral:constructed]
     [buildings]
+
+[material:inorganic:deep_special:!is_metal] # raw adamantine
+    [tilesets:mineral]
 
 [material:inorganic:deep_surface]
     [tilesets:feature]
