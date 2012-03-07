@@ -18,12 +18,16 @@
 #   
 # Cel definition token:
 #   [cel:none] - do not draw anything there (open space, etc.)  
-#   [cel:<clablide>] - shortcut for [cel][classic:<clablide>]
+#   [cel:<inline celdef>] - where <inline celdef> is 
+#        <celref>[:<effect>] is a shortcut for 
+#     [cel]
+#       [blit:<celref>]
+#       [blend:MAT:<effect>]
 #
-#   permitted tokens under it: [blit] [blend] [glow] [key] [classic]
+#   permitted tokens under it: [blit] [blend] [glow] [key]
 #
-# [blit:<celref>] blits given cel with current frame's blend 
-# or glow settings. Celref is one of:
+# [blit:<celref>] blits given cel with current frame's blend or glow settings
+# Celref is one of:
 #  [blit:<pagename>:<celdefname>] - refers to an alias defined in [tilepage]
 #  [blit:<pagename>:<index>] - cel by index
 #  [blit:<pagename>:<s>:<t>] - cel by column, row
@@ -57,25 +61,13 @@
 #  key frame number <frameno>. [key:0] is implicitly inserted at the start 
 #  of the celdef.
 #
-#
-#
-#
-#
 # currently supported effect tokens:
 #
 # [color:<tr,ipl,et>] - classic fg,bg,br. 
 #  Use either numbers, or fg,bg,br literals,
 #  they stand for material's DISPLAY_COLOR values
-#  see tilesets.txt for examples. Work only for 'classic' celdefs.
-#
-# 'Classic' celdef is the one that has only a single "classic" insn
-# in its definition, optionally with an effect.
-#
-# 'New-style' or 'Full-graphics' celdef is any that has multiple
-# blitter insns in its definition.
-#
-#
-#   
+#  see tilesets.txt for examples. 
+# 
 # [material:class:token] applies materials of class 'class',
 #  that have token 'token' in their definition to the 
 #  tilesets listed below. 
@@ -121,27 +113,13 @@
 #  [emit:<tsname|bsname>]
 #  [tile:<literal_tilename>[:<cel-def>]] (as in tileset def)
 #
-# On the top level, [tile:tilename] explicitly defines a tile. 
+# On the top level, [tile:<tilename>] explicitly defines a tile. 
 # It will be drawn as defined regardless of what material 
 # the game assigns to it, same as under [material:none]
 #
 # Buildings definition: see buildings.txt
 #
-#
-# Coloring rules. 
-#
-# If the cel is is defined by a blit and at least one of blend or glow tokens,
-# color is deemed to be defined by those tokens, and material's [display_color] or
-# [classic_color] are not taken into account unless explicitly mentioned in color
-# definitions (MAT instead of rgb/rgba values)
-#
-# If the cel is just a single blit, and the material has a [display_color], or
-# the [material] token contains a [classic_color] tag, it is drawn in classic mode,
-# using the color triplet or rgba value supplied.
-# 
-# If there is neither [display_color] nor [classic_color] defined, 
-# it is drawn as is, without any extra coloring.
-#
+
 
 
 [material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem]
