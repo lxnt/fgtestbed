@@ -44,14 +44,14 @@ CONTROLS = """
 
 
 class mapobject(object):
-    def __init__(self, font, matiles, dumpfname, apidir='', cutoff=127):
+    def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir=''):
         self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
         self.building_t = raw.DfapiEnum(apidir, 'building_type')
         
         self.parse_dump(dumpfname)
-        self.assemble_blitcode(matiles, cutoff)
-        self.txsz, self.fontdata = font
-        self.maxframes = cutoff + 1
+        self.assemble_blitcode(objcode, cutoff)
+        self.txsz = pageman.get_txsz()
+        self.fontdata = pageman.get_data()
 
         if os.name == 'nt':
             self._map_fd = os.open(dumpfname, os.O_RDONLY|os.O_BINARY)
@@ -111,7 +111,7 @@ class mapobject(object):
                     section = None
                 continue
             if section == 'materials':
-                print l
+                #print l
                 f = l.split()
                 if f[1] == 'INORG':
                     self.inorg_names[int(f[0])] = ' '.join(f[2:])
@@ -120,7 +120,7 @@ class mapobject(object):
                     self.plant_names[int(f[0])] = ' '.join(f[2:])
                     self.plant_ids[' '.join(f[2:])] = int(f[0])
 
-    def assemble_blitcode(self, mats, cutoff):
+    def assemble_blitcode(self, objcode, cutoff):
         # all used data is available before first map frame is to be
         # rendered in game.
         # eatpage receives individual tile pages and puts them into one big one
@@ -140,11 +140,14 @@ class mapobject(object):
             'names': 'un2 un1 t s mode fg bg'.split(),
             'formats': ['u1', 'u1', 'u1', 'u1', 'u4', 'u4', 'u4'],
             'offsets': [ 0, 1, 2, 3, 4, 8, 12 ] })
-        
+    
+        if cutoff > objcode.maxframe:
+            cutoff = objcode.maxframe
+        self.codedepth = cutoff + 1
         tcount = 0
-        for mat in mats.values():
-            tcount += len(mat.tiles)
-        print "{1} mats  {0} defined tiles, assembling...".format(tcount, len(mats.keys()))
+        for mat, tset in objcode.map.items():
+            tcount += len(tset.keys())
+        print "{1} mats  {0} defined tiles, cutoff={2} assembling...".format(tcount, len(objcode.map.keys()), cutoff)
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
         
@@ -153,6 +156,8 @@ class mapobject(object):
         
         blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
         blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
+        nf = (cutoff+1) * self.codew * self.codew
+        print "blitcode: {}x{}x{} {} units, should be {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
         
         NOMAT=0x3FF
         def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
@@ -172,23 +177,25 @@ class mapobject(object):
             return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
         
         tc = 1
-        for name, mat in mats.items():
-            if name in self.inorg_ids:
-                mat_id = self.inorg_ids[name]
-            elif name in self.plant_ids:
-                mat_id = self.plant_ids[name]
+        # 'link' map tiles
+        for mat_name, tileset in objcode.map.items():
+            if mat_name in self.inorg_ids:
+                mat_id = self.inorg_ids[mat_name]
+            elif mat_name in self.plant_ids:
+                mat_id = self.plant_ids[mat_name]
             else:
-                print  "no per-session id for mat '{0}'".format(name)
+                print  "no per-session id for mat '{0}', assuming NOMAT".format(mat_name)
+                mat_id = NOMAT
                 continue
-            for tname, frameseq in mat.tiles.items():
+            for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
                 y = int (tc / self.codew)
                 tc += 1
                 
                 try:
-                    tile_id = self.tileresolve[tname]
+                    tile_id = self.tileresolve[tilename]
                 except KeyError:
-                    print "unk tname {} in mat {}".format(tname, mat.name)
+                    print "unk tname {} in mat {}".format(tilename, mat_name)
                     raise
                 hashed  = hashit(tile_id, mat_id)
                 hx = hashed % self.hashw 
@@ -196,29 +203,16 @@ class mapobject(object):
                 blithash[hy, hx]['s'] = x
                 blithash[hy, hx]['t'] = y               
                 frame_no = 0
-                if len(frameseq[0]) == 3: # fgbg tile
-                    blit, fg, bg = frameseq[0]
-                    s, t = blit
-                    blitcode[frame_no, y, x]['s'] = s
-                    blitcode[frame_no, y, x]['t'] = t
-                    blitcode[frame_no, y, x]['un1'] = 0
-                    blitcode[frame_no, y, x]['un2'] = 0
-                    blitcode[frame_no, y, x]['mode'] = 0
-                    blitcode[frame_no, y, x]['fg'] = fg
-                    blitcode[frame_no, y, x]['bg'] = bg
-                    continue
-                    
-                for insn in frameseq:
-                    blit, blend = insn
-                    s, t  = blit
-                    blitcode[frame_no, y, x]['s'] = s
-                    blitcode[frame_no, y, x]['t'] = t
-                    blitcode[frame_no, y, x]['mode'] = 1
-                    blitcode[frame_no, y, x]['fg'] = blend
-                    blitcode[frame_no, y, x]['bg'] = 0
+                for frame in frameseq:
+                    blitcode[frame_no, y, x]['s'] = frame.blit[0]
+                    blitcode[frame_no, y, x]['t'] = frame.blit[1]
+                    blitcode[frame_no, y, x]['mode'] = frame.mode
+                    blitcode[frame_no, y, x]['fg'] = frame.fg
+                    blitcode[frame_no, y, x]['bg'] = frame.bg
                     frame_no += 1
                     if frame_no > cutoff:
                         break
+        print "blithash={} blitcode={}".format(len(blithash.tostring()), len(blitcode.tostring()))
         self.blithash, self.blitcode = blithash, blitcode
 
     def upload_font(self, txid_font):
@@ -262,12 +256,12 @@ class mapobject(object):
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
         glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-                    
+
         ptr = ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA32UI, self.codew, self.codew, self.maxframes,
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA32UI, self.codew, self.codew, self.codedepth,
                      0, GL_RGBA_INTEGER, GL_UNSIGNED_INT, ptr )
                      
-        print "hashtable {}K code {}K".format(4*self.hashw*self.hashw>>10, 16*self.codew*self.codew*self.maxframes >>10)
+        print "hashtable {}K code {}K".format(4*self.hashw*self.hashw>>10, 16*self.codew*self.codew*self.codedepth >>10)
 
     def getmap(self, origin, size, verbose=False):
         x,y,z = origin
@@ -1266,28 +1260,21 @@ if __name__ == "__main__":
     ap.add_argument('-zeddown', nargs='?', type=int, help="number of z-levels to draw below current", default=4)
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
-    ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset from")
+    ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="raws dirs to parse")
     ap.add_argument('--loud', action='store_true', help="spit lots of useless info")
     ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
 
-    pageman, matiles, maxframe = raw.work(pa.dfprefix, dumpfile=pa.irdump)
-    if pa.cutoff_frame > maxframe:
-        cutoff = maxframe
-    else:
-        cutoff = pa.cutoff_frame
+    pageman, objcode = raw.work(pa.dfprefix, pa.rawsdir)
     
-    mo = mapobject( font = pageman.get_album(),
-                    matiles = matiles,
-                    dumpfname = pa.dump, 
-                    cutoff = cutoff)
+    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame )
     loud = ()
     if pa.loud:
         loud = ("gl", "reshape", "shaders")
     
-    re = Rednerer(vs=pa.vs, fs=pa.fs, go=mo, loud = loud, anicutoff = cutoff, zeddown = pa.zeddown)
+    re = Rednerer(vs=pa.vs, fs=pa.fs, go=mo, loud = loud, anicutoff = mo.codedepth - 1, zeddown = pa.zeddown)
     re.loop(pa.afps, pa.choke)
     re.fini()
     

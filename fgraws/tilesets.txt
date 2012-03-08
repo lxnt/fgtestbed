@@ -9,6 +9,9 @@
     
 [effect:floor]
     [color:fg,0,0]
+
+[effect:wetfloor]
+    [color:fg,0,0]
     
 [effect:ramp]
     [color:fg,0,0]

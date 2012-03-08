@@ -127,7 +127,8 @@
 # Buildings definition: see buildings.txt
 #
 
-
+[material:inorganic:soil]
+    [tilesets:soil]
 
 [material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem]
     [tilesets:stone:constructed]

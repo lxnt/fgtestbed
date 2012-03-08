@@ -37,7 +37,7 @@ class DfapiEnum(object):
             self.gotit = True
         elif tagname == 'enum-item' and self.gotit:
             try:
-                self.enums.append(attrs['name'])
+                self.enums.append(attrs['name'].upper())
             except KeyError:
                 self.enums.append(None)
                         
@@ -64,7 +64,7 @@ class DfapiEnum(object):
         if type(key) == int:
             return self.enums[key]
         else:
-            return self.emap[key]
+            return self.emap[key.upper()]
     
 class Pageman(object):
     """ requires pygame.image to function. 
@@ -148,14 +148,18 @@ class Pageman(object):
                 
         return self.mapping[(pagename, s, t)]
 
-    def get_album(self):
-        "returns txsz tuple and bytes for the resulting texture album"
+    def get_txsz(self):
+        "returns txsz tuple"
         min_h = self.max_cdim[1]*(self.current_j + 1)
         if min_h < self.album_h:
             self.reallocate(min_h - self.album_h)
         cw, ch = self.max_cdim
         wt, ht = self.album_w/cw, min_h/ch
-        return (wt, ht, tw, th), pygame.image.tostring(self.surf, 'RGBA')
+        return (wt, ht, cw, ch)
+        
+    def get_data(self):
+        "returns bytes for the resulting texture"
+        return pygame.image.tostring(self.surf, 'RGBA')
 
 """ raws fmt:
     [OBJECT:objtag] defines what tag defines an 'object'
@@ -181,15 +185,18 @@ class ObjectCode(object):
         self.map = {}
         self.buildings = {}
         self.items = {}
+        self.maxframe = 0
         
     def addtiles(self, matname, tilename, bframes):
+        if len(bframes) > self.maxframe + 1:
+            self.maxframe = len(bframes) - 1 
         try:
             self.map[matname][tilename] = bframes
         except KeyError:
             self.map[matname] = { tilename: bframes }
    
     def __str__(self):
-        rv = ''
+        rv = 'maxframe={}\n'.format(self.maxframe)
         for k,v in self.map.items():
             rv += "material:{}\n".format(k)
             for t,bfs in v.items():
@@ -476,9 +483,10 @@ class TSParser(Rawsparser0):
             if len(tail) != 2:
                 raise ParseError('Non-2-parameter USE_MATERIAL_TEMPLATE in PLANT: WTF?.')
             if self.base_mat is not None:
-                print "implicitly delimited template in {}".format(self.base_mat.name)
+                print "implicitly delimited {} in {}".format( self._current_template_name, self.base_mat.name)
                 self.select(self.mat)
                 self.mat = self.base_mat
+            self._current_template_name = tail[1]
             self.base_mat = self.mat
             self.mat = Material('DERIVED', None)
             self.mat.others += self.templates[tail[1]].others, 
@@ -772,10 +780,13 @@ class Keyframe(object):
 
 
 class BasicFrame(object):
-    def __init__(self, mode, blit, blend):
-        self.mode = mode
+    def __init__(self, blit, blend):
         self.blit = blit
-        self.blend = blend
+        if blend is None:
+            blend = (None, None, None)
+        self.mode = blend[0]
+        self.fg = blend[1]
+        self.bg = blend[2]
 
 def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap):
     if thisframe._blit == 'MAT':
@@ -788,9 +799,9 @@ def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap):
             num = 1
         else:
             num = nextframe.no - thisframe.no
-        return [ BasicFrame(None, None, None) ] * num
+        return [ BasicFrame(None, None) ] * num
     if thisframe == nextframe:
-        return [ BasicFrame(0, pageman.map(thisframe.page, thisframe._blit), thisframe._blend.emit(material, colormap)) ]
+        return [ BasicFrame(pageman.map(thisframe.page, thisframe._blit), thisframe._blend.emit(material, colormap)) ]
 
     rv = []
     mode0, fg0, bg0 = thisframe._blend.emit(material, colormap)
@@ -1283,9 +1294,8 @@ def work(dfprefix, fgraws):
     
     compiler = TSCompiler(pageman, init.colortab)
     objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings)
-    
-    maxframe = 0
-    return pageman, objcode, maxframe
+
+    return pageman, objcode
 
 
 def main():
