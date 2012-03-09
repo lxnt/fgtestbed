@@ -5,7 +5,7 @@
 # plus some classic effects.
 
 [effect:sfloor]
-    [color:0,0,0]
+    [color:0,0,1]
     
 [effect:floor]
     [color:fg,0,0]
@@ -14,7 +14,7 @@
     [color:fg,0,0]
     
 [effect:ramp]
-    [color:fg,0,0]
+    [color:fg,0,1]
     
 [effect:dry]
     [color:6,6,0]
@@ -37,10 +37,10 @@
     [tile:StoneFloor4:std:0:6:sfloor]
     [tile:StoneFloorSmooth:std:11:2:sfloor]
     [tile:StoneFortification:std:14:12]
-    [tile:StonePebbles1:std:7:2:floor]
-    [tile:StonePebbles2:std:12:2:floor]
-    [tile:StonePebbles3:std:14:2:floor]
-    [tile:StonePebbles4:std:0:6:floor]
+    [tile:StonePebbles1:std:7:2:sfloor]
+    [tile:StonePebbles2:std:12:2:sfloor]
+    [tile:StonePebbles3:std:14:2:sfloor]
+    [tile:StonePebbles4:std:0:6:sfloor]
     [tile:StonePillar:std:7:12]
     [tile:StoneRamp:std:14:1:ramp]
     [tile:StoneStairD:std:14:3:ramp]
@@ -159,6 +159,7 @@
     [tile:ConstructedFortification:std:14:12]
     [tile:ConstructedPillar:std:7:12]
     [tile:ConstructedRamp:std:14:1:ramp]
+    [tile:ConstructedFloor:std:7:2:floor]
     [tile:ConstructedWallL2D:std:8:11]
     [tile:ConstructedWallL2U:std:14:11]
     [tile:ConstructedWallLD:std:11:11]

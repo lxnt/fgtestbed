@@ -13,7 +13,7 @@ uniform int show_hidden;
 flat in vec4 blit;   // fka 'tile', but zw are pre-divided with txsz.xy
 flat in vec4 fg;
 flat in vec4 bg;
-flat in int mode;  /* -1 - no tile ; 0 - open space ; 1 - classic ; 2 - just blit */
+flat in int mode;  /* -1 - no tile ; 0 - no blending (AS_IS); 1 - classic ; 2 - fg blend only */
 flat in int mouse_here;
 flat in uint des;
 
@@ -34,18 +34,21 @@ void main() {
     vec4 tile_color = texture2D(font, texcoords);
     
     switch (mode) {
-	case 2:
+	case 2: 
 	    color = fg * tile_color * darken;
+	    color.a = 1.0;
 	    break;
 	case 1:
 	    color = mix(tile_color * fg, bg, 1.0 - tile_color.a) * darken;
+	    color.a = 1.0;
 	    break;
 	case 0:
-	    color = vec4(1.0,1.0,1.0,0.0);
+	    color = tile_color * darken;
+	    color.a = 1.0;
 	    break;
-	case -1:
+	case -1:	    
 	default:
-	    discard;
+	    color = vec4(0,0,0,0);
     }
     
     if ((des & 7u) > 0u) {

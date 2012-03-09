@@ -154,7 +154,7 @@
     [buildings]
 
 [material:inorganic:is_gem]
-    [tilesets:stone]
+    [tilesets:mineral]
 
 [material:plant:shrub_tile]
     [tilesets:vegetation]
@@ -179,7 +179,7 @@
     [tile:MagmaFlow][cel:std:0:0]
     [tile:MurkyPool][cel:std:0:0]
     [tile:OpenSpace][cel:none]
-    [tile:RampTop][cel:std:0:0]
+    [tile:RampTop][cel:none]
     [tile:SemiMoltenRock][cel:std:0:11]
     [tile:Void][cel:none]
     [tile:Waterfall][cel:none]

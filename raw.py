@@ -202,19 +202,19 @@ class ObjectCode(object):
             for t,bfs in v.items():
                 rv += "    tilename:{}\n".format(t)
                 for bf in bfs:
-                    rv += "        blit={} blend={}\n".format(bf.blit, bf.blend)
+                    rv += "        blit={} fg={} bg={} mode={}\n".format(bf.blit, bf.fg, bf.bg, bf.mode)
         return rv
 
 class TSCompiler(object):
     """ compiles parsed standard tilesets """
-    plant_tname_map = {
-        'TREE': 'TREE',
-        'SHRUB': 'SHRUB',
-        'SAPLING': 'SAPLING',
-        'TREEDEAD': 'DEAD_TREE',
-        'SAPLINGDEAD': 'DEAD_SAPLING',
-        'SHRUBDEAD': 'DEAD_SHRUB'
-    }    
+    plant_tname_map = { # blit/blend from standard tileset
+        'TREE':         ('TREE',         (5,  0), (2, 0, 1)), 
+        'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
+        'SAPLING':      ('SAPLING',      (7, 14), (2, 0, 1)),
+        'TREEDEAD':     ('DEAD_TREE',    (6, 12), (6, 0, 0)),
+        'SAPLINGDEAD':  ('DEAD_SAPLING', (7, 14), (6, 0, 0)),
+        'SHRUBDEAD':    ('DEAD_SHRUB',   (2,  2), (6, 0, 0)),
+    }
     def __init__(self, pageman, colortab):
         self.matiles = {}
         self.colortab = colortab
@@ -265,36 +265,29 @@ class TSCompiler(object):
                                 tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
                             continue
                         elif materialset.klass == 'PLANT':
+                            tile = copy.deepcopy(o_tile)
                             if mat.has('GRASS'):
-                                tile = copy.deepcopy(o_tile)
                                 try:
                                     bli, ble = mat.celdefs[tile.name[-6:]]
                                     tile.cel = Cel('CEL', ['STD', bli])
                                     tile.cel.frames[0].blend(ble)
                                 except KeyError:
                                     pass
-                                rv.addtiles(mat.name, tile.name,
-                                    tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
-                                continue
-
-                            elif mat.has('SHRUB_TILE') or mat.has('TREE_TILE'):
+                            else: # shrub or tree
                                 try: 
-                                    tcd =  mat.celdefs[self.plant_tname_map[o_tile.name]]
-                                    tile = copy.deepcopy(o_tile)
-                                    bli, ble = mat.celdefs[tile.name[-6:]]
-                                    tile.cel = Cel('CEL', ['STD', bli])
-                                    tile.cel.frames[0].blend(ble)
+                                    bli, ble =  mat.celdefs[self.plant_tname_map[o_tile.name][0]]
                                 except KeyError:
                                     continue
-                                rv.addtiles(mat.name, tile.name,
-                                    tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
-                                
-                        continue
-                        print "Emit klass={} name={} tile={} mtdef={} cel={}".format(materialset.klass, 
-                            mat.name, o_tile, mtdef, o_tile.cel)
-                        if o_tile.cel is not None:
-                            print o_tile.cel
-                    continue
+                                if bli is None:
+                                    bli = self.plant_tname_map[o_tile.name][1]
+                                    bli = bli[0] + 16*bli[1]
+                                if ble is None:
+                                    ble = self.plant_tname_map[o_tile.name][2]
+                                tile.cel = Cel('CEL', ['STD', bli])
+                                tile.cel.frames[0].blend(ble)
+                            
+                            rv.addtiles(mat.name, tile.name,
+                                tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
         return rv
 
 class Rawsparser0(object):
@@ -462,7 +455,7 @@ class TSParser(Rawsparser0):
                 raise ParseError('USE_MATERIAL_TEMPLATE delimiter missing.')
             if self.mat:
                 self.select(self.mat)
-            self.mat = Material(tail[0], 'PLANT')
+            self.mat = Material(tail[0], 'PLANT')        
         elif name == 'GRASS_TILES':
             i = 0
             for t in map(self.tileparse, tail):
@@ -505,6 +498,8 @@ class TSParser(Rawsparser0):
             self.mat.color = map(int, tail)
         elif name.endswith('_TILE'):
             self.mat.addcref(name[:-5], self.tileparse(tail[0]))
+            if self.mat.name == 'MANGROVE':
+                print "addcref:", name
         elif name == 'STATE_COLOR':
             return
         elif name.endswith('_COLOR'):
@@ -595,7 +590,7 @@ class CelEffect(Token):
             self.color = tail[0].split(',')
             return True
             
-    def apply(self, color):
+    def __call__(self, color):
         rv = []
         for k in self.color:
             if k == 'FG':
@@ -606,6 +601,8 @@ class CelEffect(Token):
                 rv.append(color[2])
             else:
                 rv.append(int(k))
+        return rv
+        #print "effect {}:{}  {}->{}".format(self.name, self.color, color, rv)
 
 class Tile(Token):
     tokens = ( 'TILE', )
@@ -674,6 +671,7 @@ class Color(object):
     def emit(self, material, colormap, effect = None):
         """ returns a triplet: mode, fg, bg. 
             mode is :
+           -1 - discard 
             0 - no blending
             1 - classic fg/bg
             2 - fg only
@@ -683,11 +681,12 @@ class Color(object):
         def noeffect(c): return c
         if effect is None:
             effect = noeffect
+
         if self.color == 'MAT':
             if material.color is None:
                 return (0,0,0)
             else:
-                fg, bg = effect(colormap(material.color))
+                fg, bg = colormap(effect(material.color))
             return (1, fg, bg)
         elif self.color == 'NONE' or self.color is None:
             return (0,0,0)
@@ -696,27 +695,8 @@ class Color(object):
         elif len(self.color) == 2:
             return (1, self.color[0], self.color[1])
         elif len(self.color) == 3:
-            fg, bg = effect(colormap(self.color))
+            fg, bg = colormap(effect(self.color))
             return (1, fg, bg)
-
-    def apply_effect(self, effect):
-        if type(effect) in (list,tuple) and len(effect) == 3 and len(self.color) == 3:
-            
-            # modify classic color
-            rv = effect
-            efg, ebg, ebr = effect
-            if efg == "fg":
-                rv[0] = color[0]
-            elif efg == "bg":
-                rv[0] = color[1]
-            if ebg == "fg":
-                rv[1] = color[0]
-            elif ebg == "bg":
-                rv[1] = color[1]
-            if ebr == 'br':
-                rv[2] = color[2]
-            return rv
-
 
 class Keyframe(object):
     def __init__(self, number, idef = []):
@@ -744,6 +724,7 @@ class Keyframe(object):
                 self._blit = ( 'MAT', int(idef[1]) )
                 self.effect = idef[2]
         elif idef[0] == 'NONE':
+            self._blend = None
             return
         elif len(idef) == 2:# ( page, idx)  or (page, def) 
             self.page = idef[0]
@@ -783,12 +764,12 @@ class BasicFrame(object):
     def __init__(self, blit, blend):
         self.blit = blit
         if blend is None:
-            blend = (None, None, None)
+            blend = (-1, None, None)
         self.mode = blend[0]
         self.fg = blend[1]
         self.bg = blend[2]
 
-def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap):
+def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap, celeffects):
     if thisframe._blit == 'MAT':
         try:
             thisframe._blit = ( material.tile, )
@@ -801,12 +782,13 @@ def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap):
             num = nextframe.no - thisframe.no
         return [ BasicFrame(None, None) ] * num
     if thisframe == nextframe:
-        return [ BasicFrame(pageman.map(thisframe.page, thisframe._blit), thisframe._blend.emit(material, colormap)) ]
+        return [ BasicFrame(pageman.map(thisframe.page, thisframe._blit), 
+            thisframe._blend.emit(material, colormap, celeffects.get(thisframe.effect, None) )) ]
 
     rv = []
-    mode0, fg0, bg0 = thisframe._blend.emit(material, colormap)
+    mode0, fg0, bg0 = thisframe._blend.emit(material, colormap, celeffects.get(thisframe.effect, None))
     if thisframe._glow:
-        mode1, fg1, bg1 = nextframe._blend.emit(material, colormap)
+        mode1, fg1, bg1 = nextframe._blend.emit(material, colormap, celeffects.get(nextframe.effect, None))
         if mode1 != mode0:
             raise CompileError("can't glow between two diffected blend modes")
     else:
@@ -862,12 +844,9 @@ class Cel(Token):
         # loop cel's frames to get maxframes frames
         rv = []
         frameno = 0
-        f0 = self.frames[0]
-        if f0.effect is not None:
-            f0.color = celeffects[f0.effect].apply(material.color)
         if len(self.frames) > 1:
             while frameno < len(self.frames) - 1:
-                rv += interpolate_keyframes(self.frames[frameno], self.frames[frameno+1], material, pageman, colormap)
+                rv += interpolate_keyframes(self.frames[frameno], self.frames[frameno+1], material, pageman, colormap, celeffects)
             lafra = self.frames[-1]    
             
             if lafra.blit is None and lafra.blend is None: #loop back to 0th keyframe:
@@ -875,7 +854,7 @@ class Cel(Token):
                 lafra.blend = self.frames[0].blend
                 rv += interpolate_keyframes(self.frames[-1], lafra, material, pageman, colormap)
         else:
-            rv += interpolate_keyframes(self.frames[0], self.frames[0], material, pageman, colormap)
+            rv += interpolate_keyframes(self.frames[0], self.frames[0], material, pageman, colormap, celeffects)
 
         while  len(rv) < maxframes:
             rv += rv
@@ -1293,13 +1272,13 @@ def work(dfprefix, fgraws):
         self.pageman.eatpage(page)
     
     compiler = TSCompiler(pageman, init.colortab)
-    objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings)
+    objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings, 1)
 
     return pageman, objcode
 
 
 def main():
-    p,m,ma = work(sys.argv[1], sys.argv[2:])
+    p,m = work(sys.argv[1], sys.argv[2:])
     print p
     print m
     

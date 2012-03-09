@@ -52,14 +52,21 @@ class mapobject(object):
         self.assemble_blitcode(objcode, cutoff)
         self.txsz = pageman.get_txsz()
         self.fontdata = pageman.get_data()
-
+        fsize = os.stat(dumpfname).st_size
         if os.name == 'nt':
             self._map_fd = os.open(dumpfname, os.O_RDONLY|os.O_BINARY)
         else:
             self._map_fd = os.open(dumpfname, os.O_RDONLY)
-
-        self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, offset = self.tiles_offset, access = mmap.ACCESS_READ)
-        self._designations_mmap = mmap.mmap(self._map_fd, self.designations_size, offset = self.designations_offset, access = mmap.ACCESS_READ)
+        try:
+            self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, 
+                offset = self.tiles_offset, access = mmap.ACCESS_READ)
+            self._designations_mmap = mmap.mmap(self._map_fd, 
+                self.designations_size, offset = self.designations_offset, access = mmap.ACCESS_READ)
+        except ValueError:
+            print "fsize: {} tiles {},{} designations: {},{} tail: {}".format(fsize, 
+                self.tiles_offset, self.tiles_size,
+                self.designations_offset, self.designations_size, self.designations_offset+self.designations_size)
+            raise
 
     def parse_dump(self, dumpfname):
         self.inorg_names = {}
@@ -157,7 +164,7 @@ class mapobject(object):
         blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
         blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
         nf = (cutoff+1) * self.codew * self.codew
-        print "blitcode: {}x{}x{} {} units, should be {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
+        print "blitcode: {}x{}x{} {} units, {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
         
         NOMAT=0x3FF
         def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
@@ -186,7 +193,6 @@ class mapobject(object):
             else:
                 print  "no per-session id for mat '{0}', assuming NOMAT".format(mat_name)
                 mat_id = NOMAT
-                continue
             for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
                 y = int (tc / self.codew)
@@ -204,15 +210,17 @@ class mapobject(object):
                 blithash[hy, hx]['t'] = y               
                 frame_no = 0
                 for frame in frameseq:
-                    blitcode[frame_no, y, x]['s'] = frame.blit[0]
-                    blitcode[frame_no, y, x]['t'] = frame.blit[1]
                     blitcode[frame_no, y, x]['mode'] = frame.mode
-                    blitcode[frame_no, y, x]['fg'] = frame.fg
-                    blitcode[frame_no, y, x]['bg'] = frame.bg
+                    if frame.mode != -1:
+                        blitcode[frame_no, y, x]['s'] = frame.blit[0]
+                        blitcode[frame_no, y, x]['t'] = frame.blit[1]
+                        blitcode[frame_no, y, x]['fg'] = frame.fg
+                        blitcode[frame_no, y, x]['bg'] = frame.bg
+                    else:
+                        print "{} {} 0x{:03x}".format(tilename, frame.mode, mat_id)
                     frame_no += 1
                     if frame_no > cutoff:
                         break
-        print "blithash={} blitcode={}".format(len(blithash.tostring()), len(blitcode.tostring()))
         self.blithash, self.blitcode = blithash, blitcode
 
     def upload_font(self, txid_font):
@@ -325,7 +333,7 @@ class mapobject(object):
                 raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
 
         matname = self.inorg_names.get(mat_id, None)
-        for prefix in ( 'Grass', 'Tree', 'Shrub', 'Sapling'):
+        for prefix in ( 'GRASS', 'TREE', 'SHRUB', 'SAPLING'):
             if tilename.startswith(prefix):
                 matname = self.plant_names.get(mat_id, None)
                 break

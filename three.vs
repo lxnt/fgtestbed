@@ -41,12 +41,7 @@ void main() {
     addr = texelFetch(dispatch, ivec2( screen % dispatch_row_len, screen / dispatch_row_len ), 0 );
     addr.z = uint(frame_no);
 
-    if ((screen & 0x3ff) == 32) { // Open space tile, provisional
-	mode = 0; 
-	return;
-    }
-
-    if ((addr.x + addr.y) == 0u) {
+    if ((addr.x + addr.y) == 0u) { // not defined.
 	blit = vec4(0,0,0,0);
 	fg = vec4(0,0,0,0);
 	bg = vec4(0,0,0,0);
@@ -60,7 +55,7 @@ void main() {
     blit.zw = 1.0 / vec2(txsz.xy) ; // for as long as we don't support tiles-smaller-than-txsz.zw
     // when we do: blit.zw = vec2( (insn.x>>8u)&0xffu,insn.x&0xffu )/vec2(txsz.xy);
     
-    mode = int(insn.y) + 1;
+    mode = int(insn.y);
     fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
     bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
 
