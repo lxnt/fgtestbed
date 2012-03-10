@@ -1275,7 +1275,7 @@ if __name__ == "__main__":
     ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
 
-    pageman, objcode = raw.work(pa.dfprefix, pa.rawsdir)
+    pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir)
     
     mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame )
     loud = ()
