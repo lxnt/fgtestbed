@@ -73,11 +73,12 @@ class mapobject(object):
         self.inorg_ids = {}
         self.plant_names = {}
         self.plant_ids = {}
-    
+        HEADER_SIZE = 0x100
         dumpf = file(dumpfname)
 
-        header = dumpf.read(4096).split('\n')
-        
+        # read header
+        header = dumpf.read(HEADER_SIZE).split('\n')        
+
         l = header.pop(0)
         if not l.startswith("blocks:"):
             raise TypeError("Wrong trousers " + l )
@@ -101,11 +102,14 @@ class mapobject(object):
             raise TypeError("Wrong trousers " + l )
         self.effects_offset = int(l[8:])
         
-        lines = dumpf.read(self.tiles_offset).split("\n")
+        # read and combine all of plaintext
+        dumpf.seek(HEADER_SIZE)
+        lines = dumpf.read(self.tiles_offset - HEADER_SIZE).split("\n")
+        
         dumpf.seek(self.effects_offset)
-        lines.append('section:effects')
         lines += dumpf.read().split("\n")
         
+        # parse plaintext
         sections = [ 'materials', 'buildings', 'building_defs', 'constructions', 'effects', 'units' ]
         section = None
         for l in lines:
@@ -118,7 +122,6 @@ class mapobject(object):
                     section = None
                 continue
             if section == 'materials':
-                #print l
                 f = l.split()
                 if f[1] == 'INORG':
                     self.inorg_names[int(f[0])] = ' '.join(f[2:])
@@ -193,6 +196,13 @@ class mapobject(object):
             else:
                 print  "no per-session id for mat '{0}', assuming NOMAT".format(mat_name)
                 mat_id = NOMAT
+                if mat_name != 'NONE':
+                    print repr(mat_name)
+                    print repr(self.inorg_ids.keys())
+                    print repr(self.plant_ids.keys())
+                    raise SystemExit
+                    
+                
             for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
                 y = int (tc / self.codew)
@@ -590,7 +600,7 @@ class Hud(object):
                 print s, repr(data)
             self.cheatsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )            
             i+=1
-        self.vbo = vbo.VBO( None )
+        self.vbo = None
 
     def fini(self):
         glDeleteTextures(self.txid)
@@ -666,12 +676,17 @@ class Hud(object):
     def _draw_quad(self, surf, dst): # dst assumed to be (left, bottom). surface not pre-flipped.
         x,y = dst
         w,h = surf.get_size()
-        self.vbo.set_array( np.array( (
+        data = np.array( (
              ( x,   y,   0, 1), # left-bottom
              ( x,   y+h, 0, 0), # left-top
              ( x+w, y+h, 1, 0), # right-top
              ( x+w, y,   1, 1), # right-bottom
-        ), dtype=np.int32 ) )
+        ), dtype=np.int32 ) 
+        if self.vbo is None:
+            # todo: make in STATIC_DRAW and reset only on resize
+            self.vbo = vbo.VBO(data, usage=GL_DYNAMIC_DRAW) 
+        else:
+            self.vbo.set_array(data)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D,  self.txid)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -867,9 +882,9 @@ class Rednerer(object):
         self.fbo.init()
         self.hud.init()
         
-        self.screen_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
-        self.designation_vbo = vbo.VBO(None, usage=GL_STREAM_DRAW)
-        self.grid_vbo = vbo.VBO(None, usage=GL_STATIC_DRAW)
+        self.screen_vbo = None
+        self.designation_vbo = None
+        self.grid_vbo = None
         self._txids = glGenTextures(3)
         self.dispatch_txid, self.blitcode_txid, self.font_txid = self._txids
         
@@ -902,8 +917,15 @@ class Rednerer(object):
             screen, designations = self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h), verbose)
             self._frame_cache.put(fc_key, screen, designations)
             
-        self.screen_vbo.set_array(screen)
-        self.designation_vbo.set_array(designations)
+        # todo: make them DYNAMIC_DRAW and in any case do set_array() only on pan/zoom or mainloop()
+        if self.screen_vbo is None:
+            self.screen_vbo = vbo.VBO(screen, usage=GL_STREAM_DRAW) 
+        else:
+            self.screen_vbo.set_array(screen)
+        if self.designation_vbo is None:
+            self.designation_vbo = vbo.VBO(designations, usage=GL_STREAM_DRAW) 
+        else:
+            self.designation_vbo.set_array(designations)
 
     def update_textures(self):
         self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
@@ -930,7 +952,11 @@ class Rednerer(object):
         self.grid_w, self.grid_h = w, h
         self.grid_tile_count = w*h
         self.grid = rv
-        self.grid_vbo.set_array(self.grid)
+        # todo: STATIC or DYNAMIC ??
+        if self.grid_vbo is None:
+            self.grid_vbo = vbo.VBO(self.grid, usage=GL_DYNAMIC_DRAW)
+        else:
+            self.grid_vbo.set_array(self.grid)
 
     def reshape(self, winsize = None, zoompoint = None):
         assert self.Parx is not None
