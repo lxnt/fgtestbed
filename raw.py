@@ -335,6 +335,8 @@ class Rawsparser0(object):
                     print l
                     traceback.print_exc(limit=32)
                     raise SystemExit
+        print "{} parsed {}".format(self.__class__.__name__, fna)
+
 
     def tileparse(self, t):
         try:
