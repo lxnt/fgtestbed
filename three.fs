@@ -58,7 +58,7 @@ void main() {
 	} else {
 	    liquicolor = vec4(0.0, 0.1*float(des & 7u)/7.0, float(des & 7u)/7.0, 1.0);
 	}
-	if (mode != 0) {
+	if (mode != -1) {
 	    color = mix(liquicolor, color, 0.5);
 	} else {
 	    color = liquicolor;
