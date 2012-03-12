@@ -793,13 +793,12 @@ class Rednerer(object):
         [1.0, 0.66, 0.33],
         [1.0, 0.60, 0.45, 0.30, 0.15 ],
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
-    def __init__(self, vs, fs, go, loud=[], anicutoff=128, zeddown=2):
+    def __init__(self, vs, fs, loud=[], zeddown=2):
         self.vs, self.fs = vs, fs
         self.fbo = Fbo(self)
         self.hud = Hud(self)
         self.mapshader = Tile_shader(self, loud='shaders' in loud)
         self.hudshader = Hud_shader(self.hud, loud='shaders' in loud)
-        self.gameobject = go
         
         self.do_update_attrs = True
         self.opengl_initialized = False
@@ -808,7 +807,6 @@ class Rednerer(object):
         self.do_reset_glcontext = False
         self.conf_stretch_tiles = False
         self.conf_snap_window = False
-        self.cutoff_frame = anicutoff      
         self.loud_gl      = 'gl' in loud
         self.loud_reshape = 'reshape' in loud
 
@@ -828,18 +826,20 @@ class Rednerer(object):
         self.crap = False
         self.show_hidden = 1
         
-        self.recenter()
-
         pygame.font.init()
         pygame.display.init()
         pygame.display.set_caption("full-graphics testbed", "fgtestbed")
 
         default_res = ( 1280, 800 )
         self.set_mode(default_res) # does opengl_init() for us
+
+    def set(self, gamoebject):
+        self.gameobject = gamoebject
+        self.cutoff_frame = gamoebject.codedepth - 1
+        self.recenter()
         self.update_textures() # sets up self.txsz
         self.viewpos = (0,0)
         self.reshape() # sets up Psz, viewpos_ and grid.
-
 
     def set_mode(self, size):
         if self.surface is None:
@@ -1067,7 +1067,6 @@ class Rednerer(object):
             else:
                 w = ""
             print "{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w)
-
 
     def zoom(self, zcmd, zpos = None):
         if zcmd == 'zoom_in' and self.Psz > 1:
@@ -1300,15 +1299,16 @@ if __name__ == "__main__":
     ap.add_argument('--loud', action='store_true', help="spit lots of useless info")
     ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
-
-    pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir)
     
-    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame )
     loud = ()
     if pa.loud:
         loud = ("gl", "reshape", "shaders")
+
+    re = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
+    pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir)
+    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame )
     
-    re = Rednerer(vs=pa.vs, fs=pa.fs, go=mo, loud = loud, anicutoff = mo.codedepth - 1, zeddown = pa.zeddown)
+    re.set(mo)
     re.loop(pa.afps, pa.choke)
     re.fini()
     

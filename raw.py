@@ -69,31 +69,33 @@ class DfapiEnum(object):
 class Pageman(object):
     """ requires pygame.image to function. 
         just blits tiles in order of celpage submission to album_w/max_cdim[0] columns """
-    def __init__(self, std_tileset, album_w = 2048, dump_fname = None):
+    def __init__(self, std_tileset, album_w = 2048, dump_fname = None, pages = []):
         self.mapping = {}
         self.pages = {}
         self.album_w = self.album_h = album_w
         self.dump_fname = dump_fname
         self.surf = pygame.Surface( ( album_w, album_w ), pygame.SRCALPHA, 32)
         self.current_i = self.current_j = 0
+        self.max_cdim = [0,0]
         
-        stdts = CelPage(None, ['std'])
-        stdts.pdim = (16, 16)
-        stdts.path = std_tileset
-        stdts.surf = pygame.image.load(std_tileset)
-        w,h = stdts.surf.get_size()
-        stdts.cdim = (w/16, h/16)
+        self.i_span = self.album_w / 32 # shit
         
-        self.max_cdim = stdts.cdim
-        
-        self.i_span = self.album_w / self.max_cdim[0]
-        
-        self.eatpage(stdts)
+        for page in pages:
+            self.eatpage(page)
+        if 'STD' not in self.pages.keys():
+            stdts = CelPage(None, ['std'])
+            stdts.pdim = (16, 16)
+            stdts.file = std_tileset
+            stdts.surf = pygame.image.load(std_tileset)
+            w,h = stdts.surf.get_size()
+            stdts.cdim = (w/16, h/16)
+            self.eatpage(stdts)
 
     def eatpage(self, page):
-        if page.cdim[0] != self.max_cdim[0] or page.cdim[1] != self.max_cdim[1]:
-            raise ValueError("celpage {} has cels of other than std_cdim size({}x{} vs {}x{})".format(
-                page.name, page.cdim[0], page.cdim[1], self.max_cdim[0], self.max_cdim[1]))
+        if page.cdim[0] > self.max_cdim[0]:
+            self.max_cdim[0] = page.cdim[0]
+        if page.cdim[1] > self.max_cdim[1]:
+            self.max_cdim[1] = page.cdim[1]
         page.load()
         for j in xrange(page.pdim[1]):
             for i in xrange(page.pdim[0]):
@@ -498,8 +500,6 @@ class TSParser(Rawsparser0):
             self.mat.color = map(int, tail)
         elif name.endswith('_TILE'):
             self.mat.addcref(name[:-5], self.tileparse(tail[0]))
-            if self.mat.name == 'MANGROVE':
-                print "addcref:", name
         elif name == 'STATE_COLOR':
             return
         elif name.endswith('_COLOR'):
@@ -557,19 +557,19 @@ class CelPage(Token):
         elif name == 'PAGE_DIM':
             self.pdim = (int(tail[0]), int(tail[1]))
         elif name == 'DEF':
-            if len(tail) == 4:
-                self.page.defs[tail[2]] = (int(tail[0]), int(tail[1]))
-            elif len(tail) == 3:
-                idx = int(tail[0])
-                s = idx % self.page.pdim[1]
-                t = idx / self.page.pdim[0]
-                self.defs[tail[1]] = ( s, t )
+            if len(tail) == 3:
+                self.defs[tail[0]] = (int(tail[1]), int(tail[2]))
+            elif len(tail) == 2:
+                idx = int(tail[1])
+                s = idx % self.pdim[1]
+                t = idx / self.pdim[0]
+                self.defs[tail[0]] = ( s, t )
             else:
                 raise ValueError("Incomprehensible DEF")
                 
     def load(self):
         if not self.surf:
-            surf = pygame.image.load(self.path)
+            surf = pygame.image.load(self.file)
             surf.convert_alpha()
             surf.set_alpha(None)
             self.surf = surf
@@ -731,14 +731,18 @@ class Keyframe(object):
             try:
                 self._blit = ( int(idef[1]), )
             except ValueError:
-                self._blit = idef[1]
-        elif len(idef) == 3: # ( page, s, t) or (page, idx, effect)
+                self._blit = ( idef[1], )
+        elif len(idef) == 3: # ( page, s, t) or (page, idx, effect) or (page, def, effect)
             self.page = idef[0]
             try:
                 self._blit = ( int(idef[1]), int(idef[2]) )
             except ValueError:
-                self._blit = int(idef[1])
-                self.effect = idef[2]
+                try:
+                    self._blit = ( int(idef[1]), )
+                    self.effect = idef[2]
+                except ValueError:
+                    self._blit = ( idef[1], )
+                    self.effect = idef[2]
         elif len(idef) == 4: # ( page, s, t, effect )
             self.page = idef[0]
             self._blit = ( int(idef[1]), int(idef[2]) )
@@ -979,7 +983,7 @@ class FullGraphics(Token):
         elif type(token) == CelEffect:
             self.celeffects[token.name] = token
         elif type(token) == CelPage:
-            self.celpages[token.name] = token
+            self.celpages.append(token)
         elif type(token) == MaterialSet:
             self.materialsets.append(token)
         elif type(token) == Building:
@@ -1249,7 +1253,6 @@ class CreaGraphicsSet(Token):
 def work(dfprefix, fgraws):
     init = Initparser(dfprefix)
     stdraws = os.path.join(dfprefix, 'raw')
-    pageman = Pageman(init.fontpath)
     
     mtparser = AdvRawsParser( MaterialTemplates, MaterialTemplate )
     fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, Building, MaterialSet )
@@ -1266,10 +1269,8 @@ def work(dfprefix, fgraws):
     stdparser = TSParser(mtset.templates, fgdef.materialsets)
     map(stdparser.eat, [stdraws])
     materialsets = stdparser.get()
-    
-    
-    for page in fgdef.celpages: # + cgset.celpages: uncomment when creatures become supported
-        self.pageman.eatpage(page)
+
+    pageman = Pageman(init.fontpath, pages = fgdef.celpages) # + cgset.celpages) uncomment when creatures become supported
     
     compiler = TSCompiler(pageman, init.colortab)
     objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings, 1)

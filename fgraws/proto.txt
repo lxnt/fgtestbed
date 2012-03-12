@@ -127,6 +127,17 @@
 # Buildings definition: see buildings.txt
 #
 
+[cel_page:std]
+    [file:32px/32pxTILESET.png]
+    [cel_dim:32:32]
+    [page_dim:16:16]
+
+[cel_page:32px]
+    [file:32px/32pxGRAPHICS.png]
+    [cel_dim:32:32]
+    [page_dim:16:16]
+    [def:uds:0:0]
+
 [material:inorganic:soil]
     [tilesets:soil]
 
@@ -171,7 +182,7 @@
     [tile:Ashes3][cel:std:3:15]
     [tile:Campfire][cel:std:0:0]
     [tile:Chasm][cel:none]
-    [tile:Driftwood][cel:std:0:15]
+    [tile:Driftwood][cel:32px:1:0]
     [tile:EeriePit][cel:std:0:0]
     [tile:Fire][cel:std:0:0]
     [tile:GlowingBarrier][cel:std:0:0]
