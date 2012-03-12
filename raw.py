@@ -219,7 +219,7 @@ class TSCompiler(object):
         'SHRUBDEAD':    ('DEAD_SHRUB',   (2,  2), (6, 0, 0)),
         'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
     }
-    shrub_tnames = ( 'DEAD_SHRUB', 'SHRUB' )
+    shrub_tnames = ( 'SHRUBDEAD', 'SHRUB' )
     def __init__(self, pageman, colortab):
         self.matiles = {}
         self.colortab = colortab
@@ -280,29 +280,29 @@ class TSCompiler(object):
                                     pass
                             else:
                                 if mat.has('TREE'):
-                                    if o_tile.name in self.shrub_tnames:
+                                    if tile.name in self.shrub_tnames:
                                         continue
                                 else:
-                                    if o_tile.name not in self.shrub_tnames:
+                                    if tile.name not in self.shrub_tnames:
                                         continue
                                 try:
-                                    rawscelname = self.plant_tname_map[o_tile.name][0]
+                                    rawscelname = self.plant_tname_map[tile.name][0]
                                 except KeyError:
                                     print "non-vegetation tile '{}' defined for material '{}'".format(tilename, mat_name)
                                     continue # just skip it
-                                
-                                bli, ble =  mat.celdefs.get(rawscelname, (None, None))
-                                        
+                                bli, ble =  mat.celdefs.get(rawscelname, (None, None))                                        
                                 if bli is None:
-                                    bli = self.plant_tname_map[o_tile.name][1]
+                                    bli = self.plant_tname_map[tile.name][1]
                                     bli = bli[0] + 16*bli[1]
                                 if ble is None:
-                                    ble = self.plant_tname_map[o_tile.name][2]
+                                    ble = self.plant_tname_map[tile.name][2]
                                 tile.cel = Cel('CEL', ['STD', bli])
                                 tile.cel.frames[0].blend(ble)
                             
                             rv.addtiles(mat.name, tile.name,
                                 tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
+                        else:
+                            print 'unknown matclass {}'.format(materialset.klass)
         return rv
 
 class Rawsparser0(object):
@@ -946,15 +946,17 @@ class MaterialSet(Token):
     def match(self, mat):
         if self.klass != mat.klass:
             return False
-        matched = False
+        # invert default if we have only negative conditions
+        matched = ''.join(self.tokenset).count('!') == len(self.tokenset)        
         for token in self.tokenset:
             if token[0] == '!' and mat.has(token[1:]):
-                return False
+                matched = False
             if mat.has(token):
                 matched = True
-                
+        
         if matched:
             self.materials.append(mat)
+            
         return matched
 
     def __str__(self):
@@ -1280,7 +1282,7 @@ def work(dfprefix, fgraws, loud=()):
     
     if 'parser' in loud:
         fgparser.loud = True
-
+        
     map(mtparser.eat, [stdraws])
     map(gsparser.eat, [stdraws])
     map(fgparser.eat, fgraws)
@@ -1293,6 +1295,9 @@ def work(dfprefix, fgraws, loud=()):
         print fgdef
     
     stdparser = TSParser(mtset.templates, fgdef.materialsets)
+    if 'parser' in loud:
+        stdparser.loud = True
+        
     map(stdparser.eat, [stdraws])
     materialsets = stdparser.get()
 

@@ -167,13 +167,10 @@
 [material:inorganic:is_gem]
     [tilesets:mineral]
 
-[material:plant:shrub_tile]
-    [tilesets:vegetation]
-
 [material:plant:grass]
     [tilesets:grass]
 
-[material:plant:tree_tile]
+[material:plant:!grass]
     [tilesets:vegetation]
 
 [tileset:nonmat]
