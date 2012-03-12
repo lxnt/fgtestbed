@@ -357,7 +357,7 @@ class Rawsparser0(object):
                 numit += 1
                 if stat.S_ISDIR(os.stat(path).st_mode):
                     nextpaths += glob.glob(os.path.join(path, '*'))
-                elif path.endswith('.txt'):
+                elif path.lower().endswith('.txt'):
                     final.append(path)
             paths = nextpaths
 
