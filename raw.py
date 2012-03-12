@@ -69,11 +69,10 @@ class DfapiEnum(object):
 class Pageman(object):
     """ requires pygame.image to function. 
         just blits tiles in order of celpage submission to album_w/max_cdim[0] columns """
-    def __init__(self, std_tileset, album_w = 2048, dump_fname = None, pages = []):
+    def __init__(self, std_tileset, album_w = 2048, pages = []):
         self.mapping = {}
         self.pages = {}
         self.album_w = self.album_h = album_w
-        self.dump_fname = dump_fname
         self.surf = pygame.Surface( ( album_w, album_w ), pygame.SRCALPHA, 32)
         self.current_i = self.current_j = 0
         self.max_cdim = [0,0]
@@ -110,8 +109,6 @@ class Pageman(object):
                     self.current_j += 1
                     if self.current_j * self.max_cdim[1] > self.album_h:
                         self.reallocate(1024)
-        if self.dump_fname:
-            f.close()
         self.pages[page.name.upper()] = page
         
     def dump(self, fname):
@@ -121,7 +118,14 @@ class Pageman(object):
             for k in sk:
                 f.write("{}:{}:{} -> {}:{} \n".format(
                         k[0], k[1], k[2], self.mapping[k][0], self.mapping[k][1]))
+        self.shrink()
         pygame.image.save(self.surf, fname + '.png')
+
+    def shrink(self):
+        min_h = self.max_cdim[1]*(self.current_j + 1)
+        old_h = self.album_h
+        if min_h < self.album_h:
+            self.reallocate(min_h - self.album_h)
         
     def __str__(self):
         return 'pageman({})'.format(' '.join(self.pages.keys()))
@@ -152,11 +156,9 @@ class Pageman(object):
 
     def get_txsz(self):
         "returns txsz tuple"
-        min_h = self.max_cdim[1]*(self.current_j + 1)
-        if min_h < self.album_h:
-            self.reallocate(min_h - self.album_h)
+        self.shrink()
         cw, ch = self.max_cdim
-        wt, ht = self.album_w/cw, min_h/ch
+        wt, ht = self.album_w/cw, self.album_h/ch
         return (wt, ht, cw, ch)
         
     def get_data(self):

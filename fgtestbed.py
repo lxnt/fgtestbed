@@ -44,12 +44,12 @@ CONTROLS = """
 
 
 class mapobject(object):
-    def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir=''):
+    def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir='', irdump=None):
         self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
         self.building_t = raw.DfapiEnum(apidir, 'building_type')
         
         self.parse_dump(dumpfname)
-        self.assemble_blitcode(objcode, cutoff)
+        self.assemble_blitcode(objcode, cutoff, irdump)
         self.txsz = pageman.get_txsz()
         self.fontdata = pageman.get_data()
         fsize = os.stat(dumpfname).st_size
@@ -130,7 +130,7 @@ class mapobject(object):
                     self.plant_names[int(f[0])] = ' '.join(f[2:])
                     self.plant_ids[' '.join(f[2:])] = int(f[0])
 
-    def assemble_blitcode(self, objcode, cutoff):
+    def assemble_blitcode(self, objcode, cutoff, irdump=None):
         # all used data is available before first map frame is to be
         # rendered in game.
         # eatpage receives individual tile pages and puts them into one big one
@@ -201,7 +201,6 @@ class mapobject(object):
                     print repr(self.inorg_ids.keys())
                     print repr(self.plant_ids.keys())
                     raise SystemExit
-                    
                 
             for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
@@ -227,7 +226,11 @@ class mapobject(object):
                         blitcode[frame_no, y, x]['fg'] = frame.fg
                         blitcode[frame_no, y, x]['bg'] = frame.bg
                     else:
-                        print "{} {} 0x{:03x}".format(tilename, frame.mode, mat_id)
+                        print "nodraw tile: {} {} 0x{:03x}".format(tilename, frame.mode, mat_id)
+                    if irdump:
+                        irdump.write("{:03x}:{:03x} {} {} {}\n".format(mat_id, tile_id, 
+                            mat_name, tilename, frame))
+
                     frame_no += 1
                     if frame_no > cutoff:
                         break
@@ -1289,24 +1292,31 @@ if __name__ == "__main__":
     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
-    ap.add_argument('-irdump', metavar='dfile', nargs='?', help="dump intermediate representation here")
-    ap.add_argument('-zeddown', nargs='?', type=int, help="number of z-levels to draw below current", default=4)
+    ap.add_argument('-irdump', metavar='dfile', help="dump intermediate representation here")
+    ap.add_argument('-aldump', metavar='fname', help="dump texture album here, creates fname.png and fname.mapping")
+    ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="raws dirs to parse")
-    ap.add_argument('--loud', action='store_true', help="spit lots of useless info")
-    ap.add_argument('--cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
+    ap.add_argument('-loud', action='store_true', help="spit lots of useless info")
+    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
     
     loud = ()
     if pa.loud:
         loud = ("gl", "reshape", "shaders")
+    if pa.irdump:
+        irdump = file(pa.irdump, 'w')
+    else:
+        irdump = None
 
     re = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
     pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir)
-    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame )
+    if pa.aldump:
+        pageman.dump(pa.aldump)
+    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame, irdump = irdump )
     
     re.set(mo)
     re.loop(pa.afps, pa.choke)
