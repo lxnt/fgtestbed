@@ -61,7 +61,7 @@ class DfapiEnum(object):
             i += 1
 
     def __getitem__(self, key):
-        if type(key) == int:
+        if type(key) in (long, int):
             return self.enums[key]
         else:
             return self.emap[key.upper()]
