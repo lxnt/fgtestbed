@@ -211,12 +211,13 @@ class TSCompiler(object):
     """ compiles parsed standard tilesets """
     plant_tname_map = { # blit/blend from standard tileset
         'TREE':         ('TREE',         (5,  0), (2, 0, 1)), 
-        'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
         'SAPLING':      ('SAPLING',      (7, 14), (2, 0, 1)),
         'TREEDEAD':     ('DEAD_TREE',    (6, 12), (6, 0, 0)),
         'SAPLINGDEAD':  ('DEAD_SAPLING', (7, 14), (6, 0, 0)),
         'SHRUBDEAD':    ('DEAD_SHRUB',   (2,  2), (6, 0, 0)),
+        'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
     }
+    shrub_tnames = ( 'DEAD_SHRUB', 'SHRUB' )
     def __init__(self, pageman, colortab):
         self.matiles = {}
         self.colortab = colortab
@@ -275,11 +276,21 @@ class TSCompiler(object):
                                     tile.cel.frames[0].blend(ble)
                                 except KeyError:
                                     pass
-                            else: # shrub or tree
-                                try: 
-                                    bli, ble =  mat.celdefs[self.plant_tname_map[o_tile.name][0]]
+                            else:
+                                if mat.has('TREE'):
+                                    if o_tile.name in self.shrub_tnames:
+                                        continue
+                                else:
+                                    if o_tile.name not in self.shrub_tnames:
+                                        continue
+                                try:
+                                    rawscelname = self.plant_tname_map[o_tile.name][0]
                                 except KeyError:
-                                    continue
+                                    print "non-vegetation tile '{}' defined for material '{}'".format(tilename, mat_name)
+                                    continue # just skip it
+                                
+                                bli, ble =  mat.celdefs.get(rawscelname, (None, None))
+                                        
                                 if bli is None:
                                     bli = self.plant_tname_map[o_tile.name][1]
                                     bli = bli[0] + 16*bli[1]
@@ -772,6 +783,24 @@ class BasicFrame(object):
         self.mode = blend[0]
         self.fg = blend[1]
         self.bg = blend[2]
+    def __str__(self):
+        if self.mode == -1:
+            return "-- mode -1: no drawing --"
+        if self.fg is None:
+            fg = '--------'
+        else:
+            fg = "{:08x}".format(self.fg)
+        if self.bg is None:
+            bg = '--------'
+        else:
+            bg = "{:08x}".format(self.bg)
+        
+        if self.blit is None:
+            blit = '--:--'
+        else:
+            blit = '{:02x}:{:02x}'.format(self.blit[0], self.blit[1])
+        return "{} fg={} bg={} mode={}".format(blit, fg, bg, self.mode)
+            
 
 def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap, celeffects):
     if thisframe._blit == 'MAT':
