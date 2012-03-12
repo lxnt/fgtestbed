@@ -1155,42 +1155,6 @@ class AdvRawsParser(Rawsparser0):
         # continue unwinding stack until we've put the token somewhere.
         self.parse_token(name, tail)
         return
-        """        
-        if self.stack:
-            print "{} not in {}'s parses".format(name, self.stack[-1].__class__.__name__)
-        try: 
-            # either stack is empty, or its top object
-            # refused to parse it.
-            # see if the token is to generate an object
-            o = self.dispatch[name](name, tail)
-        except KeyError:
-            # unknown token: ignore it.
-            print "ignoring " + name
-            return
-        
-            
-        if type(o) == type(self.root):
-            # special case for OBJECT tokens
-            # reset stack to contain root only
-            self.stack = [ self.root ]
-            return
-        
-        #print self.stack[-1].__class__.__name__, name
-        # show the object to the top object on the stack,
-        # maybe it's interested.
-        orig_stack = copy.copy(self.stack)
-        try:
-            while not self.stack[-1].add(o):
-                self.stack.pop(-1)
-        except IndexError:
-            print 'stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, orig_stack)))
-            raise
-            
-        # add() returns True if the object is ok to be contained, 
-        # so push it onto the stack
-        
-        self.stack.append(o)
-        """
 
     def fin(self):
         if self.loud: print 'fin stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
