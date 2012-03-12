@@ -1032,7 +1032,7 @@ class FullGraphics(Token):
         rv += 'tilesets: {}\n'.format(' '.join(self.tilesets.keys()))
         rv += 'celeffects: {}\n'.format(' '.join(self.celeffects.keys()))
         rv += 'celpages: {}\n'.format(' '.join(map(lambda x: x.name, self.celpages)))
-        rv += 'materials: {}\n'.format(' '.join(map(lambda x: x.klass, self.materials)))
+        rv += 'materialsets: {}\n'.format(' '.join(map(lambda x: x.klass, self.materialsets)))
         rv += 'buildings: {}\n'.format(' '.join(self.buildings.keys()))
         
         return rv
@@ -1262,6 +1262,8 @@ def work(dfprefix, fgraws):
     mtset = mtparser.get()
     fgdef = fgparser.get()
     cgset = gsparser.get()
+    
+    print fgdef
     
     stdparser = TSParser(mtset.templates, fgdef.materialsets)
     map(stdparser.eat, [stdraws])
