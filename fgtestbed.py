@@ -1306,14 +1306,14 @@ if __name__ == "__main__":
     
     loud = ()
     if pa.loud:
-        loud = ("gl", "reshape", "shaders")
+        loud = ("gl", "reshape", "shaders", "parser")
     if pa.irdump:
         irdump = file(pa.irdump, 'w')
     else:
         irdump = None
 
     re = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
-    pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir)
+    pageman, objcode = raw.work(pa.dfprefix, ['fgraws']+ pa.rawsdir, loud)
     if pa.aldump:
         pageman.dump(pa.aldump)
     mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame, irdump = irdump )

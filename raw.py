@@ -306,6 +306,7 @@ class TSCompiler(object):
         return rv
 
 class Rawsparser0(object):
+    loud = False
     def parse_file(self, fna, handler):
         lnum = 0
         for l in file(fna):
@@ -335,8 +336,8 @@ class Rawsparser0(object):
                     print l
                     traceback.print_exc(limit=32)
                     raise SystemExit
-        print "{} parsed {}".format(self.__class__.__name__, fna)
-
+        if self.loud:
+            print "{} parsed {}".format(self.__class__.__name__, fna)
 
     def tileparse(self, t):
         try:
@@ -493,7 +494,8 @@ class TSParser(Rawsparser0):
             if len(tail) != 2:
                 raise ParseError('Non-2-parameter USE_MATERIAL_TEMPLATE in PLANT: WTF?.')
             if self.base_mat is not None:
-                print "implicitly delimited {} in {}".format( self._current_template_name, self.base_mat.name)
+                if self.loud:
+                    print "implicitly delimited {} in {}".format( self._current_template_name, self.base_mat.name)
                 self.select(self.mat)
                 self.mat = self.base_mat
             self._current_template_name = tail[1]
@@ -1048,7 +1050,8 @@ class MaterialTemplates(Token):
     
     def add(self, token):
         if type(token) == MaterialTemplate:
-            self.templates[token.name] = token    
+            self.templates[token.name] = token
+            return True
     
 class MaterialTemplate(Token):
     tokens = ('MATERIAL_TEMPLATE',)
@@ -1088,13 +1091,11 @@ class AdvRawsParser(Rawsparser0):
         self.stack = []
         self.set = []
         self.root = None
-        self.loud = False
         for klass in klasses:
             for tokname in klass.tokens:
                 self.dispatch[tokname] = klass
 
     def parse_token(self, name, tail):
-        self.loud = False
         if name == 'VERSION': # ugly kludge
             return
         if len(self.stack) == 0:
@@ -1103,6 +1104,8 @@ class AdvRawsParser(Rawsparser0):
                 if not self.root:
                     self.root = self.dispatch[name](name, tail)
             except KeyError:
+                if self.loud:
+                    print "unknown root token {}".format(name)
                 # unknown root token in a file: skip whole file
                 raise StopIteration
             self.stack.append(self.root)
@@ -1110,30 +1113,31 @@ class AdvRawsParser(Rawsparser0):
         
         # see if current object can handle the token itself.        
         if name in self.stack[-1].parses:
+            if self.loud:
+                print "{} parses {}".format(self.stack[-1].__class__.__name__, name)
             self.stack[-1].parse(name, tail)
             return True
         
-        if self.loud: print "{} does not parse {}".format(self.stack[-1].__class__.__name__, name)
-        
         # see if current object is eager to contain it
         if name in self.stack[-1].contains:
+            if self.loud: 
+                print "{} contains {}".format(self.stack[-1].__class__.__name__, name)
             o = self.dispatch[name](name, tail)
             self.stack.append(o)
-            if self.loud: print "{} contains {}".format(self.stack[-1].__class__.__name__, name)
             return True
         
-        if self.loud: print "{} does not contain {}".format(self.stack[-1].__class__.__name__, name)
-        
-        if self.loud: print 'stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
 
         # so it's an unknown token for this level. see if we're to ignore it
         if self.stack[-1].ignores_unknown:
             een = False
             for s in self.stack:
                 if name in s.tokens:
-                    een = True
+                    een = True # someone in the stack knows what to do with it
+                    
             if not een:
-                return not een
+                if self.loud:
+                    print "dropped unknown token {}".format(name)
+                return not een # completely unknown token, just drop it
 
         if len(self.stack) == 1: # got root only.
             # insidious kludge. :(
@@ -1143,21 +1147,40 @@ class AdvRawsParser(Rawsparser0):
                 # NEH aka HFS
                 raise ParseError("unknown token '{}'".format(name))
             if type(o) == type(self.root):
+                if self.loud:
+                    print "accepted next root token {}:{}".format(name, tail[0])
                 return True
             raise ParseError("WTF")
+            
+        if self.loud: 
+            print 'unwinding stack: {} for {}'.format(' '.join(map(lambda x: x.__class__.__name__, self.stack)), name)
 
         o = self.stack.pop(-1)
         if self.stack[-1].add(o):
-            if self.loud: print "{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+            if self.loud: 
+                print "{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
         else:
-            if self.loud: print "{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+            if self.loud: 
+                print "{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
         
         # continue unwinding stack until we've put the token somewhere.
         self.parse_token(name, tail)
         return
 
     def fin(self):
-        if self.loud: print 'fin stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
+        while len(self.stack) > 1:
+            if self.loud: 
+                print 'fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
+            o = self.stack.pop(-1)
+            if self.stack[-1].add(o):
+                if self.loud: 
+                    print "fin(): {} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+            else:
+                if self.loud: 
+                    print "fin(): {} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+            
+        if self.loud: 
+            print 'fin(): stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
         
         try:
             self.stuff = self.stack[0]
@@ -1247,7 +1270,7 @@ class CreaGraphicsSet(Token):
             self.cgraphics[token.race] = token
             return True
 
-def work(dfprefix, fgraws):
+def work(dfprefix, fgraws, loud=()):
     init = Initparser(dfprefix)
     stdraws = os.path.join(dfprefix, 'raw')
     
@@ -1255,6 +1278,9 @@ def work(dfprefix, fgraws):
     fgparser = AdvRawsParser( FullGraphics, CelEffect, Tile, Tileset, CelPage, Cel, Building, MaterialSet )
     gsparser = AdvRawsParser( CreaGraphics, CreaGraphicsSet, CelPage )
     
+    if 'parser' in loud:
+        fgparser.loud = True
+
     map(mtparser.eat, [stdraws])
     map(gsparser.eat, [stdraws])
     map(fgparser.eat, fgraws)
@@ -1263,7 +1289,8 @@ def work(dfprefix, fgraws):
     fgdef = fgparser.get()
     cgset = gsparser.get()
     
-    print fgdef
+    if "parser" in loud:
+        print fgdef
     
     stdparser = TSParser(mtset.templates, fgdef.materialsets)
     map(stdparser.eat, [stdraws])
@@ -1278,7 +1305,7 @@ def work(dfprefix, fgraws):
 
 
 def main():
-    p,m = work(sys.argv[1], sys.argv[2:])
+    p,m = work(sys.argv[1], ['fgraws'] + sys.argv[2:], True)
     print p
     print m
     
