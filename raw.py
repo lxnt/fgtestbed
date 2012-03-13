@@ -940,7 +940,7 @@ class MaterialSet(Token):
             return True
         elif name == 'BUILDINGS':
             self.buildings = True
-        elif name == 'COLOR_CLASSIC':
+        elif name == 'CLASSIC_COLOR':
             self.default_color = tail[0].split(',')
 
     def match(self, mat):
@@ -1285,7 +1285,7 @@ def work(dfprefix, fgraws, loud=()):
         
     map(mtparser.eat, [stdraws])
     map(gsparser.eat, [stdraws])
-    map(fgparser.eat, fgraws)
+    map(fgparser.eat, [fgraws])
     
     mtset = mtparser.get()
     fgdef = fgparser.get()
@@ -1310,7 +1310,7 @@ def work(dfprefix, fgraws, loud=()):
 
 
 def main():
-    p,m = work(sys.argv[1], ['fgraws'] + sys.argv[2:], True)
+    p,m = work(sys.argv[1],sys.argv[2], True)
     print p
     print m
     

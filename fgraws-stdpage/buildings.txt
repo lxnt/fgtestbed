@@ -1,0 +1,187 @@
+[object:full_graphics]
+#
+# Building definitions
+#
+# [building:<type>]
+# 
+#
+# Custom building definitions as in 'building_custom.txt' are (yet to be) understood.
+#
+# Conditional token:
+#  
+# [cond:<cond>[:<cond>[:<cond>] ... ] 
+#
+# <cond>: one of:
+#    wood, stone, metal - material. 
+#    rough - buildings made of boulders (not blocks)
+#    artifact,masterwork,exceptional,superior,fine,well,standard - quality
+#
+# State token:
+#
+# [state:]
+# traps: on/off aka ready/needs_reload
+# bridge, floodgate: closed/closing/opening/open
+# axles, gear assembly, waterwheel, winmill: powered|unpowered
+# for stuff that need architecture: designated, designed
+# for bridges, siege engines and screwpumps: north,east,west,south
+# for bridgest only: retract
+# for workshops: active/inactive
+# construction_stage: 0-3
+#  
+# on, ready, active, powered are synonyms 
+# off, needs_reload, inactive, unpowered are synonyms
+#
+#
+# Any celdefs after an uninterrupted series of conditional and state
+# tokens are emitted only for given conditions/states. 
+# Effective values of tokens are OR-ed, that is a sequence of:
+#
+# [cond:metal]
+# [state:active]
+# [cond:wood]
+# [state:north]
+# [cel]
+#  ...
+# for a waterwheel building will emit the following celdef for 
+# wooden and metal waterwheels aligned north-south.
+#
+
+
+[BUILDING:AnimalTrap]
+    [cel:std:15:7]
+[BUILDING:ArcheryTarget]
+[BUILDING:Armorstand]
+    [cel:std:14:0]
+[BUILDING:AxleHorizontal]
+[BUILDING:AxleVertical]
+    [cel:std:9:0]
+[BUILDING:BarsFloor]
+[BUILDING:BarsVertical]
+[BUILDING:Bed]
+    [cel:std:9:14]
+[BUILDING:Box]
+    [cel:std:8:5]
+[BUILDING:Bridge]
+[BUILDING:Cabinet]
+    [cel:std:3:14]
+[BUILDING:Cage]
+[BUILDING:Chain]
+    [cel:std:5:1]
+[BUILDING:Chair]
+[BUILDING:Coffin]
+    [cel:std:0:3]
+[BUILDING:Door]
+    [cel:std:5:12] # [c:none]
+    [cond:stone]
+    [cel:std:5:12]
+    [cond:metal]
+    [cel:std:8:13]
+    [cond:wood]
+    [cel:std:10:11]
+[BUILDING:GearAssembly]
+    [cel:std:15:0]
+[BUILDING:GrateFloor]
+    [cel:std:3:2]
+[BUILDING:GrateWall]
+    [cel:std:7:13]
+[BUILDING:Hatch]
+    [state:open]
+    [cel:none]
+    [state:closed]
+    [cel:std:11:09]
+[BUILDING:Hive]
+    [cel:std:6:1]
+[BUILDING:FarmPlot]
+[BUILDING:Floodgate]
+    [cel:std:8:5]
+[BUILDING:Nest]
+    [cel:std:8:0]
+[BUILDING:NestBox]
+    [cel:std:8:0]
+[BUILDING:RoadDirt]
+    [cel:std:14:7]
+[BUILDING:RoadPaved]
+    [cel:std:11:2]
+[BUILDING:ScrewPump]
+[BUILDING:Slab]
+    [cel:std:15:14]
+[BUILDING:Shop]
+[BUILDING:Statue]
+    [cel:std:10:14]
+[BUILDING:Support]
+    [cel:std:9:4]
+[BUILDING:Table]
+    [cel:std:1:13]
+[BUILDING:TractionBench]
+[BUILDING:TradeDepot]
+
+[BUILDING:Weapon]
+[BUILDING:Weaponrack]
+[BUILDING:Wagon]
+[BUILDING:WaterWheel]
+[BUILDING:Well]
+    [cel:std:9:0]
+[BUILDING:Windmill]
+[BUILDING:WindowGlass]
+[BUILDING:WindowGem]
+[BUILDING:Ballista]
+[BUILDING:Catapult]
+[BUILDING:Lever]
+    [state:off]
+    [cel:std:5:9]
+    [state:on]
+    [cel:std:2:10]
+[BUILDING:PressurePlate]
+    [cel:std:14:5]
+[BUILDING:CageTrap]
+    [cel:std:14:5]
+[BUILDING:StoneFallTrap]
+    [cel:std:14:5]
+[BUILDING:WeaponTrap]
+    [cel:std:14:5]
+    
+[BUILDING:WoodFurnace]
+[BUILDING:Smelter]
+[BUILDING:GlassFurnace]
+[BUILDING:Kiln]
+[BUILDING:MagmaSmelter]
+[BUILDING:MagmaGlassFurnace]
+[BUILDING:MagmaKiln]
+[BUILDING:Carpenters]
+[BUILDING:Farmers]
+[BUILDING:Masons]
+[BUILDING:Craftdwarfs]
+[BUILDING:Jewelers]
+[BUILDING:MetalsmithsForge]
+[BUILDING:Bowyers]
+[BUILDING:Mechanics]
+[BUILDING:Siege]
+[BUILDING:Butchers]
+[BUILDING:Leatherworks]
+[BUILDING:Tanners]
+[BUILDING:Clothiers]
+[BUILDING:Fishery]
+[BUILDING:Still]
+[BUILDING:Loom]
+[BUILDING:Quern]
+    [cel:std:9:0]
+[BUILDING:Kennels]
+[BUILDING:Kitchen]
+[BUILDING:Ashery]
+[BUILDING:Dyers]
+[BUILDING:Millstone]
+    [dim:1:1] # implied
+    [cel:std:9:0]
+
+[BUILDING:Tools] # tools workshop in fact
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
