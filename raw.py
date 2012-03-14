@@ -945,6 +945,7 @@ class MaterialSet(Token):
 
     def match(self, mat):
         if self.klass != mat.klass:
+            print "class: no match {} to {}".format(mat.klass, self.klass)
             return False
         # invert default if we have only negative conditions
         matched = ''.join(self.tokenset).count('!') == len(self.tokenset)        
@@ -953,7 +954,7 @@ class MaterialSet(Token):
                 matched = False
             if mat.has(token):
                 matched = True
-        
+        print "selector: no match {}:{} to {}:{}".format(mat.klass, mat.name,  self.klass, self.tokenset)
         if matched:
             self.materials.append(mat)
             
