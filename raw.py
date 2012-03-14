@@ -150,8 +150,8 @@ class Pageman(object):
                 s = tmp % page.pdim[0]
                 t = tmp / page.pdim[1]
         else:
-            s, t  = ref
-                
+            s, t = ref
+        
         return self.mapping[(pagename, s, t)]
 
     def get_txsz(self):
@@ -220,7 +220,8 @@ class TSCompiler(object):
         'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
     }
     shrub_tnames = ( 'SHRUBDEAD', 'SHRUB' )
-    def __init__(self, pageman, colortab):
+    def __init__(self, pageman, colortab, loud = False):
+        self.loud = loud
         self.matiles = {}
         self.colortab = colortab
         self.pageman = pageman
@@ -959,11 +960,14 @@ class MaterialSet(Token):
         return matched
 
     def __str__(self):
-        rv =  "MaterialSet(class={}, tokenset={}, emits={}), {} material(s)\n".format(
-            self.klass, self.tokenset, map(str, self.tilesets), len(self.materials) )
+        rv =  "MaterialSet(class={}, selector={}, materials={}, emits={})\n".format(
+            self.klass, self.tokenset, map(str, self.materials), map(str, self.tilesets))
         for m in self.materials:
             rv += "  "+m.name
         return rv
+        
+    def __repr__(self):
+        return self.__str__()
 
 class Building(Token):
     tokens = ('BUILDING', )
@@ -1035,7 +1039,7 @@ class FullGraphics(Token):
         rv += 'tilesets: {}\n'.format(' '.join(self.tilesets.keys()))
         rv += 'celeffects: {}\n'.format(' '.join(self.celeffects.keys()))
         rv += 'celpages: {}\n'.format(' '.join(map(lambda x: x.name, self.celpages)))
-        rv += 'materialsets: {}\n'.format(' '.join(map(lambda x: x.klass, self.materialsets)))
+        rv += 'materialsets: {}\n'.format(' '.join(map(str, self.materialsets)))
         rv += 'buildings: {}\n'.format(' '.join(self.buildings.keys()))
         
         return rv
@@ -1300,9 +1304,12 @@ def work(dfprefix, fgraws, loud=()):
     map(stdparser.eat, [stdraws])
     materialsets = stdparser.get()
 
+    if 'materialset' in loud:
+        print materialsets
+
     pageman = Pageman(init.fontpath, pages = fgdef.celpages) # + cgset.celpages) uncomment when creatures become supported
     
-    compiler = TSCompiler(pageman, init.colortab)
+    compiler = TSCompiler(pageman, init.colortab, 'compiler' in loud)
     objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings, 1)
 
     return pageman, objcode
