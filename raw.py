@@ -586,10 +586,9 @@ class CelPage(Token):
                 
     def load(self):
         if not self.surf:
-            surf = pygame.image.load(self.file)
-            surf.convert_alpha()
-            surf.set_alpha(None)
-            self.surf = surf
+            self.surf = pygame.image.load(self.file)
+            # do not use per-pixel alpha when assembling the album
+            self.surf.set_alpha(None)
         w,h = self.surf.get_size()
         if w != self.cdim[0]*self.pdim[0] or h != self.cdim[1]*self.pdim[1]:
             raise ValueError("size mismatch on {}: dim={}x{} pdim={}x{} cdim={}x{}".format(
@@ -1310,7 +1309,8 @@ def work(dfprefix, fgraws, loud=()):
 
 
 def main():
-    p,m = work(sys.argv[1],sys.argv[2], True)
+    pygame.display.init()
+    p,m = work(sys.argv[1],sys.argv[2], sys.argv[3:])
     print p
     print m
     
