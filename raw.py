@@ -464,7 +464,7 @@ class TSParser(Rawsparser0):
             if len(tail) != 1:
                 raise ParseError('2-parameter USE_MATERIAL_TEMPLATE in INORGANIC: WTF?.')
             self.mat.color =  self.templates[tail[0]].color
-            self.mat.others = self.templates[tail[0]].others
+            self.mat.others = copy.copy(self.templates[tail[0]].others)
         elif name not in self.mat.others:
             self.mat.others.append(name)
 
@@ -945,19 +945,19 @@ class MaterialSet(Token):
 
     def match(self, mat):
         if self.klass != mat.klass:
-            print "class: no match {} to {}".format(mat.klass, self.klass)
             return False
         # invert default if we have only negative conditions
-        matched = ''.join(self.tokenset).count('!') == len(self.tokenset)        
+        matched = ( ''.join(self.tokenset).count('!') == len(self.tokenset) )
+        #print "selector: {}:{} matched={} !={} len={}".format(matched, mat.klass, mat.name, ''.join(self.tokenset).count('!'), len(self.tokenset) )
         for token in self.tokenset:
             if token[0] == '!' and mat.has(token[1:]):
                 matched = False
-            if mat.has(token):
+            elif mat.has(token):
                 matched = True
-        print "selector: no match {}:{} to {}:{}".format(mat.klass, mat.name,  self.klass, self.tokenset)
+        #print "selector: match={} {}:{} to {}:{}".format(matched, mat.klass, mat.name,  self.klass, self.tokenset)
         if matched:
             self.materials.append(mat)
-            
+           
         return matched
 
     def __str__(self):
@@ -1319,8 +1319,8 @@ def work(dfprefix, fgraws, loud=()):
 def main():
     pygame.display.init()
     p,m = work(sys.argv[1],sys.argv[2], sys.argv[3:])
-    print p
-    print m
+    #print p
+    #print m
     
 
 if __name__ == '__main__':

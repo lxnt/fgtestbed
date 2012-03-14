@@ -141,11 +141,11 @@
 [material:inorganic:soil]
     [tilesets:soil]
 
-[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem]
+[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem] # layer stone
     [tilesets:stone:constructed]
     [buildings]
 
-[material:inorganic:environment:environment_spec:!is_gem]
+[material:inorganic:environment:environment_spec:!is_gem] # ores
     [tilesets:mineral:constructed]
     [buildings]
 
