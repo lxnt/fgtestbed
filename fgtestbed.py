@@ -39,6 +39,7 @@ CONTROLS = """
     < >: Up/Down z-level
     Backspace: recenter map
     Keypad +/-: adjust animation FPS
+    Keypad *: toggle reveal_all
     Left mouse button, Space: toggle animation
     Esc: quit"""
 
@@ -1196,7 +1197,12 @@ class Rednerer(object):
                             if self.cheat:
                                 self.cheat = False
                             else:
-                                finished = True 
+                                finished = True
+                        elif ev.key == pygame.K_KP_MULTIPLY:
+                            if self.show_hidden == 1:
+                                self.show_hidden = 0
+                            else:
+                                self.show_hidden = 1
                         elif ev.key == pygame.K_PERIOD and ev.mod & 3:
                             self.zpan(-1)
                         elif ev.key == pygame.K_COMMA  and ev.mod & 3:
