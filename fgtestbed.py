@@ -1285,16 +1285,8 @@ class Rednerer(object):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', epilog =  """
-        FPS is limited to no more than about 100 somewhere.
-
-        Controls:
-        LMB : print rgba hexvalue and tile hash components under mouse
-        RMB drag, arrows, pgup/down/home/end, shift:  scroll
-        mouse wheel: zoom
-        backspace: reset scroll
-        esc : quit
-        keypad +/- : adjust FPS """)
+    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', 
+        epilog =  "Controls:\n" + '\n'.join(CONTROLS.split('\n')[2:]) )
     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
