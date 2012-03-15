@@ -23,11 +23,12 @@ void main() {
 
     vec2 pc = gl_PointCoord/pszar.xy;
     if ((pc.x > 1.0) || (pc.y > 1.0)) {
-        discard;
+	discard;
     }
     
     if ( ( show_hidden == 0) && (((des >>9u) & 1u) == 1u)) {
-	discard;
+        color = vec4(0.0, 0.0, 0.0, 1.0);
+	return;
     }
     
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
