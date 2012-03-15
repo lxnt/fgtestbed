@@ -185,19 +185,24 @@ class Pageman(object):
 
 
 class ObjectCode(object):
-    def __init__(self):
+    def __init__(self, pageman, mapcolor, celeffects, maxframes):
         self.map = {}
         self.buildings = {}
         self.items = {}
         self.maxframe = 0
-        
-    def addtiles(self, matname, tilename, bframes):
+        self.maxframes = maxframes
+        self.pageman = pageman
+        self.mapcolor = mapcolor
+        self.celeffects = celeffects
+
+    def addtiles(self, mat, tile):
+        bframes = tile.cel.expand(mat, self.pageman, self.mapcolor, self.celeffects, self.maxframes)
         if len(bframes) > self.maxframe + 1:
             self.maxframe = len(bframes) - 1 
         try:
-            self.map[matname][tilename] = bframes
+            self.map[mat.name][tile.name] = bframes
         except KeyError:
-            self.map[matname] = { tilename: bframes }
+            self.map[mat.name] = { tile.name: bframes }
    
     def __str__(self):
         rv = 'maxframe={}\n'.format(self.maxframe)
@@ -220,8 +225,8 @@ class TSCompiler(object):
         'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
     }
     shrub_tnames = ( 'SHRUBDEAD', 'SHRUB' )
-    def __init__(self, pageman, colortab, loud = False):
-        self.loud = loud
+    def __init__(self, pageman, colortab, loud = []):
+        self.loud = 'compiler' in loud
         self.matiles = {}
         self.colortab = colortab
         self.pageman = pageman
@@ -237,7 +242,7 @@ class TSCompiler(object):
             map: { material: { tiletype: [ basicframe, basicframe, ... ], ... }, ... }
             building: { material : {buildingtype: { state: [  basicframe, basicframe, ... ], ... }, ... }
         """
-        rv = ObjectCode()
+        rv = ObjectCode(self.pageman, self.mapcolor, celeffects, maxframes)
         for materialset in materialsets:
             x = []
             for tileset in materialset.tilesets:
@@ -267,9 +272,6 @@ class TSCompiler(object):
                                     continue
                             else:
                                 tile = o_tile
-                            rv.addtiles(mat.name, tile.name, 
-                                tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
-                            continue
                         elif materialset.klass == 'PLANT':
                             tile = copy.deepcopy(o_tile)
                             if mat.has('GRASS'):
@@ -300,10 +302,11 @@ class TSCompiler(object):
                                 tile.cel = Cel('CEL', ['STD', bli])
                                 tile.cel.frames[0].blend(ble)
                             
-                            rv.addtiles(mat.name, tile.name,
-                                tile.cel.expand(mat, self.pageman, self.mapcolor, celeffects, maxframes))
                         else:
                             print 'unknown matclass {}'.format(materialset.klass)
+                            continue
+                        rv.addtiles(mat, tile)
+                        
         return rv
 
 class Rawsparser0(object):
@@ -861,6 +864,7 @@ class Cel(Token):
             self.current_frame = None
         else:
             self.current_frame = Keyframe(0)
+        self.stdpage = False
     
     def parse(self, name, tail):
         if name == 'BLIT':
@@ -879,6 +883,9 @@ class Cel(Token):
     def expand(self, material, pageman, colormap, celeffects, maxframes):
         if self.current_frame is not None:
             self.frames.append(self.current_frame)
+        
+        if self.frames[0].page == 'std':
+            self.stdpage = True
 
         # loop cel's frames to get maxframes frames
         rv = []
@@ -1310,17 +1317,20 @@ def work(dfprefix, fgraws, loud=()):
 
     pageman = Pageman(init.fontpath, pages = fgdef.celpages) # + cgset.celpages) uncomment when creatures become supported
     
-    compiler = TSCompiler(pageman, init.colortab, 'compiler' in loud)
+    compiler = TSCompiler(pageman, init.colortab, loud)
     objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings, 1)
 
     return pageman, objcode
 
 
 def main():
+    dfpfx, fgraws, loud = sys.argv[1],sys.argv[2], sys.argv[3:]
     pygame.display.init()
-    p,m = work(sys.argv[1],sys.argv[2], sys.argv[3:])
-    #print p
-    #print m
+    p,m = work(dfpfx, fgraws, loud)
+    if 'pageman' in loud:
+        print p
+    if 'objcode' in loud:
+        print m
     
 
 if __name__ == '__main__':
