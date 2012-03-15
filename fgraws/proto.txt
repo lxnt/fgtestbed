@@ -100,6 +100,9 @@
 #
 #   DEEP_SPECIAL selects adamantine, DEEP_SURFACE - slade
 #
+#  can also be done with:
+#   [material:inorganic:=slade] / [material:inorganic:=adamantine]
+#   
 #  [material:inorganic:IS_METAL]
 #  [material:inorganic:IS_GEM]
 #
@@ -172,6 +175,10 @@
 
 [material:plant:!grass]
     [tilesets:vegetation]
+
+[material:inorganic:=microcline]
+    [tile:mineralwall][cel:32px:1:0]
+        
 
 [tileset:nonmat]
     [tile:Ashes1][cel:std:2:15]

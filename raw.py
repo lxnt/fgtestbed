@@ -198,10 +198,16 @@ class ObjectCode(object):
     def addtiles(self, mat, tile):
         bframes = tile.cel.expand(mat, self.pageman, self.mapcolor, self.celeffects, self.maxframes)
         if len(bframes) > self.maxframe + 1:
-            self.maxframe = len(bframes) - 1 
+            self.maxframe = len(bframes) - 1
         try:
-            self.map[mat.name][tile.name] = bframes
+            if tile.name in self.map[mat.name]: # KeyError if mat hasn't been emitted, False if tile wasn't emitted yet
+                # here if we've got the tile emitted already
+                if tile.cel.stdpage:
+                    return
+            self.map[mat.name][tile.name] = bframes # add or overwrite it
         except KeyError:
+            if mat.name == 'MICROCLINE':
+                print mat.name, bframes
             self.map[mat.name] = { tile.name: bframes }
    
     def __str__(self):
@@ -253,7 +259,7 @@ class TSCompiler(object):
                 for tile in materialset.tiles:
                     d.add(tile)
                 materialset.tilesets.append(d)
-                
+
         for materialset in materialsets:
             for tileset in materialset.tilesets:
                 tlist = tileset.tiles
@@ -570,6 +576,10 @@ class CelPage(Token):
     def __str__(self):
         return '{}:{}:{}x{}:{}x{}'.format(self.name, self.file, 
             self.pdim[0], self.pdim[1], self.cdim[0], self.cdim[1])
+
+    def __repr__(self):
+        return self.__str__()            
+            
     def parse(self, name, tail):
         if name == 'FILE':
             self.file = tail[0]
@@ -641,7 +651,9 @@ class Tile(Token):
             
     def __str__(self):
         return "TILE({}, {})".format(self.name, str(self.cel))
-        
+
+    def __repr__(self):
+        return self.__str__()        
         
 class Tileset(Token):
     tokens = ('TILESET', )
@@ -657,7 +669,10 @@ class Tileset(Token):
             return True
 
     def __str__(self):
-        return "TILESET({})".format(self.name)
+        return "TILESET({}: {})".format(self.name, ' '.join(map(str, self.tiles)))
+
+    def __repr__(self):
+        return self.__str__()
 
 def parse_rgb(f):
     if len(f) == 3:
@@ -809,7 +824,10 @@ class BasicFrame(object):
         else:
             blit = '{:02x}:{:02x}'.format(self.blit[0], self.blit[1])
         return "{} fg={} bg={} mode={}".format(blit, fg, bg, self.mode)
-            
+
+    def __repr__(self):
+        return self.__str__()
+
 
 def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap, celeffects):
     if thisframe._blit == 'MAT':
@@ -884,7 +902,7 @@ class Cel(Token):
         if self.current_frame is not None:
             self.frames.append(self.current_frame)
         
-        if self.frames[0].page == 'std':
+        if self.frames[0].page == 'STD':
             self.stdpage = True
 
         # loop cel's frames to get maxframes frames
@@ -905,8 +923,6 @@ class Cel(Token):
         while  len(rv) < maxframes:
             rv += rv
         return rv[:maxframes]
-                
-            
 
     def __str__(self):
         try:
@@ -953,6 +969,10 @@ class MaterialSet(Token):
     def match(self, mat):
         if self.klass != mat.klass:
             return False
+        for token in self.tokenset:
+            if token.startswith('=') and mat.name == token[1:]:
+                self.materials.append(mat)
+                return True
         # invert default if we have only negative conditions
         matched = ( ''.join(self.tokenset).count('!') == len(self.tokenset) )
         #print "selector: {}:{} matched={} !={} len={}".format(matched, mat.klass, mat.name, ''.join(self.tokenset).count('!'), len(self.tokenset) )
@@ -970,8 +990,6 @@ class MaterialSet(Token):
     def __str__(self):
         rv =  "MaterialSet(class={}, selector={}, materials={}, emits={})\n".format(
             self.klass, self.tokenset, map(str, self.materials), map(str, self.tilesets))
-        for m in self.materials:
-            rv += "  "+m.name
         return rv
         
     def __repr__(self):
