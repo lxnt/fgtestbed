@@ -1454,11 +1454,13 @@ def work(dfprefix, fgraws, loud=()):
 def main():
     dfpfx, fgraws, loud = sys.argv[1],sys.argv[2], sys.argv[3:]
     pygame.display.init()
-    p,m = work(dfpfx, fgraws, loud)
+    p,m,f = work(dfpfx, fgraws, loud)
     if 'pageman' in loud:
         print p
     if 'objcode' in loud:
         print m
+    if 'fakefloor' in loud:
+        print f
     
 
 if __name__ == '__main__':

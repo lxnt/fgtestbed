@@ -46,7 +46,7 @@ CONTROLS = """
 
 class mapobject(object):
     def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir='', irdump=None):
-        self.blithash_dt = np.dtype({  # GL_RG16UI - 32 bits, all used.
+        self.dispatch_dt = np.dtype({  # GL_RG16UI - 32 bits, all used.
             'names': 's t'.split(),
             'formats': ['u2', 'u2' ],
             'offsets': [ 0, 2 ],
@@ -84,10 +84,7 @@ class mapobject(object):
                 self.tiles_offset, self.tiles_size, self.effects_offset )
             raise
 
-        print "hashtable {}K code {}K mapdata {}M".format(
-                (4*self.tiletypecount*self.matcount) >>10, 
-                (16*self.codew*self.codew*self.codedepth) >>10,
-                 self.tiles_size >>20)
+        print "mapdata: {}x{}x{} {}M".format(self.xdim, self.ydim, self.zdim, self.tiles_size >>20)
 
     def parse_dump(self, dumpfname):
         self.mat_ksk = {}
@@ -179,7 +176,6 @@ class mapobject(object):
         tcount = 0
         for mat, tset in objcode.map.items():
             tcount += len(tset.keys())
-        print "{1} mats  {0} defined tiles, cutoff={2} assembling...".format(tcount, len(objcode.map.keys()), cutoff)
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
         self.codew = int(math.ceil(math.sqrt(tcount)))
@@ -187,25 +183,17 @@ class mapobject(object):
         self.matcount = self.max_mat_id + 1
         self.tiletypecount = len(self.tileresolve)
         
-        blithash = np.zeros((self.matcount,  self.tiletypecount ), dtype=self.blithash_dt)
-        print "blithash: {}x{}, {} bytes".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
+        dispatch = np.zeros((self.tiletypecount, self.matcount ), dtype=self.dispatch_dt)
         
         blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
         nf = (cutoff+1) * self.codew * self.codew
-        print "blitcode: {}x{}x{} {} units, {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
-
         tc = 1
         # 'link' map tiles
         for mat_name, tileset in objcode.map.items():
             try:
                 mat_id = self.mat_ids[mat_name]
             except KeyError:
-                print  "no per-session id for mat '{0}', assuming NOMAT".format(mat_name)
                 mat_id = 0
-                if mat_name != 'NONE':
-                    print repr(mat_name)
-                    print repr(self.mat_ids.keys())
-                    raise SystemExit
                 
             for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
@@ -218,10 +206,10 @@ class mapobject(object):
                     print "unk tname {} in mat {}".format(tilename, mat_name)
                     raise
 
-                hx = tile_id
-                hy = mat_id
-                blithash[hy, hx]['s'] = x
-                blithash[hy, hx]['t'] = y               
+                hx = mat_id
+                hy = tile_id
+                dispatch[hy, hx]['s'] = x
+                dispatch[hy, hx]['t'] = y               
                 frame_no = 0
                 for frame in frameseq:
                     blitcode[frame_no, y, x]['mode'] = frame.mode
@@ -230,25 +218,25 @@ class mapobject(object):
                         blitcode[frame_no, y, x]['t'] = frame.blit[1]
                         blitcode[frame_no, y, x]['fg'] = frame.fg
                         blitcode[frame_no, y, x]['bg'] = frame.bg
-                    else:
-                        print "nodraw tile: {} {} 0x{:03x}".format(tilename, frame.mode, mat_id)
                     if irdump:
-                        irdump.write("{:03x}:{:03x} {} {} {}\n".format(mat_id, tile_id, 
-                            mat_name, tilename, frame))
-
+                        irdump.write("{}:{} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
                     frame_no += 1
                     if frame_no > cutoff:
                         break
-        self.blithash, self.blitcode = blithash, blitcode
-
+        self.dispatch, self.blitcode = dispatch, blitcode
+        print "objcode: {1} mats  {0} defined tiles, cutoff={2}".format(tcount, len(objcode.map.keys()), cutoff)
+        print "dispatch: {}x{}, {} bytes".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
+        print "blitcode: {}x{}x{} {} units, {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
+        file("dispatch.dump","w").write(dispatch.tostring())
+        file("blitcode.dump","w").write(blitcode.tostring())
 
     @property
     def codeptr(self):
         return ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
 
     @property
-    def hashptr(self):
-        return ctypes.c_void_p(self.blithash.__array_interface__['data'][0])
+    def disptr(self):
+        return ctypes.c_void_p(self.dispatch.__array_interface__['data'][0])
 
     @property
     def mapptr(self):
@@ -537,6 +525,7 @@ class Hud(object):
         return 1000.0/self.ema_rendertime
 
     def update(self):
+        self.rr.update_mouse()
         tx, ty, tz =  self.rr.mouse_in_world
         material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
@@ -860,7 +849,7 @@ class Rednerer(object):
         
         self._upload_tex2d(self.dispatch_txid, GL_RG16UI,
             self.gameobject.matcount, self.gameobject.tiletypecount, 
-            GL_RG_INTEGER , GL_UNSIGNED_SHORT, self.gameobject.hashptr)
+            GL_RG_INTEGER , GL_UNSIGNED_SHORT, self.gameobject.disptr)
         
         self._upload_tex2da(self.blitcode_txid, GL_RGBA32UI,
             self.gameobject.codew, self.gameobject.codew, self.gameobject.codedepth,
@@ -969,11 +958,9 @@ class Rednerer(object):
             delta = ypad - vpy
             y += delta/ypad + 1
             vpy = 2*ypad - abs(delta) % ypad
-            
 
         self.viewpos = [ vpx, vpy ]
         self.render_origin[:2] = x, y
-
 
     def glinfo(self):
         strs = {

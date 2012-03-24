@@ -76,5 +76,4 @@ void main() {
 	    color = mouse_color;
 	}
     }
-
 }
