@@ -72,7 +72,10 @@ class DfapiEnum(object):
 
     def __getitem__(self, key):
         if type(key) in (long, int):
-            return self.enums[key]
+            try:
+                return self.enums[key]
+            except IndexError:
+                return "-no-data-"
         else:
             return self.emap[key.upper()]
     

@@ -263,23 +263,24 @@ class mapobject(object):
         x, y, z = posn
         offs = 16*(self.xdim*self.ydim*z + y*self.xdim + x)
         stoti, bmabui, grass, designation = struct.unpack("IIII", self._tiles_mmap[offs:offs+16])
-        tile_id = stoti & 0x3ff
-        mat_id = ( stoti >> 16 ) & 0x3ff
-        grass_id = grass & 0x3ff
+        tile_id  = stoti & 0xffff
+        mat_id   = stoti >> 16
+        btile_id = bmabui & 0xffff # can also hold building_type+768
+        bmat_id  = bmabui >> 16 
+        grass_id = grass & 0xffff
         grass_amount = ( grass >> 16 ) & 0xff
-        
-        try:
-            tilename = self.tileresolve[tile_id]
-        except IndexError:
-            if tile_id == 0x3ff:
-                tilename = "-no-data-"
-            else:
-                raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
+
+        tilename = self.tileresolve[tile_id]
+        btilename = self.tileresolve[btile_id]
 
         matname, matklass, matsubklass = self.mat_ksk.get(mat_id, None)
+        bmatname, bmatklass, bmatsubklass = self.mat_ksk.get(bmat_id, None)
         grassname, grassklass, grasssubklass = self.mat_ksk.get(grass_id, None)
         
-        return ( (mat_id, matname), (tile_id, tilename), (grass_id, grassname, grass_amount), designation )
+        return ( (mat_id, matname),   (tile_id, tilename),
+                 (bmat_id, bmatname), (btile_id, btilename),
+                 (grass_id, grassname, grass_amount), 
+                  designation )
     
     def inside(self, x, y, z):
         return (  (x < self.xdim) and (x >= 0 ) 
@@ -497,15 +498,16 @@ class Hud(object):
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
             "x={tx:03d} y={ty:03d} z={z:03d}  ",
             "{designation}",
-            "mat:  {mat[0]} ({mat[1]})",
-            "tile: {tile[0]} ({tile[1]})",
+            "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
+            "tile: {tile[0]} ({tile[1]}) ",
+            "btile: {btile[0]} ({btile[1]})",
             "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}" )
             
     def init(self):
         self.font = pygame.font.SysFont("ubuntumono", 18, False)
         self.ystep = self.font.get_linesize()
         self.txid = glGenTextures(1)
-        self.hud_w = 2*self.padding + self.font.size(self.strs[-2] + "m"*25)[0]
+        self.hud_w = 2*self.padding + self.font.size("n"*25 + "m"*25)[0]
         self.hud_h = 2*self.padding + self.font.get_linesize() * len(self.strs)
         self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
         cheat_lines = map(lambda x: x.strip(), CONTROLS.split("\n"))
@@ -536,7 +538,7 @@ class Hud(object):
 
     def update(self):
         tx, ty, tz =  self.rr.mouse_in_world
-        material, tile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
+        material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
             'fps': self.rr.anim_fps,
@@ -553,6 +555,8 @@ class Hud(object):
             'zdim': self.rr.gameobject.zdim,
             'tile': tile,
             'mat': material,
+            'btile': btile,
+            'bmat': bmat,
             'grass': grass,
             'color': color,
             'vp': self.rr.viewpos,
