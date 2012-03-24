@@ -178,7 +178,6 @@
 
 [material:inorganic:=microcline]
     [tile:mineralwall][cel:32px:1:0]
-        
 
 [tileset:nonmat]
     [tile:Ashes1][cel:std:2:15]

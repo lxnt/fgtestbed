@@ -5,16 +5,16 @@ precision highp float;
 
 uniform usampler2D dispatch;      // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
 uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA32UI ARRAY
+uniform usampler2DArray screen;        // mapdata under traditional name
+
 uniform int frame_no;
 uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
-uniform int dispatch_row_len;
+uniform ivec3 origin;
 uniform ivec2 grid;
 uniform vec3 pszar;               // { parx, pary, psz }
 uniform ivec2 mouse_pos;
 
 in ivec2 position; 
-in int screen;
-in uint designation;
 
 flat out vec4 blit;
 flat out vec4 fg;
@@ -29,16 +29,26 @@ void main() {
     vec2 posn = 2.0 * pszar.xy*normposn - 1.0;
     gl_Position = vec4(posn.x, posn.y, 0.0, 1.0);
     gl_PointSize = pszar.z;
-    des = designation;
 
     if  (mouse_pos == position) { 
 	mouse_here = 23;
     } else {
 	mouse_here = 0;
     }
+    
+    uvec4 various_crap = texelFetch(screen, origin + ivec3(position.x, position.y, 0), 0);
+    
+    uint stone_tile    = various_crap.r >> 16u;
+    uint stone_mat     = various_crap.r & 0x3ffu;
+    uint building_tile = various_crap.g >> 16u;
+    uint building_mat  = various_crap.g & 0x3ffu;
+    uint grass_amt     = various_crap.b >> 16u;
+    uint grass_mat     = various_crap.b & 0x3ffu;
+         des           = various_crap.a;
 
-    uvec4 addr;
-    addr = texelFetch(dispatch, ivec2( screen % dispatch_row_len, screen / dispatch_row_len ), 0 );
+    ivec2 ref = ivec2 ( int(stone_mat), int(stone_tile) );
+
+    uvec4 addr = texelFetch(dispatch, ref, 0 );
     addr.z = uint(frame_no);
 
     if ((addr.x + addr.y) == 0u) { // not defined.

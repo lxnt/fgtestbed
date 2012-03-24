@@ -12,25 +12,29 @@
 # [cond:<cond>[:<cond>[:<cond>] ... ] 
 #
 # <cond>: one of:
-#    wood, stone, metal - material. 
-#    rough - buildings made of boulders (not blocks)
-#    artifact,masterwork,exceptional,superior,fine,well,standard - quality
+#    wood, stone, [stone] blocks, metal, soap - material class 
+#               (exact material available for MAT references) 3bit
+#                
+#    artifact, masterwork, exceptional, superior, fine, well, standard - quality 3bit
 #
 # State token:
 #
 # [state:]
 # traps: on/off aka ready/needs_reload
-# bridge, floodgate: closed/closing/opening/open
-# axles, gear assembly, waterwheel, winmill: powered|unpowered
+# bridge, floodgate: closed/closing/opening/open 
+# axles, gear assembly, waterwheel, windmill: powered|unpowered
 # for stuff that need architecture: designated, designed
 # for bridges, siege engines and screwpumps: north,east,west,south
 # for bridgest only: retract
 # for workshops: active/inactive
 # construction_stage: 0-3
 #  
-# on, ready, active, powered are synonyms 
-# off, needs_reload, inactive, unpowered are synonyms
-#
+# on, open, ready, active, powered are synonyms               } one
+# off, closed, needs_reload, inactive, unpowered are synonyms } bit
+# opening, closing - 1 more bit
+# north/ns,east/ew,west/we,south/sn,retract[,up,down,updown] - 3 more bits
+# designated, designed, cs0, cs1, cs2, cs3, built - 3 more bits
+# total state 8 bits (oh my) + 6 for conds, crap.
 #
 # Any celdefs after an uninterrupted series of conditional and state
 # tokens are emitted only for given conditions/states. 

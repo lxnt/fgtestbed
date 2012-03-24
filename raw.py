@@ -27,7 +27,9 @@ class DfapiEnum(object):
         }
         f = os.path.join(dfapipath, 'xml', names2files[name])
         self.enums = []
+        self.enumc = []
         self.emap = {}
+        self.emapc = {}
         self.gotit = False
         self.name = name
         self.parse(f)
@@ -38,6 +40,7 @@ class DfapiEnum(object):
         elif tagname == 'enum-item' and self.gotit:
             try:
                 self.enums.append(attrs['name'].upper())
+                self.enumc.append(attrs['name'])
             except KeyError:
                 self.enums.append(None)
                         
@@ -59,6 +62,13 @@ class DfapiEnum(object):
             if e is not None:
                 self.emap[e] = i
             i += 1
+        i = 0
+        for e in self.enumc:
+            self.emapc[e] = i
+            i += 1
+
+    def __len__(self):
+        return len(self.enums)
 
     def __getitem__(self, key):
         if type(key) in (long, int):
@@ -154,14 +164,16 @@ class Pageman(object):
         
         return self.mapping[(pagename, s, t)]
 
-    def get_txsz(self):
+    @property
+    def txsz(self):
         "returns txsz tuple"
         self.shrink()
         cw, ch = self.max_cdim
         wt, ht = self.album_w/cw, self.album_h/ch
         return (wt, ht, cw, ch)
-        
-    def get_data(self):
+    
+    @property
+    def data(self):
         "returns bytes for the resulting texture"
         return pygame.image.tostring(self.surf, 'RGBA')
 
@@ -206,10 +218,8 @@ class ObjectCode(object):
                     return
             self.map[mat.name][tile.name] = bframes # add or overwrite it
         except KeyError:
-            if mat.name == 'MICROCLINE':
-                print mat.name, bframes
             self.map[mat.name] = { tile.name: bframes }
-   
+
     def __str__(self):
         rv = 'maxframe={}\n'.format(self.maxframe)
         for k,v in self.map.items():
@@ -1301,6 +1311,103 @@ class CreaGraphicsSet(Token):
             self.cgraphics[token.race] = token
             return True
 
+def fakefloor(tiletypes):
+    zema = {
+        'Soil': 'SoilFloor1',
+        'Stone': 'StoneFloor1',
+        'GrassLight': 'GrassLightFloor1',
+        'GrassDark': 'GrassDarkFloor1',
+        'GrassDry': 'GrassDryFloor1',
+        'GrassDead': 'GrassDeadFloor1',
+        'Mineral': 'MineralFloor1',
+        'Frozen': 'FrozenFloor',
+        'Lava': 'LavaFloor1',
+        'Feature': 'FeatureFloor1'
+    }
+
+    computed_fakefloor = {
+        'Tree',
+        'TreeDead',
+        'Shrub',
+        'ShrubDead',
+        'Sapling',
+        'SaplingDead',
+        'Driftwood',
+        'Boulder',
+        'Campfire',
+        'Fire',
+    }
+
+    explicit_void = """
+        Ashes1
+        Ashes2
+        Ashes3
+        Campfire
+        Chasm
+        EeriePit
+        Fire
+        GlowingBarrier
+        GlowingFloor
+        MagmaFlow
+        MurkyPool
+        OpenSpace
+        RampTop
+        SemiMoltenRock
+        Void
+        Waterfall
+    """.split()
+
+    """ stencil hierarchy (earlier creeps on later) :
+            Void and whatever is taken as such: OpenSpace, Chasm, etc.?
+            Grass
+            SmoothFloor
+            RoughFloor
+            Liquids
+            
+        Implicit buildings, such as trees, shrubs, saplings, driftwood, boulder, Campfile, glowing barrier (wtf is that?)
+        basically anything that we have to fake a floor for are not affected by this, their fakefloors are.
+    
+        Retval is a source for an uniform array of the following rows (columns are tiletype):
+         - fakefloor tiletype for the corresponding tiletype (is a floor tiletype or Void)
+         - hierarchy level of the tiletype (defined only for floors and water (brook, river, murkypool) tiletypes)
+    """
+    tihierlist = { # lower creeps on higher?
+        'Void':         0,
+        'Grass':        1,
+        'RoughFloor':   2,
+        'SmoothFloor':  3,
+        'RoughWall':    4,
+        'SmoothWall':   5,
+        'Liquid':       6,
+        'Pebbles':      7,
+    }
+
+    rv = [[0,0]] * len(tiletypes.emapc.keys()) # Void, Void
+    for k, ttid in tiletypes.emapc.items():
+        if k in computed_fakefloor:
+            rv[ttid][0] = 2342 # no fixed fakefloor/defined hierval for the tile
+            continue
+        rv[ttid][0] = ttid
+        if k[:-1].endswith('Floor') or k.endswith('Floor'):
+            if 'Grass' in k:
+                rv[ttid][1] = tihierlist['Grass']
+            else:
+                rv[ttid][1] = tihierlist['RoughFloor']
+        elif k.endswith('FloorSmooth'):
+            rv[ttid][1] = tihierlist['SmoothFloor']
+        elif k[:-1].endswith('Pebbles'): # pebbles still considered a kind of floor.
+            rv[ttid][1] = tihierlist['Pebbles']
+        else:
+            for t,v in zema.items():
+                if k.startswith(t):
+                    if 'Smooth' in k:
+                        rv[ttid][0] = tihierlist['SmoothFloor']
+                        rv[ttid][1] = tiletypes.emapc["{}FloorSmooth".format(t)]
+                    else:
+                        rv[ttid][0] = tihierlist['RoughFloor']
+                        rv[ttid][1] = tiletypes.emapc[v]
+    return rv
+
 def work(dfprefix, fgraws, loud=()):
     init = Initparser(dfprefix)
     stdraws = os.path.join(dfprefix, 'raw')
@@ -1338,7 +1445,7 @@ def work(dfprefix, fgraws, loud=()):
     compiler = TSCompiler(pageman, init.colortab, loud)
     objcode = compiler.compile(materialsets, fgdef.tilesets, fgdef.celeffects, fgdef.buildings, 1)
 
-    return pageman, objcode
+    return pageman, objcode, fakefloor(DfapiEnum('', 'tiletype'))
 
 
 def main():

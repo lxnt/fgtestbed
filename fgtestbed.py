@@ -10,7 +10,7 @@
 # ...
 # lxnt cancels Store item in stockpile: interrupted by bug
 
-import sys, time, math, struct, io, ctypes, zlib, ctypes
+import sys, time, math, struct, io, ctypes, zlib, ctypes, re
 import collections, argparse, traceback, os, types, mmap
 import numpy as np
 
@@ -46,13 +46,31 @@ CONTROLS = """
 
 class mapobject(object):
     def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir='', irdump=None):
+        self.blithash_dt = np.dtype({  # GL_RG16UI - 32 bits, all used.
+            'names': 's t'.split(),
+            'formats': ['u2', 'u2' ],
+            'offsets': [ 0, 2 ],
+            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
+        self.blitcode_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
+            'names': 'un2 un1 t s mode fg bg'.split(),
+            'formats': ['u1', 'u1', 'u1', 'u1', 'u4', 'u4', 'u4'],
+            'offsets': [ 0, 1, 2, 3, 4, 8, 12 ] })
+        
+        self.data_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
+            'names': 'stoti bmabui grass designation'.split(),
+            'formats': ['u4', 'u4', 'u4', 'u4'],
+            'offsets': [ 0, 4, 8, 12 ] })
+            
         self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
         self.building_t = raw.DfapiEnum(apidir, 'building_type')
         
+        self._pageman = pageman
+        self.txsz = pageman.txsz
+        self.fontptr = pageman.data
+
         self.parse_dump(dumpfname)
         self.assemble_blitcode(objcode, cutoff, irdump)
-        self.txsz = pageman.get_txsz()
-        self.fontdata = pageman.get_data()
+        
         fsize = os.stat(dumpfname).st_size
         if os.name == 'nt':
             self._map_fd = os.open(dumpfname, os.O_RDONLY|os.O_BINARY)
@@ -61,59 +79,60 @@ class mapobject(object):
         try:
             self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, 
                 offset = self.tiles_offset, access = mmap.ACCESS_READ)
-            self._designations_mmap = mmap.mmap(self._map_fd, 
-                self.designations_size, offset = self.designations_offset, access = mmap.ACCESS_READ)
         except ValueError:
-            print "fsize: {} tiles {},{} designations: {},{} tail: {}".format(fsize, 
-                self.tiles_offset, self.tiles_size,
-                self.designations_offset, self.designations_size, self.designations_offset+self.designations_size)
+            print "fsize: {} tiles {},{} effects: {}".format(fsize, 
+                self.tiles_offset, self.tiles_size, self.effects_offset )
             raise
 
+        print "hashtable {}K code {}K mapdata {}M".format(
+                (4*self.tiletypecount*self.matcount) >>10, 
+                (16*self.codew*self.codew*self.codedepth) >>10,
+                 self.tiles_size >>20)
+
     def parse_dump(self, dumpfname):
-        self.inorg_names = {}
-        self.inorg_ids = {}
-        self.plant_names = {}
-        self.plant_ids = {}
-        HEADER_SIZE = 0x100
+        self.mat_ksk = {}
+        self.mat_ids = {}
+        HEADER_SIZE = 264
         dumpf = file(dumpfname)
-
+        self.max_mat_id = -1
         # read header
-        header = dumpf.read(HEADER_SIZE).split('\n')        
-
-        l = header.pop(0)
-        if not l.startswith("blocks:"):
+        l = dumpf.readline()
+        if not l.startswith("origin:"):
+            raise TypeError("Wrong trousers " + l )
+        x, y, z = l[7:].strip().split(':')
+        self.xorigin, self.yorigin, self.zorigin = map(int, [x, y, z])
+        self.xorigin *= 16
+        self.yorigin *= 16
+        
+        l = dumpf.readline()
+        if not l.startswith("extent:"):
             raise TypeError("Wrong trousers " + l )
         x, y, z = l[7:].strip().split(':')
         self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
         self.xdim *= 16
         self.ydim *= 16
         
-        l = header.pop(0)
+        l = dumpf.readline()
         if not l.startswith("tiles:"):
             raise TypeError("Wrong trousers " + l )
         self.tiles_offset, self.tiles_size = map(int, l[6:].split(':'))
         
-        l = header.pop(0)
-        if not l.startswith("designations:"):
-            raise TypeError("Wrong trousers " + l )
-        self.designations_offset, self.designations_size = map(int, l[13:].split(':'))
-        
-        l = header.pop(0)        
+        l = dumpf.readline()
         if not l.startswith("effects:"):
             raise TypeError("Wrong trousers " + l )
         self.effects_offset = int(l[8:])
         
         # read and combine all of plaintext
-        dumpf.seek(HEADER_SIZE)
-        lines = dumpf.read(self.tiles_offset - HEADER_SIZE).split("\n")
+        lines = dumpf.read(self.tiles_offset - dumpf.tell()).split("\n")
         
         dumpf.seek(self.effects_offset)
         lines += dumpf.read().split("\n")
         
         # parse plaintext
-        sections = [ 'materials', 'buildings', 'building_defs', 'constructions', 'effects', 'units' ]
+        sections = [ 'materials', 'buildings', 'building_defs', 'constructions', 'effects', 'units', 'items' ]
         section = None
         for l in lines:
+            l = l.strip()
             if l == '':
                 continue
             if l.startswith('section:'):
@@ -123,13 +142,27 @@ class mapobject(object):
                     section = None
                 continue
             if section == 'materials':
-                f = l.split()
-                if f[1] == 'INORG':
-                    self.inorg_names[int(f[0])] = ' '.join(f[2:])
-                    self.inorg_ids[' '.join(f[2:])] = int(f[0])
-                elif f[1] == 'PLANT':
-                    self.plant_names[int(f[0])] = ' '.join(f[2:])
-                    self.plant_ids[' '.join(f[2:])] = int(f[0])
+                s = re.split("([a-z]+)=", l)
+                id = int(s[0])
+                if self.max_mat_id < id:
+                    self.max_mat_id = id 
+                rest = s[1:]
+                i = 0
+                subklass = None
+                for k in rest[::2]:
+                    k = k.strip()
+                    v = rest[1::2][i].strip()
+                    i += 1 
+                    if k == 'id':
+                        name = v
+                    elif k == 'subklass':
+                        subklass = ' ' + v
+                    elif k == 'klass':
+                        klass = v
+
+                self.mat_ksk[id] = (name, klass, subklass)
+                self.mat_ids[(klass, subklass)] = id
+                self.mat_ids[name] = id
 
     def assemble_blitcode(self, objcode, cutoff, irdump=None):
         # all used data is available before first map frame is to be
@@ -139,18 +172,6 @@ class mapobject(object):
         # tile_names map tile names in raws to tile_ids in game
         # inorg_ids and plant_ids map mat names in raws to effective mat ids in game
         # (those can change every read of raws)
-        
-        self.blithash_dt = np.dtype({  # GL_RG16UI
-            'names': 's t'.split(),
-            'formats': ['u2', 'u2' ],
-            'offsets': [ 0, 2 ],
-            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
-            
-        """ GL_RGBA32UI - 128 bits. 16 bytes. Overkill. """
-        self.blitcode_dt = np.dtype({
-            'names': 'un2 un1 t s mode fg bg'.split(),
-            'formats': ['u1', 'u1', 'u1', 'u1', 'u4', 'u4', 'u4'],
-            'offsets': [ 0, 1, 2, 3, 4, 8, 12 ] })
     
         if cutoff > objcode.maxframe:
             cutoff = objcode.maxframe
@@ -161,46 +182,29 @@ class mapobject(object):
         print "{1} mats  {0} defined tiles, cutoff={2} assembling...".format(tcount, len(objcode.map.keys()), cutoff)
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
-        
-        self.hashw = 1024 # 20bit hash.
         self.codew = int(math.ceil(math.sqrt(tcount)))
         
-        blithash = np.zeros((self.hashw,  self.hashw ), dtype=self.blithash_dt)
+        self.matcount = self.max_mat_id + 1
+        self.tiletypecount = len(self.tileresolve)
+        
+        blithash = np.zeros((self.matcount,  self.tiletypecount ), dtype=self.blithash_dt)
+        print "blithash: {}x{}, {} bytes".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
+        
         blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
         nf = (cutoff+1) * self.codew * self.codew
         print "blitcode: {}x{}x{} {} units, {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
-        
-        NOMAT=0x3FF
-        def hashit(tile, stone, ore = NOMAT, grass = NOMAT, gramount = NOMAT):
-            #mildly esoteric in the presense of NOMAT.
-            # it seems grass & layer stone are mutex by tiletype.
-            # so we just do:
-            if gramount != NOMAT and gramount != 0:
-                stone = grass
-                ore = NOMAT
-            # and define GrassWhatEver tiles within only plant materials
-            
-            # Also since we don't have a plan how to compose ore/cluster tiles yet:
-            if ore != NOMAT:
-                stone = ore
-                ore = NOMAT
 
-            return ( ( stone & 0x3ff ) << 10 ) | ( tile & 0x3ff )
-        
         tc = 1
         # 'link' map tiles
         for mat_name, tileset in objcode.map.items():
-            if mat_name in self.inorg_ids:
-                mat_id = self.inorg_ids[mat_name]
-            elif mat_name in self.plant_ids:
-                mat_id = self.plant_ids[mat_name]
-            else:
+            try:
+                mat_id = self.mat_ids[mat_name]
+            except KeyError:
                 print  "no per-session id for mat '{0}', assuming NOMAT".format(mat_name)
-                mat_id = NOMAT
+                mat_id = 0
                 if mat_name != 'NONE':
                     print repr(mat_name)
-                    print repr(self.inorg_ids.keys())
-                    print repr(self.plant_ids.keys())
+                    print repr(self.mat_ids.keys())
                     raise SystemExit
                 
             for tilename, frameseq in tileset.items():
@@ -213,9 +217,9 @@ class mapobject(object):
                 except KeyError:
                     print "unk tname {} in mat {}".format(tilename, mat_name)
                     raise
-                hashed  = hashit(tile_id, mat_id)
-                hx = hashed % self.hashw 
-                hy = hashed / self.hashw 
+
+                hx = tile_id
+                hy = mat_id
                 blithash[hy, hx]['s'] = x
                 blithash[hy, hx]['t'] = y               
                 frame_no = 0
@@ -237,107 +241,33 @@ class mapobject(object):
                         break
         self.blithash, self.blitcode = blithash, blitcode
 
-    def upload_font(self, txid_font):
-        
-        glBindTexture(GL_TEXTURE_2D,  txid_font)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],
-            0, GL_RGBA, GL_UNSIGNED_BYTE, self.fontdata)        
-        print "font: {}x{} {}x{} tiles, {}x{}, {}K".format(
-            self.txsz[0], self.txsz[1], self.txsz[2], self.txsz[3],
-            self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],  self.txsz[0]*self.txsz[2]*self.txsz[1]*self.txsz[3]*4>>10)
-            
-        if False:
-            txcos = "\x10\x10\x10\x10" * self.tp.pdim[0] * self.tp.pdim[1]
-            glBindTexture(GL_TEXTURE_2D,  txid_txco)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.tp.pdim[0], self.tp.pdim[1],
-                0, GL_RGBA, GL_UNSIGNED_BYTE, txcos)
-        
-        return self.txsz
 
-    def upload_code(self, txid_hash, txid_blit):
-        glBindTexture(GL_TEXTURE_2D,  txid_hash)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+    @property
+    def codeptr(self):
+        return ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
 
-        ptr = ctypes.c_void_p(self.blithash.__array_interface__['data'][0])
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16UI, self.hashw, self.hashw, 
-                     0, GL_RG_INTEGER , GL_UNSIGNED_SHORT, ptr)
-        
-        glBindTexture(GL_TEXTURE_2D_ARRAY,  txid_blit)
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+    @property
+    def hashptr(self):
+        return ctypes.c_void_p(self.blithash.__array_interface__['data'][0])
 
-        ptr = ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA32UI, self.codew, self.codew, self.codedepth,
-                     0, GL_RGBA_INTEGER, GL_UNSIGNED_INT, ptr )
-                     
-        print "hashtable {}K code {}K".format(4*self.hashw*self.hashw>>10, 16*self.codew*self.codew*self.codedepth >>10)
+    @property
+    def mapptr(self):
+        """ will crash on python debug build """
+        PyObject_HEAD = [ ('ob_refcnt', ctypes.c_size_t), ('ob_type', ctypes.c_void_p) ]
+        class mmap_mmap(ctypes.Structure):
+            _fields_ = PyObject_HEAD + [ ('data', ctypes.c_void_p), ('size', ctypes.c_size_t) ]
+        guts = mmap_mmap.from_address(id(self._tiles_mmap))
+        return ctypes.c_void_p(guts.data) # WTF??
 
-    def getmap(self, origin, size, verbose=False):
-        x,y,z = origin
-        w,h = size
-        tiles = np.zeros((w, h), np.int32)
-        designations = np.zeros((w, h), np.int32)
-        if x + w < 0 or y+h < 0 or x > self.xdim or y > self.ydim:
-            return tiles, designations
-        sx = x
-        left = 0
-        if sx < 0:
-            left = -sx
-            sx = 0
-        ex = x + w
-        right = w
-        if ex > self.xdim:
-            right = self.xdim - ex
-            ex = self.xdim
-        sy = y
-        top = 0
-        if sy < 0:
-            top = -sy
-            sy = 0
-        ey = y + h
-        bottom = h
-        if ey > self.ydim:
-            bottom = self.ydim - ey
-            ey = self.ydim
-                
-        static_unit_offs = self.xdim*self.ydim*z + sy*self.xdim
-        xskip = sx
-        rowlen = ex-sx
-        
-        if verbose:
-            print "static_unit_offs {} xskip {} rowlen {}".format(static_unit_offs, xskip,  rowlen)
-        
-        for rownum in xrange( ey - sy ):
-            unit_offs =  static_unit_offs + rownum*self.xdim + xskip 
-            if unit_offs < 0:
-                raise ValueError("offs {} request {}:{}:{} {}x{}".format(unit_offs, origin[0], origin[1], origin[2], size[0], size[1]))
-
-            buf = buffer(self._tiles_mmap, 4*unit_offs, rowlen*4)
-            tiles[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)
-            buf = buffer(self._designations_mmap, 4*unit_offs, rowlen*4)
-            designations[left:right, top+rownum] = np.ndarray((rowlen,), dtype=np.int32, buffer = buf)
-        return tiles, designations
-        
     def gettile(self, posn):
         x, y, z = posn
-        offs = 4*(self.xdim*self.ydim*z + y*self.xdim + x)
-        designation = struct.unpack("<I", self._designations_mmap[offs:offs+4])[0]
-        hash = struct.unpack("<I", self._tiles_mmap[offs:offs+4])[0]
-        tile_id = hash & 0x3ff
-        mat_id = ( hash >> 10 ) & 0x3ff
+        offs = 16*(self.xdim*self.ydim*z + y*self.xdim + x)
+        stoti, bmabui, grass, designation = struct.unpack("IIII", self._tiles_mmap[offs:offs+16])
+        tile_id = stoti & 0x3ff
+        mat_id = ( stoti >> 16 ) & 0x3ff
+        grass_id = grass & 0x3ff
+        grass_amount = ( grass >> 16 ) & 0xff
+        
         try:
             tilename = self.tileresolve[tile_id]
         except IndexError:
@@ -346,13 +276,10 @@ class mapobject(object):
             else:
                 raise ValueError("unknown tile_type {} (in map dump)".format(tile_id))
 
-        matname = self.inorg_names.get(mat_id, None)
-        for prefix in ( 'GRASS', 'TREE', 'SHRUB', 'SAPLING'):
-            if tilename.startswith(prefix):
-                matname = self.plant_names.get(mat_id, None)
-                break
+        matname, matklass, matsubklass = self.mat_ksk.get(mat_id, None)
+        grassname, grassklass, grasssubklass = self.mat_ksk.get(grass_id, None)
         
-        return ( (mat_id, matname), (tile_id, tilename), designation )
+        return ( (mat_id, matname), (tile_id, tilename), (grass_id, grassname, grass_amount), designation )
     
     def inside(self, x, y, z):
         return (  (x < self.xdim) and (x >= 0 ) 
@@ -448,11 +375,7 @@ class Tile_shader(Shader0):
     def __init__(self, renderer, loud=False):
         super(Tile_shader, self).__init__(loud)
         self.rr = renderer        
-        self.aloc = {
-            'position': 0, 
-            'screen': 1,
-            'designation': 2
-        }
+        self.aloc = { 'position': 0 }
 
     def update_state(self, falpha=1.0, darken=1.0):
         glUseProgram(self.program)
@@ -467,7 +390,7 @@ class Tile_shader(Shader0):
         glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Pszx)
         
         glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
-        glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
+        #glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
         glUniform1i(self.uloc["show_hidden"], self.rr.show_hidden);
         
         glUniform2i(self.uloc["mouse_pos"], *self.rr.mouse_in_grid);
@@ -475,6 +398,8 @@ class Tile_shader(Shader0):
         mc = abs ( (self.rr.tick % 1000)/500.0 - 1)
         
         glUniform4f(self.uloc["mouse_color"], mc, mc, mc, 1.0)
+        
+        glUniform3i(self.uloc["origin"], *self.rr.render_origin)
         
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.rr.dispatch_txid)
@@ -488,15 +413,13 @@ class Tile_shader(Shader0):
         glBindTexture(GL_TEXTURE_2D, self.rr.font_txid)
         glUniform1i(self.uloc["font"], 2) # tilepage tiu
             
-        self.rr.screen_vbo.bind()
-        glVertexAttribIPointer(self.aloc["screen"], 1, GL_INT, 0, self.rr.screen_vbo )
-        
+        glActiveTexture(GL_TEXTURE3)
+        glBindTexture(GL_TEXTURE_2D_ARRAY, self.rr.screen_txid)
+        glUniform1i(self.uloc["screen"], 3) # screen tiu
+            
         self.rr.grid_vbo.bind()
         glVertexAttribIPointer(self.aloc["position"], 2, GL_SHORT, 0, self.rr.grid_vbo )
         
-        self.rr.designation_vbo.bind()
-        glVertexAttribIPointer(self.aloc["designation"], 1, GL_INT, 0, self.rr.designation_vbo )
-
 class Designation(object):
     def __init__(self, u32):
         self.level              =  u32 &   7
@@ -536,9 +459,6 @@ class Designation(object):
         
         return ' '.join(rv)
 
-        
-        
-
 class Hud_shader(Shader0):
     def __init__(self, hud_object, loud=False):
         super(Hud_shader, self).__init__(loud)
@@ -577,15 +497,15 @@ class Hud(object):
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
             "x={tx:03d} y={ty:03d} z={z:03d}  ",
             "{designation}",
-            "mat:  {mat} ({mat_id})",
-            "tile: {tile} ({tile_id})" )
+            "mat:  {mat[0]} ({mat[1]})",
+            "tile: {tile[0]} ({tile[1]})",
+            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}" )
             
     def init(self):
-
         self.font = pygame.font.SysFont("ubuntumono", 18, False)
         self.ystep = self.font.get_linesize()
         self.txid = glGenTextures(1)
-        self.hud_w = 2*self.padding + self.font.size(self.strs[-1] + "m"*25)[0]
+        self.hud_w = 2*self.padding + self.font.size(self.strs[-2] + "m"*25)[0]
         self.hud_h = 2*self.padding + self.font.get_linesize() * len(self.strs)
         self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
         cheat_lines = map(lambda x: x.strip(), CONTROLS.split("\n"))
@@ -616,7 +536,7 @@ class Hud(object):
 
     def update(self):
         tx, ty, tz =  self.rr.mouse_in_world
-        material, tile, designation = self.rr.gameobject.gettile((tx,ty,tz))
+        material, tile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
             'fps': self.rr.anim_fps,
@@ -631,10 +551,9 @@ class Hud(object):
             'xdim': self.rr.gameobject.xdim,
             'ydim': self.rr.gameobject.ydim,
             'zdim': self.rr.gameobject.zdim,
-            'mat': material[1],
-            'tile': tile[1],
-            'mat_id': material[0],
-            'tile_id': tile[0],
+            'tile': tile,
+            'mat': material,
+            'grass': grass,
             'color': color,
             'vp': self.rr.viewpos,
             'pszx': self.rr.Pszx,
@@ -813,7 +732,8 @@ class Rednerer(object):
         self.conf_snap_window = False
         self.loud_gl      = 'gl' in loud
         self.loud_reshape = 'reshape' in loud
-
+        self.crap = True
+        
         self.tilesizes = None # txco texture
         self.grid = None # grid vaa/vbo
         self.screen = None # frame data
@@ -827,7 +747,6 @@ class Rednerer(object):
         self._zeddown = zeddown
         self.cheat = True
         self.had_input = False
-        self.crap = False
         self.show_hidden = 1
         
         pygame.font.init()
@@ -886,11 +805,9 @@ class Rednerer(object):
         self.fbo.init()
         self.hud.init()
         
-        self.screen_vbo = None
-        self.designation_vbo = None
         self.grid_vbo = None
-        self._txids = glGenTextures(3)
-        self.dispatch_txid, self.blitcode_txid, self.font_txid = self._txids
+        self._txids = glGenTextures(4)
+        self.dispatch_txid, self.blitcode_txid, self.font_txid, self.screen_txid = self._txids
         
         self.mapshader.init(self.vs, self.fs)
         self.hudshader.init("hud.vs", "hud.fs")
@@ -904,36 +821,51 @@ class Rednerer(object):
         self.fbo.fini()
         glDeleteTextures(self._txids)
         self.grid_vbo = None
-        self.screen_vbo = None
-        self.designation_vbo = None
         self.maxPsz = None
         self.Parx = self.Pary = self.Psz = self.Pszx = self.Pszy = None
         self.dispatch_txid = self.blitcode_txid = self.font_txid = self._txids = None
         self.opengl_initialized = False
 
-    def update_mapdata(self, verbose = False):
-        fc_key = tuple(self.render_origin + [self.grid_w, self.grid_h])
-        try:
-            if verbose:
-                raise KeyError
-            screen, designations = self._frame_cache.get(fc_key)
-        except KeyError:
-            screen, designations = self.gameobject.getmap(self.render_origin, (self.grid_w, self.grid_h), verbose)
-            self._frame_cache.put(fc_key, screen, designations)
-            
-        # todo: make them DYNAMIC_DRAW and in any case do set_array() only on pan/zoom or mainloop()
-        if self.screen_vbo is None:
-            self.screen_vbo = vbo.VBO(screen, usage=GL_STREAM_DRAW) 
-        else:
-            self.screen_vbo.set_array(screen)
-        if self.designation_vbo is None:
-            self.designation_vbo = vbo.VBO(designations, usage=GL_STREAM_DRAW) 
-        else:
-            self.designation_vbo.set_array(designations)
+    def _upload_tex2d(self, txid, informat, tw, th, dformat, dtype, dptr):
+        glBindTexture(GL_TEXTURE_2D,  txid)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexImage2D(GL_TEXTURE_2D, 0, informat, tw, th, 0, dformat, dtype, dptr)
+
+    def _upload_tex2da(self, txid, informat, tw, th, td, dformat, dtype, dptr):
+        glBindTexture(GL_TEXTURE_2D_ARRAY,  txid)
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)       
 
     def update_textures(self):
-        self.gameobject.upload_code(self.dispatch_txid, self.blitcode_txid)
-        self.txsz = self.gameobject.upload_font(self.font_txid)
+        self.txsz = self.gameobject.txsz
+        
+        print "font: {}x{} {}x{} tiles, {}x{}, {}K".format(
+            self.txsz[0], self.txsz[1], self.txsz[2], self.txsz[3],
+            self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],  
+            self.txsz[0]*self.txsz[2]*self.txsz[1]*self.txsz[3]*4>>10)        
+        
+        self._upload_tex2d(self.font_txid, GL_RGBA8, 
+            self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],
+            GL_RGBA, GL_UNSIGNED_BYTE, self.gameobject.fontptr)
+        
+        self._upload_tex2d(self.dispatch_txid, GL_RG16UI,
+            self.gameobject.matcount, self.gameobject.tiletypecount, 
+            GL_RG_INTEGER , GL_UNSIGNED_SHORT, self.gameobject.hashptr)
+        
+        self._upload_tex2da(self.blitcode_txid, GL_RGBA32UI,
+            self.gameobject.codew, self.gameobject.codew, self.gameobject.codedepth,
+            GL_RGBA_INTEGER, GL_UNSIGNED_INT, self.gameobject.codeptr )
+            
+        self._upload_tex2da(self.screen_txid, GL_RGBA32UI,
+               self.gameobject.xdim, self.gameobject.ydim, self.gameobject.zdim,
+               GL_RGBA_INTEGER, GL_UNSIGNED_INT, self.gameobject.mapptr)            
+
         self.Psz = max(self.txsz[2:])
         self.Pszx, self.Pszy = self.txsz[2:]
         if self.txsz[2] > self.txsz[3]:
@@ -956,9 +888,8 @@ class Rednerer(object):
         self.grid_w, self.grid_h = w, h
         self.grid_tile_count = w*h
         self.grid = rv
-        # todo: STATIC or DYNAMIC ??
         if self.grid_vbo is None:
-            self.grid_vbo = vbo.VBO(self.grid, usage=GL_DYNAMIC_DRAW)
+            self.grid_vbo = vbo.VBO(self.grid, usage=GL_STATIC_DRAW)
         else:
             self.grid_vbo.set_array(self.grid)
 
@@ -1011,7 +942,6 @@ class Rednerer(object):
         vpx, vpy = self.viewpos
         xpad, ypad = self.Pszx, self.Pszy
         x, y, unused = self.render_origin
-
 
         vpx -= rel[0]
         vpy += rel[1]        
@@ -1118,10 +1048,7 @@ class Rednerer(object):
             if i + zed < 0:
                 continue
             self.render_origin[2] = i + zed
-            self.update_mapdata(i==0 and self.crap)
-            falpha = 1.0
-
-            self.mapshader.update_state(falpha, zd[-i])
+            self.mapshader.update_state(falpha = 1.0, darken = zd[-i])
             glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
 
         self.mapshader.cleanup()
@@ -1310,13 +1237,13 @@ if __name__ == "__main__":
     else:
         irdump = None
 
-    re = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
-    pageman, objcode = raw.work(pa.dfprefix, pa.rawsdir, loud)
+    rednr = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
+    pageman, objcode, fakefloors = raw.work(pa.dfprefix, pa.rawsdir, loud)
     if pa.aldump:
         pageman.dump(pa.aldump)
     mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame, irdump = irdump )
     
-    re.set(mo)
-    re.loop(pa.afps, pa.choke)
-    re.fini()
+    rednr.set(mo)
+    rednr.loop(pa.afps, pa.choke)
+    rednr.fini()
     
