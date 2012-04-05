@@ -75,91 +75,128 @@
 #  they stand for material's DISPLAY_COLOR values
 #  see tilesets.txt for examples. 
 # 
-# [material:class:token] applies materials of class 'class',
-#  that have token 'token' in their definition to the 
-#  tilesets listed below. 
 #
-# Material classes:
-#   inorganic
-#   plant
-#   none : none (or, more precisely, any) material, 
-#      used to define material-unbound tiles.
+# Binding cels to tiles and materials.
+# ====================================
+# 
+# [material:selector-expression] token applies materials selected 
+# by the ~selector-expression~ to the tilesets listed after the token.
 #
-# Examples:
-#  [material:inorganic:SOIL] - soils
-#  [material:inorganic:SEDIMENTARY]       }
-#  [material:inorganic:IGNEOUS_EXTRUSIVE] } layer
-#  [material:inorganic:IGNEOUS_INTRUSIVE] } stone
-#  [material:inorganic:METAMORPHIC]       }
-#    or
-#  [material:inorganic:SEDIMENTARY:IGNEOUS_EXTRUSIVE:IGNEOUS_INTRUSIVE:METAMORPHIC]
+# In other words, for each selected material and every tile
+# in the listed tilesets a blitter instruction is emitted, so that
+# when the renderer gets a tile_id, material_id pair from the game
+# it knows how to draw it. While some ascii cels are listed in the 
+# raws, they basically only cover unmined walls while there are 
+# many other tiles to be drawn.
 #
-#  minerals are defined like that:
+# A material is a set of "material template tokens", that is those
+# tokens that can be added/found in material templates 
+# (material_template_default.txt file)
 #
-#  [material:inorganic:ENVIRONMENT:ENVIRONMENT_SPEC:DEEP_SPECIAL:DEEP_SURFACE]
+# The material.parent variable refers to the object from which 
+# the material in question was derived. It is not defined for 
+# the inorganic materials. Instead they have inorganic-specific
+# tokens
 #
-#   DEEP_SPECIAL selects adamantine, DEEP_SURFACE - slade
 #
-#  [material:inorganic:IS_METAL]
-#  [material:inorganic:IS_GEM]
+#  ~selector-expression~:
+#  ----------------------
 #
-#  [material:plant:WOOD] - for like beds and other wooden stuff
-#  [material:plant:GRASS]
-#  [material:plant:TREE]
-#  [material:plant:SHRUB_TILE]
+#    A simple expression in reverse polish notation (stoned-yoda-speak).
+#    It must compute to a boolean value or consist of a single keyword 'none'.
 #
-# Literal material name can also be used:
-#  [material:inorganic:CERAMIC_PORCELAIN]
+# Operators:
+#     and or not 
+#     eq  - case insensitive string comparison
+#     in  - a:b:in -> a in b -> b.has(a)
 #
-#  
-#  Application consists mostly of taking material's 
-#  DISPLAY_COLOR, processing it with any effects defined
-#  for the tile and emitting the result as blit code.
+# Variables:
+#     name:                 (alias)
+#         mat                      - set of tokens (f.ex. to select metals)
+#         mat.klass         (mk)   - inorganic; none; structural, seed, etc for derived
+#         mat.name          (mn)   - name
+#         mat.parent        (mp)   - set of tokens for the parent object (GRASS f.ex.)
+#         mat.parent.klass  (mpk)  - plant or creature
 #
-# The following tokens are permitted under [material] one:
-#  [emit:<tsname|bsname>]
-#  [tile:<literal_tilename>[:<cel-def>]] (as in tileset def)
+# Keywords:
+#     none: 
+#         expilicty selects built-in material 'nonemat' (see below)
 #
-# On the top level, [tile:<tilename>] explicitly defines a tile. 
-# It will be drawn as defined regardless of what material 
-# the game assigns to it, same as under [material:none]
+# Literals:
+#    anything that is not a varname, keyword or operator.
 #
-# Buildings definition: see buildings.txt
+#    Example: 
+#      [material:mat.klass:seed:eq:mat.name:weed_rat:eq:and][tile:EeriePit]
+#    an EeriePit made of rat weed seeds
+#
+# Beware of typos: evaluator lacks type-checks and will happily coerce 
+# strings to booleans and search for substrings
+# 
+# 'in' and 'eq' operators can be made implicit since one 
+#  of their parameters is always a variable (or rather variables
+#  can be turned into unary operators), but I feel that would 
+#  make the expressions incomprehensible even to me.
+#
+#
+# [material:none] works as a 'fallback' for tile-material 
+#  combinations that are not defined otherwise. 
+#  If renderer can not find blitcode for given mat-tile 
+#  combo, it tries to look up nonemat-tile combination. 
+#
+#  This is intended for drawing tiles where having a material
+#  assigned doesn't make much sense, like OpenSpace, Void, 
+#  EeriePit and the like.
+#
+#
+#
+# The following tokens are permitted under [material]:
+#     [tilesets:<tsname>:<tsname>...]
+#     [tile:<literal_tilename>[:<cel-def>]] (as in tileset def)
+#     [buildings]
+#
+#
+# Buildings definition: 
+# =====================
+#
+#       see buildings.txt
 #
 
-[material:inorganic:soil]
+[material:soil:mat:in:soil_ocean:mat:in:or]
     [tilesets:soil]
 
-[material:inorganic:sedimentary:igneous_extrusive:igneous_intrusive:metamorphic:!is_gem]
+[material:is_gem:mat:in:not:metamorphic:mat:in:sedimentary:mat:in:or:igneous_intrusive:mat:in:or:igneous_extrusive:mat:in:or:and]
     [tilesets:stone:constructed]
     [buildings]
 
-[material:inorganic:environment:environment_spec:!is_gem]
+[material:is_gem:mat:in:not:environment_spec:mat:in:environment:mat:in:or:and]
     [tilesets:mineral:constructed]
     [buildings]
 
-[material:inorganic:deep_special:!is_metal] # raw adamantine
+[material:deep_special:mat:in:is_stone:mat:in:and] # raw adamantine
     [tilesets:mineral]
 
-[material:inorganic:deep_surface]
+[material:deep_surface:mat:in] # slade
     [tilesets:feature]
 
-[material:inorganic:is_metal]
+[material:is_metal:mat:in]
     [tilesets:constructed]
     [buildings]
  
-[material:derived:wood]
-    [classic_color:6,0,0]
+[material:wood:mat.klass:eq]
     [tilesets:constructed]
     [buildings]
 
-[material:inorganic:is_gem]
+[material:soap:mat.klass:eq]
+    [tilesets:constructed]
+    [buildings]
+
+[material:is_gem:mat:in]
     [tilesets:mineral]
 
-[material:plant:grass]
+[material:grass:mat.parent:in]
     [tilesets:grass]
 
-[material:plant:!grass]
+[material:mat.klass:structural:eq:mat.parent.klass:plant:eq:and:grass:mat.parent:in:not:and]
     [tilesets:vegetation]
 
 [tileset:nonmat]
@@ -181,7 +218,7 @@
     [tile:Void][cel:none]
     [tile:Waterfall][cel:none]
 
-[material:none]
+[material:mk:none:eq]
     [tilesets:nonmat]
 
 

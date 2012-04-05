@@ -10,7 +10,7 @@
 # ...
 # lxnt cancels Store item in stockpile: interrupted by bug
 
-import sys, time, math, struct, io, ctypes, zlib, ctypes, re
+import sys, time, math, struct, io, ctypes, zlib, ctypes
 import collections, argparse, traceback, os, types, mmap
 import numpy as np
 
@@ -19,14 +19,13 @@ import pygame
 from OpenGL.GL import *
 from OpenGL.arrays import vbo
 from OpenGL.GL.shaders import *
-import OpenGL.GL.shaders
 from OpenGL.GLU import *
 from OpenGL.GL.ARB import shader_objects
 from OpenGL.GL.ARB.texture_rg import *
 from OpenGL.GL.ARB.framebuffer_object import *
 from glname import glname as glname
 
-import raw
+from raw import MapObject
 
 CONTROLS = """ 
     F1: toggle this text
@@ -43,244 +42,11 @@ CONTROLS = """
     Left mouse button, Space: toggle animation
     Esc: quit"""
 
-
-class mapobject(object):
-    def __init__(self, pageman, objcode, dumpfname, cutoff = 0, apidir='', irdump=None):
-        self.dispatch_dt = np.dtype({  # GL_RG16UI - 32 bits, all used.
-            'names': 's t'.split(),
-            'formats': ['u2', 'u2' ],
-            'offsets': [ 0, 2 ],
-            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
-        self.blitcode_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
-            'names': 'un2 un1 t s mode fg bg'.split(),
-            'formats': ['u1', 'u1', 'u1', 'u1', 'u4', 'u4', 'u4'],
-            'offsets': [ 0, 1, 2, 3, 4, 8, 12 ] })
-        
-        self.data_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
-            'names': 'stoti bmabui grass designation'.split(),
-            'formats': ['u4', 'u4', 'u4', 'u4'],
-            'offsets': [ 0, 4, 8, 12 ] })
-            
-        self.tileresolve = raw.DfapiEnum(apidir, 'tiletype')
-        self.building_t = raw.DfapiEnum(apidir, 'building_type')
-        
-        self._pageman = pageman
-        self.txsz = pageman.txsz
-        self.fontptr = pageman.data
-
-        self.parse_dump(dumpfname)
-        self.assemble_blitcode(objcode, cutoff, irdump)
-        
-        fsize = os.stat(dumpfname).st_size
-        if os.name == 'nt':
-            self._map_fd = os.open(dumpfname, os.O_RDONLY|os.O_BINARY)
-        else:
-            self._map_fd = os.open(dumpfname, os.O_RDONLY)
-        try:
-            self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, 
-                offset = self.tiles_offset, access = mmap.ACCESS_READ)
-        except ValueError:
-            print "fsize: {} tiles {},{} effects: {}".format(fsize, 
-                self.tiles_offset, self.tiles_size, self.effects_offset )
-            raise
-
-        print "mapdata: {}x{}x{} {}M".format(self.xdim, self.ydim, self.zdim, self.tiles_size >>20)
-
-    def parse_dump(self, dumpfname):
-        self.mat_ksk = {}
-        self.mat_ids = {}
-        HEADER_SIZE = 264
-        dumpf = file(dumpfname)
-        self.max_mat_id = -1
-        # read header
-        l = dumpf.readline()
-        if not l.startswith("origin:"):
-            raise TypeError("Wrong trousers " + l )
-        x, y, z = l[7:].strip().split(':')
-        self.xorigin, self.yorigin, self.zorigin = map(int, [x, y, z])
-        self.xorigin *= 16
-        self.yorigin *= 16
-        
-        l = dumpf.readline()
-        if not l.startswith("extent:"):
-            raise TypeError("Wrong trousers " + l )
-        x, y, z = l[7:].strip().split(':')
-        self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
-        self.xdim *= 16
-        self.ydim *= 16
-        
-        l = dumpf.readline()
-        if not l.startswith("tiles:"):
-            raise TypeError("Wrong trousers " + l )
-        self.tiles_offset, self.tiles_size = map(int, l[6:].split(':'))
-        
-        l = dumpf.readline()
-        if not l.startswith("effects:"):
-            raise TypeError("Wrong trousers " + l )
-        self.effects_offset = int(l[8:])
-        
-        # read and combine all of plaintext
-        lines = dumpf.read(self.tiles_offset - dumpf.tell()).split("\n")
-        
-        dumpf.seek(self.effects_offset)
-        lines += dumpf.read().split("\n")
-        
-        # parse plaintext
-        sections = [ 'materials', 'buildings', 'building_defs', 'constructions', 'effects', 'units', 'items' ]
-        section = None
-        for l in lines:
-            l = l.strip()
-            if l == '':
-                continue
-            if l.startswith('section:'):
-                unused, section = l.split(':')
-                section = section.lower()
-                if section not in sections:
-                    section = None
-                continue
-            if section == 'materials':
-                s = re.split("([a-z]+)=", l)
-                id = int(s[0])
-                if self.max_mat_id < id:
-                    self.max_mat_id = id 
-                rest = s[1:]
-                i = 0
-                subklass = None
-                for k in rest[::2]:
-                    k = k.strip()
-                    v = rest[1::2][i].strip()
-                    i += 1 
-                    if k == 'id':
-                        name = v
-                    elif k == 'subklass':
-                        subklass = ' ' + v
-                    elif k == 'klass':
-                        klass = v
-
-                self.mat_ksk[id] = (name, klass, subklass)
-                self.mat_ids[(klass, subklass)] = id
-                self.mat_ids[name] = id
-
-    def assemble_blitcode(self, objcode, cutoff, irdump=None):
-        # all used data is available before first map frame is to be
-        # rendered in game.
-        # eatpage receives individual tile pages and puts them into one big one
-        # maptile maps pagename, s, t into tiu, s, t  that correspond to the big one
-        # tile_names map tile names in raws to tile_ids in game
-        # inorg_ids and plant_ids map mat names in raws to effective mat ids in game
-        # (those can change every read of raws)
-    
-        if cutoff > objcode.maxframe:
-            cutoff = objcode.maxframe
-        self.codedepth = cutoff + 1
-        tcount = 0
-        for mat, tset in objcode.map.items():
-            tcount += len(tset.keys())
-        if tcount > 65536:
-            raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
-        self.codew = int(math.ceil(math.sqrt(tcount)))
-        
-        self.matcount = self.max_mat_id + 1
-        self.tiletypecount = len(self.tileresolve)
-        
-        dispatch = np.zeros((self.tiletypecount, self.matcount ), dtype=self.dispatch_dt)
-        
-        blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
-        nf = (cutoff+1) * self.codew * self.codew
-        tc = 1
-        # 'link' map tiles
-        for mat_name, tileset in objcode.map.items():
-            try:
-                mat_id = self.mat_ids[mat_name]
-            except KeyError:
-                mat_id = 0
-                
-            for tilename, frameseq in tileset.items():
-                x = int (tc % self.codew)
-                y = int (tc / self.codew)
-                tc += 1
-                
-                try:
-                    tile_id = self.tileresolve[tilename]
-                except KeyError:
-                    print "unk tname {} in mat {}".format(tilename, mat_name)
-                    raise
-
-                hx = mat_id
-                hy = tile_id
-                dispatch[hy, hx]['s'] = x
-                dispatch[hy, hx]['t'] = y               
-                frame_no = 0
-                for frame in frameseq:
-                    blitcode[frame_no, y, x]['mode'] = frame.mode
-                    if frame.mode != -1:
-                        blitcode[frame_no, y, x]['s'] = frame.blit[0]
-                        blitcode[frame_no, y, x]['t'] = frame.blit[1]
-                        blitcode[frame_no, y, x]['fg'] = frame.fg
-                        blitcode[frame_no, y, x]['bg'] = frame.bg
-                    if irdump:
-                        irdump.write("{}:{} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
-                    frame_no += 1
-                    if frame_no > cutoff:
-                        break
-        self.dispatch, self.blitcode = dispatch, blitcode
-        print "objcode: {1} mats  {0} defined tiles, cutoff={2}".format(tcount, len(objcode.map.keys()), cutoff)
-        print "dispatch: {}x{}, {} bytes".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
-        print "blitcode: {}x{}x{} {} units, {} bytes".format(cutoff+1, self.codew, self.codew, nf, nf*16 )
-        file("dispatch.dump","w").write(dispatch.tostring())
-        file("blitcode.dump","w").write(blitcode.tostring())
-
-    @property
-    def codeptr(self):
-        return ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
-
-    @property
-    def disptr(self):
-        return ctypes.c_void_p(self.dispatch.__array_interface__['data'][0])
-
-    @property
-    def mapptr(self):
-        """ will crash on python debug build """
-        PyObject_HEAD = [ ('ob_refcnt', ctypes.c_size_t), ('ob_type', ctypes.c_void_p) ]
-        class mmap_mmap(ctypes.Structure):
-            _fields_ = PyObject_HEAD + [ ('data', ctypes.c_void_p), ('size', ctypes.c_size_t) ]
-        guts = mmap_mmap.from_address(id(self._tiles_mmap))
-        return ctypes.c_void_p(guts.data) # WTF??
-
-    def gettile(self, posn):
-        x, y, z = posn
-        offs = 16*(self.xdim*self.ydim*z + y*self.xdim + x)
-        stoti, bmabui, grass, designation = struct.unpack("IIII", self._tiles_mmap[offs:offs+16])
-        tile_id  = stoti & 0xffff
-        mat_id   = stoti >> 16
-        btile_id = bmabui & 0xffff # can also hold building_type+768
-        bmat_id  = bmabui >> 16 
-        grass_id = grass & 0xffff
-        grass_amount = ( grass >> 16 ) & 0xff
-
-        tilename = self.tileresolve[tile_id]
-        btilename = self.tileresolve[btile_id]
-
-        matname, matklass, matsubklass = self.mat_ksk.get(mat_id, None)
-        bmatname, bmatklass, bmatsubklass = self.mat_ksk.get(bmat_id, None)
-        grassname, grassklass, grasssubklass = self.mat_ksk.get(grass_id, None)
-        
-        return ( (mat_id, matname),   (tile_id, tilename),
-                 (bmat_id, bmatname), (btile_id, btilename),
-                 (grass_id, grassname, grass_amount), 
-                  designation )
-    
-    def inside(self, x, y, z):
-        return (  (x < self.xdim) and (x >= 0 ) 
-                and  ( y < self.ydim) and (y >= 0)
-                and (z < self.zdim) and (z>= 0))
-
-
 class Shader0(object):
     def __init__(self, loud=False):
         """ dumb constructor, there may be no GL context yet"""
         self.loud = loud
-        self.uloc = {}
+        self.uloc = collections.defaultdict(lambda:-1)
         self.program = None
         self.clean = False
     
@@ -292,16 +58,21 @@ class Shader0(object):
         if self.program:
             self.fini()
         self.init(self, vs, fs)
-        
+    
+    def compile(self, lines, stype, filename):
+        rv = glCreateShader(stype)
+        glShaderSource(rv, lines)
+        glCompileShader(rv)
+        result = glGetShaderiv(rv, GL_COMPILE_STATUS)
+        nfo = glGetShaderInfoLog(rv)
+        print("compiling {}: result={}; nfo:\n{}".format(filename, result, nfo.strip()))
+        return rv
+    
     def init(self, vs, fs):
         """ to be called after there is a GL context """
-        try:
-            where = 'vertex'
-            vsp = compileShader(file(vs).read(), GL_VERTEX_SHADER)
-            where = 'fragment'
-            fsp = compileShader(file(fs).read(), GL_FRAGMENT_SHADER)
-        except RuntimeError, e:
-            print where, e[0]#, e[1][0]
+        vsp = self.compile(file(vs).readlines(), GL_VERTEX_SHADER, vs)
+        fsp = self.compile(file(fs).readlines(), GL_FRAGMENT_SHADER, fs)
+        if not (vsp and fsp):
             raise SystemExit
         
         program = glCreateProgram()
@@ -314,7 +85,7 @@ class Shader0(object):
             glBindAttribLocation(program, loc, name)
             if self.loud:
                 print "  {0}: name={1} loc={2}".format('-', name, loc)
-        #glBindFragDataLocation(program, 0, 'color')
+        glBindFragDataLocation(program, 0, 'color')
 
         glLinkProgram(program)
     
@@ -326,7 +97,7 @@ class Shader0(object):
                 glGetProgramInfoLog( program ),
             ))
     
-        self.uloc = {}
+        self.uloc = collections.defaultdict(lambda:-1)
         au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
         for i in xrange(au):
             name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
@@ -334,8 +105,6 @@ class Shader0(object):
             self.uloc[name] = loc
             if self.loud:
                 print "  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc)
-        
-        
         
         self.program = program
 
@@ -358,7 +127,6 @@ class Shader0(object):
         for loc in self.aloc.values():
             glDisableVertexAttribArray(loc) # is it the right place for this?
         self.clean = False
-            
 
 class Tile_shader(Shader0):
     def __init__(self, renderer, loud=False):
@@ -390,13 +158,16 @@ class Tile_shader(Shader0):
         
         glUniform3i(self.uloc["origin"], *self.rr.render_origin)
         
+        glUniform1iv(self.uloc["tileclass"], 
+            len(self.rr.gameobject.tcptr), self.rr.gameobject.tcptr)
+        
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.rr.dispatch_txid)
         glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
         
         glActiveTexture(GL_TEXTURE1)
         glBindTexture(GL_TEXTURE_2D_ARRAY, self.rr.blitcode_txid)
-        glUniform1i(self.uloc["blitcode"], 1) # blitter blit code tiu
+        glUniform1i(self.uloc["blitcode"], 1) # blitter code tiu
         
         glActiveTexture(GL_TEXTURE2)
         glBindTexture(GL_TEXTURE_2D, self.rr.font_txid)
@@ -484,7 +255,7 @@ class Hud(object):
         self.strs = (
             "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d} color: #{color:08x}",
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
-            "x={tx:03d} y={ty:03d} z={z:03d}  ",
+            "x={tx:03d} y={ty:03d} z={z:03d}  dump10: {dump10[0]}:{dump10[1]}",
             "{designation}",
             "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
             "tile: {tile[0]} ({tile[1]}) ",
@@ -524,6 +295,17 @@ class Hud(object):
         self.ema_rendertime = self.ema_alpha*val + (1-self.ema_alpha)*self.ema_rendertime
         return 1000.0/self.ema_rendertime
 
+    def restore9(self, v):
+        return None
+
+    def restore10(self, v):
+        A = ( ( v & 0xFE000000 ) >> 22 ) | ( ( v & 0x00E00000 ) >> 21 )
+        B = ( ( v & 0x001E0000 ) >> 11 ) | ( (v & 0x0000FF00) >> 10 )
+        return A,B
+        
+    def restore12(self, v):
+        return ( v >> 20, ( v >> 8 ) & ((1<<12)-1) )        
+
     def update(self):
         self.rr.update_mouse()
         tx, ty, tz =  self.rr.mouse_in_world
@@ -548,6 +330,9 @@ class Hud(object):
             'bmat': bmat,
             'grass': grass,
             'color': color,
+            'dump12': self.restore12(color),
+            'dump10': self.restore10(color),
+            'dump9': self.restore9(color),
             'vp': self.rr.viewpos,
             'pszx': self.rr.Pszx,
             'pszy': self.rr.Pszy,
@@ -668,40 +453,6 @@ class Fbo(object):
         glViewport(0, 0, self.viewsize[0], self.viewsize[1])
 
 
-class fc_item(object):
-    def __init__(self, age, items):
-        self.age = age
-        self.items = items
-        
-class Framecache(object):
-    def __init__(self, depth):
-        self.depth = depth
-        self.cache = {}
-        self.getc = 0
-    
-    def __str__(self):
-        rv = ""
-        keys = self.cache.keys()
-        keys.sort(lambda x,y: cmp(self.cache[x].used, self.cache[y].used))
-
-        for k in keys:
-            i = self.cache[k]
-            rv += "{k[0]}:{k[1]}:{k[2]} {k[3]}x{k[3]} used={u}\n".format(k=k, u=i.used)
-        return rv
-    
-    def get(self, key):
-        self.getc += 1
-        if key in self.cache:
-            return self.cache[key].items
-        raise KeyError
-        
-    def put(self, key, *items):
-        keys = self.cache.keys()
-        if len(keys) > self.depth:
-            keys.sort(lambda x,y: cmp(self.cache[x].age, self.cache[y].age))
-            del self.cache[keys[0]]
-        self.cache[key] = fc_item(self.getc, items)
-
 class Rednerer(object):
     _zdtab = [  # darkening coefficients for drawing multiple z-levels.
         [1.0],
@@ -709,6 +460,7 @@ class Rednerer(object):
         [1.0, 0.66, 0.33],
         [1.0, 0.60, 0.45, 0.30, 0.15 ],
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
+
     def __init__(self, vs, fs, loud=[], zeddown=2):
         self.vs, self.fs = vs, fs
         self.fbo = Fbo(self)
@@ -736,7 +488,6 @@ class Rednerer(object):
         self.mouse_in_grid = (100500, 100500)
         self.mouse_in_gl = (0, 0)
         self.anim_fps = 12
-        self._frame_cache = Framecache(16)
         self._zeddown = zeddown
         self.cheat = True
         self.had_input = False
@@ -1200,9 +951,7 @@ class Rednerer(object):
     def fini(self):
         self.opengl_fini()
 
-
-
-if __name__ == "__main__":
+def main():
     ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', 
         epilog =  "Controls:\n" + '\n'.join(CONTROLS.split('\n')[2:]) )
     
@@ -1215,7 +964,7 @@ if __name__ == "__main__":
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
-    ap.add_argument('rawsdir', metavar="raws/dir", nargs='?', help="FG raws dir to parse", default='fgraws')
+    ap.add_argument('rawsdir', metavar="raws/dir", nargs='?', help="FG raws dir to parse", default=['fgraws'])
     ap.add_argument('-loud', action='store_true', help="spit lots of useless info")
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     pa = ap.parse_args()
@@ -1229,12 +978,14 @@ if __name__ == "__main__":
         irdump = None
 
     rednr = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
-    pageman, objcode, fakefloors = raw.work(pa.dfprefix, pa.rawsdir, loud)
+    mo = MapObject(pa.dfprefix, pa.rawsdir, loud = loud, apidir = '')
     if pa.aldump:
-        pageman.dump(pa.aldump)
-    mo = mapobject( pageman, objcode, pa.dump, pa.cutoff_frame, irdump = irdump )
-    
+        mo.pagedump(pa.aldump)
+
+    mo.use_dump(pa.dump, pa.irdump)    
     rednr.set(mo)
     rednr.loop(pa.afps, pa.choke)
     rednr.fini()
     
+if __name__ == "__main__":
+    main()

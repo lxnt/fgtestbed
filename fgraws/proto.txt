@@ -73,7 +73,8 @@
 # [color:<tr,ipl,et>] - classic fg,bg,br. 
 #  Use either numbers, or fg,bg,br literals,
 #  they stand for material's DISPLAY_COLOR values
-#  see tilesets.txt for examples. 
+#  see tilesets.txt for examples.
+# [asis] - sets mode=1, that is blit without any blending.
 # 
 # [material:class:token] applies materials of class 'class',
 #  that have token 'token' in their definition to the 
@@ -178,6 +179,10 @@
 
 [material:inorganic:=microcline]
     [tile:mineralwall][cel:32px:1:0]
+
+
+# inline celdefs in tilesets with no material attached
+# default to AS_IS blitter mode as no material color can be inferred.
 
 [tileset:nonmat]
     [tile:Ashes1][cel:std:2:15]

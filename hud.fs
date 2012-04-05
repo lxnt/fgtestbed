@@ -7,5 +7,5 @@ in vec2 coord;
 out vec4 color;
 
 void main() {
-    color = texture2D(hudtex,  coord);
+    color = texture(hudtex,  coord);
 }
