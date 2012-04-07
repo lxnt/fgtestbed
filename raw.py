@@ -1787,7 +1787,6 @@ class MapObject(object):
 
     @property
     def disptr(self):
-        file('dispatch.dump', 'w').write(self.dispatch.tostring())
         return ctypes.c_void_p(self.dispatch.__array_interface__['data'][0])
 
     @property
