@@ -155,7 +155,7 @@ class Pageman(object):
         surf.blit(self.surf, (0, 0))
         self.surf = surf
 
-    def map(self, pagename, ref): # pagename comes in uppercased
+    def __call__(self, pagename, ref): # pagename comes in uppercased
         page = self.pages[pagename]
         if len(ref) == 1:
             try:
@@ -168,9 +168,8 @@ class Pageman(object):
                 s = tmp % page.pdim[0]
                 t = tmp / page.pdim[1]
         else:
-            s, t = ref
-        
-        return self.mapping[(pagename, s, t)]
+            s, t = map(int, ref)
+        return self.mapping[(pagename, s, t)]  
 
     @property
     def txsz(self):
@@ -185,26 +184,117 @@ class Pageman(object):
         "returns bytes for the resulting texture"
         return pygame.image.tostring(self.surf, 'RGBA')
 
-class ObjectCode(object):
-    def __init__(self, pageman, mapcolor, celeffects, maxframes):
-        self.map = {}
-        self.buildings = {}
-        self.items = {}
-        self.maxframe = 0
-        self.maxframes = maxframes
-        self.pageman = pageman
-        self.mapcolor = mapcolor
-        self.celeffects = celeffects
+class BasicFrame(object):
+    def __init__(self, blit, blend):
+        self.blit = blit
+        self.mode = blend[0]
+        self.fg = blend[1]
+        self.bg = blend[2]
 
-    def addtiles(self, mat, tile):
-        bframes = tile.cel.expand(mat, self.pageman, self.mapcolor, self.celeffects, self.maxframes)
-        if len(bframes) > self.maxframe + 1:
-            self.maxframe = len(bframes) - 1
+    def __str__(self):
+        if self.mode == 0:
+            return "mode=discard"
+        elif self.mode == 1:
+            return "mode=as is   blit={:>2d}:{:<2d}".format(self.blit[0], self.blit[1])
+        elif self.mode == 2:
+            return "mode=classic blit={:>2d}:{:<2d} fg={:08x} bg={:08x}".format(self.blit[0], self.blit[1], self.fg, self.bg)
+        elif self.mode == 3:
+            return "mode=fg-only blit={:>2d}:{:<2d} fg={:08x}".format(self.blit[0], self.blit[1], self.fg)
+        elif self.mode == 4:
+            return "mode=???"
+        elif self.mode == 6:
+            return "mode=PROFIT!!!"
+
+    def __repr__(self):
+        return self.__str__()
+
+class _context(object):
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+   
+def Inflate(tilename, material, keyframes, ctx):
+    """ Converts keyframes into seqs of basicframes. """
+    
+    if keyframes is None or len(keyframes) == 0:
+        return None  # discard
+
+    """ well in fact the effect belongs to the tile, not keyframe, but ... 
+        they end up in the first keyframe ftb """
+    effect = ctx.effects.get(keyframes[0]._effect, lambda c: c)
+    """ """
+    def lahy(kf):
+        if kf._blend == 'MAT':
+            kf._blend = material.display_color
+        return kf
+
+    # 'instantiate' MAT colors
+    keyframes = map(lahy, copy.deepcopy(keyframes)) 
+    
+    # for no reason at all 'mat_name/mat_idx' blits
+    # are handled inside CelRef class. Boooo.
+    if len(keyframes) == 1:
+        blit = keyframes[0]._blit.emit(material, ctx.pageman)
+        if blit is None:
+            blend = (0, None, None)
+        else:
+            blend = keyframes[0]._blend.emit(ctx.colors, effect)
+        
+        
+        return [ BasicFrame(blit, blend) ]
+
+    def interpolate_keyframes(fromframe, toframe):
+        assert fromframe != toframe
+        rv = []
+        mode0, fg0, bg0 = fromframe._blend.emit(material, ctx.colors, ctx.effects)
+        if thisframe._glow:
+            mode1, fg1, bg1 = toframe._blend.emit(ctx.colors, ctx.effects)
+            if mode1 != mode0:
+                raise CompileError("can't glow between two different blend modes")
+        else:
+            mode0, fg0, bg0 = mode1, fg1, bg1
+            
+        def _delta(a, b, amt):
+            return ( (b[0]-a[0])/amt, (b[1]-a[1])/amt, (b[2]-a[2])/amt, 0 )
+
+        def _advance(base, delta, amt):
+            return ( base[0] + delta[0]*amt, base[1] + delta[1]*amt, base[2] + delta[2]*amt, 1 )
+        
+        dfg = _delta(fg0, fg1, float(toframe.no - fromframe.no))
+        dbg = _delta(bg0, bg1, float(toframe.no - fromframe.no))
+        
+        blit = fromframe._blit.emit(material, ctx.pageman)
+        for no in xrange(fromframe.no, toframe.no):
+            if fromframe.glow:
+                blend = (mode0, _advance(fg0, dfg, no), _advance(bg0, dbg, no))
+            else:
+                blend = fromframe.blend.emit(self.ctx, material)
+            self.frames[no] = BasicFrame(blit, blend)
+        return rv
+
+    rv = []
+    frameno = 0
+    while frameno < len(keyframes) - 1:
+        rv += interpolate_keyframes(keyframes[frameno], keyframes[frameno+1], ctx)
+    lafra = keyframes[-1]    
+    
+    if lafra.blit is None and lafra.blend is None: #loop back to 0th keyframe:
+        lafra.blit = cel.frames[0].blit
+        lafra.blend = cel.frames[0].blend
+        rv += interpolate_keyframes(keyframes[-1], lafra, ctx)
+
+    return rv
+
+class ObjectCode(object):
+    def __init__(self, ctx):
+        self.map = {}
+        #self.buildings = {}
+        #self.items = {}
+        self.ctx = ctx
+
+    def add(self, mat, tile):
+        bframes = Inflate(tile.name, mat, tile.cel.frames, self.ctx)
         try:
-            if tile.name in self.map[mat.name]: # KeyError if mat hasn't been emitted, False if tile wasn't emitted yet
-                # here if we've got the tile emitted already
-                if tile.cel.stdpage:
-                    return
             self.map[mat.name][tile.name] = bframes # add or overwrite it
         except KeyError:
             self.map[mat.name] = { tile.name: bframes }
@@ -221,124 +311,24 @@ class ObjectCode(object):
                     for bf in bfs:
                         rv += " "*8 + str(bf) + "\n"
         return rv
+        
+    @property
+    def maxframe(self):
+        def gcd(a, b):
+            if a > b: a, b = b, a
+            while a > 0: a, b = (b % a), a
+            return b
+        lcm = lambda a, b: a * b / gcd(a, b)
+        
+        seen = set([1])
+        maxframes = 1
+        for tilesframes in self.map.values():
+            for frameseq in tilesframes.values():
+                if len(frameseq) not in seen:
+                    maxframes = lcm(maxframes, len(frameseq))
+        print "maxframe", maxframes - 1
+        return maxframes
 
-class TSCompiler(object):
-    """ compiles parsed standard tilesets """
-    plant_tname_map = { # blit/blend from standard tileset
-        'TREE':         ('TREE',         (5,  0), (2, 0, 1)), 
-        'SAPLING':      ('SAPLING',      (7, 14), (2, 0, 1)),
-        'TREEDEAD':     ('DEAD_TREE',    (6, 12), (6, 0, 0)),
-        'SAPLINGDEAD':  ('DEAD_SAPLING', (7, 14), (6, 0, 0)),
-        'SHRUBDEAD':    ('DEAD_SHRUB',   (2,  2), (6, 0, 0)),
-        'SHRUB':        ('SHRUB',        (2,  2), (2, 0, 1)),
-    }
-    shrub_tnames = ( 'SHRUBDEAD', 'SHRUB' )
-    def __init__(self, pageman, colortab, loud = []):
-        self.loud = 'compiler' in loud
-        self.matiles = {}
-        self.colortab = colortab
-        self.pageman = pageman
-
-    def mapcolor(self, color):
-        try:
-            return ( self.colortab[color[0]+8*color[2]], self.colortab[color[1]] )
-        except IndexError:
-            raise ValueError("unknown color {}".format(repr(color)))
-
-    def compile(self, materialsets, tilesets, celeffects, buildings, maxframes=24):
-        """ output:
-            map: { material: { tiletype: [ basicframe, basicframe, ... ], ... }, ... }
-            building: { material : {buildingtype: { state: [  basicframe, basicframe, ... ], ... }, ... }
-        """
-        celeffects[None] = lambda c: c # noneffect is none
-        rv = ObjectCode(self.pageman, self.mapcolor, celeffects, maxframes)
-        for materialset in materialsets:
-            x = []
-            for tileset in materialset.tilesets:
-                x.append(tilesets[tileset])
-            materialset.tilesets = x
-            if len(materialset.tiles) > 0:
-                d = TileSet('TILESET', ['__IMPLIED'])
-                for tile in materialset.tiles:
-                    d.add(tile)
-                materialset.tilesets.append(d)
-
-        for materialset in materialsets:
-            for tileset in materialset.tilesets:
-                tlist = tileset.tiles
-                for o_tile in tlist:
-                    for mat in materialset.materials:
-                        tns = mat.parent.celrefs.keys()
-                        if 'SHRUB' in tns or 'DEAD_SHRUB' in tns:
-                            if 'TREE' in tns or 'DEAD_TREE' in tns or 'SAPLING' in tns or 'DEAD_SAPLING' in tns:
-                                raise CryWolf
-                            
-                        continue
-                        if mat.klass == 'SOAP':
-                            # SOAPP! SKIPP ITT!
-                            # (soap being hardmapped to a built-in mat in the renderer for now)
-                            continue
-                        
-                        """
-                        well. so we have single-tile materials like stone
-                        and multi-tile materials like grass, shrubs and trees.
-                        """
-                        
-                        if materialset.klass == 'STRUCTURAL':
-                            tile = copy.deepcopy(o_tile)
-                            if mat.parent.has('GRASS'): # structurals should always have parents
-                                try:
-                                    bli, ble = mat.parent.celdefs[tile.name[-6:]]
-                                    tile.cel = Cel('CEL', ['STD', bli])
-                                    tile.cel.frames[0].blend(ble)                                    
-                                except KeyError:
-                                    print "haz-grazzz; but skipping:", mat, tile.name#, mat.parent.celdefs
-                                    
-                                    # no correspoding celdef for the tile in the parent plant,
-                                    # skip it
-                                    continue
-                            else:
-                                if mat.parent.has('TREE'):
-                                    if tile.name in self.shrub_tnames:
-                                        continue
-                                else:
-                                    if tile.name not in self.shrub_tnames:
-                                        continue
-                                try:
-                                    rawscelname = self.plant_tname_map[tile.name][0]
-                                except KeyError:
-                                    print "non-vegetation tile '{}' defined for material '{}'".format(tilename, mat_name)
-                                    continue # just skip it
-                                bli, ble =  mat.parent.celdefs.get(rawscelname, (None, None))
-                                print tile.name, ": ", bli, ble, " for ",rawscelname, mat.parent, mat.parent.celdefs.keys()
-                                if bli is None:
-                                    bli = self.plant_tname_map[tile.name][1]
-                                    bli = bli[0] + 16*bli[1]
-                                if ble is None:
-                                    ble = self.plant_tname_map[tile.name][2]
-                                tile.cel = Cel('CEL', ['STD', bli])
-                                tile.cel.frames[0].blend(ble)
-
-                        else: # inorganic and the rest 
-                            if o_tile.cel is None:
-                                try:
-                                    mtdef = mat.cref
-                                except AttributeError:
-                                    raise CompileError("material {} has no cref nor celdef".format(mat.name))
-                                try:
-                                    tile = Tile('TILE', [o_tile.name])
-                                    tile.cel = Cel('CEL', ['STD', mtdef])
-                                except:
-                                    continue
-                            else:
-                                tile = o_tile
-                        try:
-                            rv.addtiles(mat, tile)
-                        except:
-                            print materialset.klass
-                            raise
-                        
-        return rv
 
 class RawsParser0(object):
     loud = False
@@ -367,8 +357,7 @@ class RawsParser0(object):
                 except StopIteration:
                     return
                 except :
-                    print "{}:{}".format(fna, lnum)
-                    print l
+                    print "{}:{}:{}".format(fna, lnum, l.rstrip())
                     traceback.print_exc(limit=32)
                     raise SystemExit
         if self.loud:
@@ -376,10 +365,17 @@ class RawsParser0(object):
 
     @staticmethod
     def tileparse(t):
+        """ parses stdraws' celspecs in the form of:
+                int in a string 
+                quoted character is a string (think '`')
+            to an single int.
+            """
+
         try:
             return int(t)
         except ValueError:
             pass
+            
         if  (len(t) != 3 and 
               (t[0] != "'" or t[2] != "'")):
             raise ValueError("invalid literal for tile: \"{}\"".format(t))
@@ -405,10 +401,17 @@ class RawsParser0(object):
 
         for f in final:
             self.parse_file(f, self.parse_token)
-        self.fin()
-
-    def fin(self):
-        pass
+class ColorMap(object):
+    def __init__(self, colors):
+        self.tab = colors
+    
+    def __getitem__(self, color):
+        try:
+            return ( self.tab[color[0]+8*color[2]], self.tab[color[1]] )
+        except IndexError:
+            raise KeyError("unknown color {}".format(repr(color)))
+        except TypeError:
+            raise ValueError("bogus color {}".format(repr(color)))
 
 class InitParser(RawsParser0):
     def __init__(self, dfprefix):
@@ -430,9 +433,107 @@ class InitParser(RawsParser0):
         if name == 'FONT':
             self.fontpath = os.path.join(self.dfprefix, 'data', 'art', tail[0])
             raise StopIteration
+            
+    def __call__(self):
+        return self.fontpath, ColorMap(self.colortab)
 
+class Color(object):
+    @staticmethod
+    def parse_rgb(f):
+        if len(f) == 3:
+            r = int(f[0],16) << 4
+            g = int(f[1],16) << 4
+            b = int(f[2],16) << 4
+        elif len(f) == 6:
+            r, g, b = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16)
+        else:
+            raise ValueError(f)
+        return r,g,b,1
 
+    def __init__(self, coldef):
+        if coldef == 'NONE':
+            self.color = None
+        elif len(coldef) == 1:
+            self.color = self.parse_rgb(coldef[0])
+        elif len(coldef) == 2:
+            self.color = (self.parse_rgb(coldef[0]), self.parse_rgb(coldef[1]))
+        elif len(coldef) == 3:
+            self.color = map(int, coldef)
+        else:
+            raise ParseError("can't parse colordef {}".format(':'.join(color)))
+        
+    def __str__(self):
+        return "({})".format(self.color)
+        
+    def emit(self, colormap, effect = None):
+        """ returns a triplet: mode, fg, bg. 
+            mode is :
+            0 - discard       (0, None, None)
+            1 - no blending   (1, None, None)
+            2 - classic fg/bg (2, fg, bg)
+            3 - fg only       (3, fg, None)
+            4 - ???           ("?", "?", "?")
+            5 - PROFIT!!!     (5, "PROFIT", "!!!")
+        """
 
+        if self.color == 'NONE' or self.color is None: # discard
+            return (0, None, None) 
+        elif self.color in ('ASIS', 'AS_IS'):
+            return (1, None, None)
+        elif type(self.color) == int: # fg
+            return (3, self.color, None)
+        elif len(self.color) == 2: # fg,bg
+            return (2, self.color[0], self.color[1])
+        elif len(self.color) == 3: # fg,bg,br triplet
+            if effect:
+                fg, bg = colormap[effect(self.color)]
+            else:
+                fg, bg = colormap[self.color]
+            return (2, fg, bg)
+
+class CelRef(object):
+    """ celref can """
+    def __init__(self, page = 'STD', idx = None, st = None, cref = None):
+        if issubclass(type(idx), basestring):
+            idx = RawsParser0.tileparse(idx)
+        
+        self.page = page
+        self.cref = cref
+        self.idx = idx if idx is None else [ int(idx) ]
+        self.st = st
+        if st is None:
+            return
+        elif st == 'MAT':
+            assert idx is None
+            assert page == 'STD'
+            return
+        self.st = map(int, st)
+        assert issubclass(type(st), (type(None), list, tuple))
+        self.st = st
+
+    def emit(self, material, pageman):
+        """ returns st tuple as returned by the pageman lookup """
+        if self.st == 'MAT':
+            assert self.cref is not None
+            cd = material.getceldef(self.cref)
+            return cd if cd is None else cd[0].emit(material, pageman)
+        elif self.st is not None:
+            assert self.cref is None
+            assert self.idx is None
+            return pageman(self.page, self.st)
+        else:
+            if self.cref is not None:
+                assert self.idx is None
+                return pageman(self.page, self.cref)
+            else:
+                return pageman(self.page, self.idx)
+
+    def __str__(self):
+        return "CelRef(page={} idx={} st={} cref={})".format(self.page, self.idx, self.st, self.cref)
+
+class CelDiscard(object):
+    def emit(self, un, used):
+        return None
 
 class RawsObject0(object):
     def __init__(self, name, klass):
@@ -441,6 +542,9 @@ class RawsObject0(object):
         self._basic_mat = None        
         self.tokens = set()
         self.celdefs = {}
+
+    def pad_celdefs(*args, **kwargs):
+        pass
 
     def add(self, name):
         self.tokens.add(name)
@@ -451,24 +555,45 @@ class RawsObject0(object):
     def __str__(self):
         return "{}({})".format(self.klass, self.name)
 
-    def _addcref(self, tname, rawcref):
-        cref = TSParser.tileparse(rawcref)
+    def _addcref(self, tname, cref):
         try:
             self.celdefs[tname] = ( cref, self.celdefs[tname][1] )
         except KeyError:
             self.celdefs[tname] = ( cref, None )
         
     def _addcolor(self, tname, color):
-        color = map(int, color)
         try:
             self.celdefs[tname] = ( self.celdefs[tname][0], color )
         except KeyError:
             self.celdefs[tname] = ( None, color )
+    
+    def getceldef(self, mdt_name):
+        return self.celdefs.get(mdt_name, None)
 
 class Plant(RawsObject0):
-    """ a plant (and not a plant material) """
+    """ a plant (and not a plant material) 
+        has multiple celdefs.
+        celrefs are for std 16x16 font.
+    """
+    TREE_CELDEFS = { # tiletype -> (blit,blend)
+        'TREE':         (CelRef(st = (5,  0)), Color((2, 0, 1))),
+        'SAPLING':      (CelRef(st = (7, 14)), Color((2, 0, 1))),
+        'DEAD_TREE':     (CelRef(st = (6, 12)), Color((6, 0, 0))),
+        'DEAD_SAPLING':  (CelRef(st = (7, 14)), Color((6, 0, 0))), }
+    SHRUB_CELDEFS = {
+        'DEAD_SHRUB':    (CelRef(st = (2, 2)), Color((6, 0, 0))),
+        'SHRUB':        (CelRef(st = (2, 2)), Color((2, 0, 1))), }
+    GRASS_CELDEFS = { # mdt_idx -> (blit,blend)); 
+    # in fact mdt_idx can be anything that doesn't contain ':'
+    # called 'index' since it's used in grass only whose raws aren't that advanced
+        '0':       (CelRef(idx = 39), Color((2, 0, 1))), # GRASSwhateverFLOOR0 
+        '1':       (CelRef(idx = 44), Color((2, 0, 0))),
+        '2':       (CelRef(idx = 96), Color((6, 0, 1))),
+        '3':       (CelRef(idx = 39), Color((6, 0, 0))), }
+
     def __init__(self, name):
         super(Plant, self).__init__(name, 'PLANT')
+        self._padded = False # see pad_celdefs()
 
     @property
     def basic_mat(self):
@@ -478,13 +603,38 @@ class Plant(RawsObject0):
     def basic_mat(self, mat):
         assert self._basic_mat is None
         self._basic_mat = mat
+        
+    def pad_celdefs(self):
+        # pad read celdefs with defaults in case some are missing,
+        # relies on the fact that a plant can't be a shrub and a tree
+        # at the same time.
+        # can't do that in constructor since no data on plant type
+        def _pad(src):
+            for tname, v in src.items():
+                blit, blend = v
+                if tname not in self.celdefs:
+                    self._addcref(tname, blit)
+                    self._addcolor(tname, blend)
+                elif self.celdefs[tname][0] is None:
+                    self._addcref(tname, blit)
+                elif self.celdefs[tname][1] is None:
+                    self._addcolor(tname, blend)
+        
+        if 'TREE' in self:
+            _pad(self.TREE_CELDEFS)
+        elif 'GRASS' not in self:
+            _pad(self.SHRUB_CELDEFS)
+        else: # GRASS.
+            _pad(self.GRASS_CELDEFS)
+
+        self.pad_celdefs = super(Plant, self).pad_celdefs # pass on next calls
 
     def token(self, name, tail):
         if name == 'GRASS_TILES':
             i = 0
             for t in tail:
                 i += 1
-                self._addcref("FLOOR{:d}".format(i), t)
+                self._addcref(i, t)
         elif name == 'GRASS_COLORS':
             colors = map(int, tail)
             fgs = colors[0::3]
@@ -493,26 +643,32 @@ class Plant(RawsObject0):
             i = 0
             for fg in fgs:
                 i += 1
-                self._addcolor("FLOOR{:d}".format(i), (fg, bgs.pop(0), brs.pop(0)))        
+                self._addcolor(i, Color((fg, bgs.pop(0), brs.pop(0))))
         elif name.endswith('_TILE'):
-            self._addcref(name[:-5], tail[0])
+            self._addcref(name[:-5], CelRef(idx=tail[0]))
         elif name.endswith('_COLOR'):
-            self._addcolor(name[:-6], tail)
+            self._addcolor(name[:-6], Color(tail))
         self.add(name)
 
 class Inorganic(RawsObject0):
-    """ an inorganic material """
+    """ an inorganic material 
+        has a single cref named 'WALL' for StoneWall/MineralWall tiles. """
     def __init__(self, name):
         super(Inorganic, self).__init__(name, 'INORGANIC')
         
     def token(self, name, tail):
         if name == 'DISPLAY_COLOR':
-            self._dc = tail[0]
+            self._dc = Color(tail)
+            self._addcolor('WALL', self._dc)
+        elif name == 'TILE':
+            self._addcref('WALL', CelRef(idx = tail[0]))
+            
         self.add(name)
 
     def update(self, template):
         self.tokens.update(template.parsed)
-        self._dc = template.display_color        
+        self._dc = template.display_color
+        self._t = template.tile
 
     @property
     def display_color(self):
@@ -527,11 +683,18 @@ class Derived(object):
         
         self.tokens.update(template.parsed)
         self._dc = template.display_color
-
+    
     def token(self, name, tail):
         if name == 'DISPLAY_COLOR':
-            self._dc = map(int, tail)
+            self._dc = Color(tail)
         self.tokens.add(name)
+
+    def getceldef(self, mdt_name):
+        self.parent.pad_celdefs()
+        return self.parent.getceldef(mdt_name)
+    
+    def pad_celdefs(self):
+        self.parent.pad_celdefs()
     
     @property
     def name(self):
@@ -546,6 +709,11 @@ class Derived(object):
     
     def __str__(self):
         return "{}:{}".format(self.klass, self.name)
+
+class NoneMat(object):
+    name = klass = 'NONEMAT'
+    display_color = Color('NONE')
+    pad_celdefs = lambda x: None
 
 class TSParser(RawsParser0):
     def __init__(self, templates, materialsets, loud = False):
@@ -614,7 +782,7 @@ class TSParser(RawsParser0):
             print self.templates
             raise
 
-    def get(self):
+    def __call__(self):
         self.select()
         return self.materialsets
 
@@ -776,19 +944,19 @@ class TcFlag(Token):
         except ValueError:
             self.value = int(tail[1], 16)
 
-def TCCompile(tires, tcs, tcfs, loud=False):
+def TCCompile(tires, classes, flags):
     # rv format: list of ( uint16_t flags, uint16_t klassid )
     _tmp = [ (0, 0) ] * len(tires)
     rv = [ 0 ]  * len(tires)
-    for tc in tcs:
-        klassid = tc.value
-        for tname, flags in tc.tiles.items():
-            tnum = tires[tname]
+    for klass in classes:
+        klassid = klass.value
+        for tilename, tileflags in klass.tiles.items():
+            tileid = tires[tilename]
             f = 0
-            for flag in flags:
-                f |= ( 1 << tcfs[flag].value )
-            _tmp[tnum] = (f, klassid)
-            rv[tnum] = f << 8 | klassid
+            for flag in tileflags:
+                f |= ( 1 << flags[flag].value )
+            _tmp[tileid] = (f, klassid)
+            rv[tileid] = f << 8 | klassid
 
     return rv
     """ use for texture-lookup/uniform BO
@@ -800,134 +968,86 @@ def TCCompile(tires, tcs, tcfs, loud=False):
             print "{}: {} {}".format(tires[i], f, k)
             i += 1
     return rs """
-    
-def parse_rgb(f):
-    if len(f) == 3:
-        r = int(f[0],16) << 4
-        g = int(f[1],16) << 4
-        b = int(f[2],16) << 4
-    elif len(f) == 6:
-        r, g, b = int(f[:2], 16), int(f[2:4], 16), int(f[4:6], 16)
-    else:
-        raise ValueError(f)
-    return r,g,b,1
-
-class Color(object):
-    def __init__(self, codef, effect = None):
-        self._effect_ref = effect
-        
-        if codef == 'NONE':
-            self.color = None
-        elif codef == 'MAT':
-            self.color = 'MAT'
-        elif len(codef) == 1:
-                self.color = parse_rgb(codef[0])
-        elif len(codef) == 2:
-            self.color = (parse_rgb(codef[0]), parse_rgb(codef[1]))
-        elif len(codef) == 3:
-            self.color = map(int, codef)
-        else:
-            raise ParseError("can't parse colordef {}".format(':'.join(color)))
-        
-    def __str__(self):
-        return "({})".format(self.color)
-        
-    def emit(self, material, colormap, effectmap):
-        """ returns a triplet: mode, fg, bg. 
-            mode is :
-            0 - discard       (0, None, None)
-            1 - no blending   (1, None, None)
-            2 - classic fg/bg (2, fg, bg)
-            3 - fg only       (3, fg, None)
-            4 - ???
-            5 - PROFIT!!!     (5, "PROFIT", "!!!")
+def TSCompile(materialsets, tilesets, ctx):
+        """ output:
+            map: { material: { tiletype: [ basicframe, basicframe, ... ], ... }, ... }
         """
 
-        if self.color == 'MAT':
-            if material.display_color is not None:
-                fg, bg = colormap(effectmap[self._effect_ref](material.display_color))
-                return (2, fg, bg)
-            else:
-                return (1, None, None) # default blitmode AS_IS for materials w/o colors
-        elif self.color == 'NONE' or self.color is None: # discard
-            return (0, None, None) 
-        elif type(self.color) == int:
-            return (3, self.color, None)
-        elif len(self.color) == 2:
-            return (2, self.color[0], self.color[1])
-        elif len(self.color) == 3:
-            fg, bg = colormap(effectmap[self._effect_ref](self.color))
-            return (2, fg, bg)
+        rv = ObjectCode(ctx)
+        for materialset in materialsets:
+            x = []
+            for tileset in materialset.tilesets:
+                x.append(tilesets[tileset])
+            materialset.tilesets = x
+            if len(materialset.tiles) > 0:
+                d = TileSet('TILESET', ['__IMPLIED'])
+                for tile in materialset.tiles:
+                    d.add(tile)
+                materialset.tilesets.append(d)
+
+        for materialset in materialsets:
+            for tileset in materialset.tilesets:
+                tlist = tileset.tiles
+                for tile in tlist:
+                    for mat in materialset.materials:
+                        if mat.klass == 'SOAP':
+                            # SOAPP! SOAPP! SKIPP ITT! SKIPP ITT!
+                            # (soap being hardmapped to a built-in mat in the dumper for now)
+                            continue
+                        mat.pad_celdefs()
+                        rv.add(mat, tile)
+        return rv
+
 
 class KeyFrame(object):
     def __init__(self, number, idef = []):
         self.no = number
-        self._page = None # used for blit, but kept separate for being queried by objcode container
-        self._glow = False # or True.
-        self._inline = False # to throw errors if explicit celdef follows inline one (insanity via effects otherwise)
-        if len(idef) == 0: return
+        self._blit = CelDiscard()
+        self._blend = None
+        self._effect = None
+        self._glow = False
 
+        if len(idef) == 0:
+            return
         # parse inline celdef (only place where effects are allowed)
         #  -- moderately ugly hack.
-        self._inline = True
+        self._blend = 'MAT' # inline celdefs always rely on material color
         if idef[0] == 'MAT':
-            self._page = 'STD'
             if len(idef) == 1:
-                self._blit = ('MAT', 0) # (first) material-defined tile from the std tileset
-                self._blend = Color('MAT')
-            elif len(idef) == 2: # (MAT, effect) or (MAT, mdt_idx) # mdt = 'material-defined tile'
-                try:
-                    self._blit = ('MAT', int(idef[1]))
-                    self._blend = Color('MAT')
-                except ValueError:
-                    self._blit = ('MAT', 0)
-                    self._blend = Color('MAT', idef[1])
-            elif len(idef) == 3: # (MAT, mdt_idx, effect)
-                self._blit = ( 'MAT', int(idef[1]) )
-                self._blend = Color('MAT', idef[2])
+                self._blit = CelRef(st='MAT', idx=0) # (first) material-defined tile from the std tileset
+            elif len(idef) == 2: # (MAT, mdt_ref) # mdt = 'material-defined tile'
+                self._blit = CelRef(st='MAT', cref=idef[1])
+            elif len(idef) == 3: # (MAT, mdt_ref, effect)
+                self._blit =  CelRef(st='MAT', cref=idef[1])
+                self._effect = idef[2]
         elif idef[0] == 'NONE': # explicit discard
-            self._page = None
-            self._blit = None
-            self._blend = (0, None, None)
             return
         elif len(idef) == 2: # ( page, idx)  or (page, def)
-            self._page = idef[0]
-            self._blend = Color('MAT')
             try:
-                self._blit = ( int(idef[1]), )
+                self._blit = CelRef(page=idef[0], idx=idef[1]) 
             except ValueError:
-                self._blit = ( idef[1], )
+                self._blit = CelRef(page=idef[0], cdef=idef[1])
         elif len(idef) == 3: # ( page, s, t) or (page, idx, effect) or (page, def, effect)
-            self._page = idef[0]
             try:
-                self._blit = ( int(idef[1]), int(idef[2]) )
-                self._blend = Color('MAT')
+                self._blit = CelRef(page=idef[0], st=idef[1:])
             except ValueError:
+                self._effect = idef[2]
                 try:
-                    self._blit = ( int(idef[1]), )
-                    self._blend = Color('MAT', idef[2])
+                    self._blit = CelRef(page=idef[0], idx=int(idef[1]))
                 except ValueError:
-                    self._blit = ( idef[1], )
-                    self._blend = Color('MAT', idef[2])
+                    self._blit = CelRef(page=idef[0], cref=idef[1])
         elif len(idef) == 4: # ( page, s, t, effect )
-            self._page = idef[0]
-            self._blit = ( int(idef[1]), int(idef[2]) )
-            self._blend = Color('MAT', idef[3])
-
-    @property
-    def page(self):
-        return self._page
+            self._blit = CelRef(page=idef[0], st=idef[1:2])
+            self._effect = idef[3]
+        else:
+            raise ParseError("Incomprehensible inline celdef '{}'".format(':'.join(idef)))
 
     def blit(self, cref):
         assert type(cref) in ( list, tuple )
-        assert not self._inline
-        self.page = cref[0]
-        self._blit = cref[1:]
+        self._blit = CelRef(page=cref[0], st=cref[1:])
 
     def blend(self, color):
         assert type(color) in ( list, tuple )
-        
-        #assert ( not self._inline or self._blend.color != 'MAT')
         self._blend = Color(color)
         
     def glow(self):
@@ -937,75 +1057,6 @@ class KeyFrame(object):
     def __str__(self):
         return "page={} blit={} blend={}".format(self.page, self._blit, self._blend)
 
-
-class BasicFrame(object):
-    def __init__(self, blit, blend):
-        self.blit = blit
-        self.mode = blend[0]
-        self.fg = blend[1]
-        self.bg = blend[2]
-
-    def __str__(self):
-        if self.mode == 0:
-            return "mode=discard"
-        elif self.mode == 1:
-            return "mode=as is   blit={:>2d}:{:<2d}".format(self.blit[0], self.blit[1])
-        elif self.mode == 2:
-            return "mode=classic blit={:>2d}:{:<2d} fg={:08x} bg={:08x}".format(self.blit[0], self.blit[1], self.fg, self.bg)
-        elif self.mode == 3:
-            return "mode=fg-only blit={:>2d}:{:<2d} fg={:08x}".format(self.blit[0], self.blit[1], self.fg)
-        elif self.mode == 4:
-            return "mode=???"
-        elif self.mode == 6:
-            return "mode=PROFIT!!!"
-
-    def __repr__(self):
-        return self.__str__()
-
-
-def interpolate_keyframes(thisframe, nextframe, material, pageman, colormap, celeffects):
-    if thisframe._blit == 'MAT':
-        try:
-            thisframe._blit = ( material.tile, )
-        except AttributeError:
-            raise CompileError('no celdef in material {}'.format(material.name))
-
-    elif thisframe._blit is None: # explicit discard or wha? animation bug here is likely
-        if thisframe == nextframe:
-            num = 1
-        else:
-            num = nextframe.no - thisframe.no
-        return [ BasicFrame(None, (0, None, None)) ] * num
-
-    if thisframe == nextframe: # single framedef as in inline celdefs
-        return [ BasicFrame(pageman.map(thisframe.page, thisframe._blit), 
-            thisframe._blend.emit(material, colormap, celeffects)) ]
-
-    rv = []
-    mode0, fg0, bg0 = thisframe._blend.emit(material, colormap, celeffects)
-    if thisframe._glow:
-        mode1, fg1, bg1 = nextframe._blend.emit(material, colormap, celeffects)
-        if mode1 != mode0:
-            raise CompileError("can't glow between two diffected blend modes")
-    else:
-        mode0, fg0, bg0 = mode1, fg1, bg1
-        
-    def _delta(a, b, amt):
-        return ( (b[0]-a[0])/amt, (b[1]-a[1])/amt, (b[2]-a[2])/amt, 0 )
-
-    def _advance(base, delta, amt):
-        return ( base[0] + delta[0]*amt, base[1] + delta[1]*amt, base[2] + delta[2]*amt, 1 )
-    
-    dfg = _delta(fg0, fg1, float(nextframe.no - thisframe.no))
-    dbg = _delta(bg0, bg1, float(nextframe.no - thisframe.no))
-    
-    for no in xrange(0, nextframe.no - thisframe.no):
-        if thisframe.glow:
-            blend = (mode0, _advance(fg0, dfg, no), _advance(bg0, dbg, no))
-        else:
-            blend = thisframe.blend.emit()
-        self.rv.append(BasicFrame(thisframe._blit, blend))
-    return rv
 
 class Cel(Token):
     tokens = ('CEL', )
@@ -1033,38 +1084,21 @@ class Cel(Token):
             self.frames.append(self.current_frame)
             self.current_frame = KeyFrame(int(tail[0]))
 
-    def expand(self, material, pageman, colormap, celeffects, maxframes):
-        if self.current_frame is not None:
-            self.frames.append(self.current_frame)
-        
-        self.stdpage = self.frames[0].page == 'STD'
-
-        # loop cel's frames to get maxframes frames
-        rv = []
-        frameno = 0
-        if len(self.frames) > 1:
-            while frameno < len(self.frames) - 1:
-                rv += interpolate_keyframes(self.frames[frameno], self.frames[frameno+1], material, pageman, colormap, celeffects)
-            lafra = self.frames[-1]    
-            
-            if lafra.blit is None and lafra.blend is None: #loop back to 0th keyframe:
-                lafra.blit = self.frames[0].blit
-                lafra.blend = self.frames[0].blend
-                rv += interpolate_keyframes(self.frames[-1], lafra, material, pageman, colormap)
-        else:
-            rv += interpolate_keyframes(self.frames[0], self.frames[0], material, pageman, colormap, celeffects)
-
-        while  len(rv) < maxframes:
-            rv += rv
-        return rv[:maxframes]
-
     def __str__(self):
         try:
             f = self.frames[0]
         except IndexError:
             f = None
         return "CEL({} frames), first=({})".format( len(self.frames), f)
-class PoNoExpr(object):
+
+    def noparse(self, name, tail):
+        raise AlreadyFinalizedError
+        
+    def fin(self):
+        self.frames.append(self.current_frame)
+        self.parse = self.noparse
+        
+class RpnExpr(object):
     """
 #     name:                 (alias)
 #         mat                      - set of tokens (f.ex. to select metals)
@@ -1140,10 +1174,10 @@ class MaterialSet(Token):
         if tail[0] == 'NONE':
             self.nomat = True
             self.klass = 'NONE'
-            self.materials = [ Material('NONE', 'no-material') ]
+            self.materials = [ NoneMat() ] # ze nonemat
             return
         self.nomat = False
-        self.expr = PoNoExpr(tail)
+        self.expr = RpnExpr(tail)
         
     def add(self, token):
         if type(token) == Tile:
@@ -1279,18 +1313,19 @@ class MaterialTemplates(Token):
 class MaterialTemplate(Token):
     tokens = ('MATERIAL_TEMPLATE',)
     parses = MATERIAL_TEMPLATE_TOKENS
-    ignores_unknown = True
 
     def __init__(self, name, tail):
         self.name = tail[0]
         self.display_color = None
+        self.tile = None
         self.parsed = set()
         
     def parse(self, name, tail):
         if name == 'DISPLAY_COLOR':
-            self.display_color = map(int, tail)
+            self.display_color = Color(tail)
+        elif name == 'TILE':
+            self.tile = tail[0]
         self.parsed.add(name)
-        
 
 class AdvRawsParser(RawsParser0):
     """ container tokens:
@@ -1390,7 +1425,7 @@ class AdvRawsParser(RawsParser0):
         self.parse_token(name, tail)
         return
 
-    def fin(self):
+    def __call__(self):
         while len(self.stack) > 1:
             if self.loud: 
                 print 'fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
@@ -1409,8 +1444,7 @@ class AdvRawsParser(RawsParser0):
             self.stuff = self.stack[0]
         except IndexError:
             self.stuff = None
-
-    def get(self):
+            
         return self.stuff
 
 class CreaGraphics(Token):
@@ -1525,27 +1559,19 @@ class MapObject(object):
         self._map_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
-        maxframes = self.cutoff + 1
-        # maxframes here define for how many frames to extend
-        # cel's final framesequence 
-        # while cutoff is something else. (TODO: fix all this)
-        
-        init = InitParser(dfprefix)
-      
-        stdraws = os.path.join(dfprefix, 'raw')
-        
         mtparser = AdvRawsParser( MaterialTemplates, MaterialTemplate, loud = 'mtparser' in self.loud)
         fgparser = AdvRawsParser( FullGraphics, Tile, TileSet, TileClass, TcFlag, 
             CelEffect, CelPage, Cel, Building, MaterialSet, loud = 'fgparser' in self.loud )
         gsparser = AdvRawsParser( CreaGraphics, CreaGraphicsSet, CelPage, loud = 'gsparser' in self.loud )
         
+        stdraws = os.path.join(dfprefix, 'raw')
         mtparser.eat(stdraws)
         gsparser.eat(stdraws)
         map(fgparser.eat,  fgraws)
         
-        mtset = mtparser.get()
-        fgdef = fgparser.get()
-        cgset = gsparser.get()
+        mtset = mtparser()
+        fgdef = fgparser()
+        cgset = gsparser()
         
         if "fgdef" in self.loud:
             print fgdef
@@ -1553,25 +1579,29 @@ class MapObject(object):
         stdparser = TSParser(mtset.templates, fgdef.materialsets, loud = 'stdparser' in self.loud)
             
         map(stdparser.eat, [stdraws])
-        materialsets = stdparser.get()
+        materialsets = stdparser()
 
         if 'materialset' in self.loud:
             for ms in materialsets:
                 print ms
 
-        self._pageman = Pageman(init.fontpath, pages = fgdef.celpages) 
-            # + cgset.celpages) uncomment when creatures become supported
+        fontpath, colormap = InitParser(dfprefix)()
+        self._pageman = Pageman(fontpath, pages = fgdef.celpages) 
+            # + cgset.celpages) when creatures become supported
         self.txsz = self._pageman.txsz
         self.fontptr = self._pageman.data
+
+        ctx = _context( 
+            pageman = self._pageman,
+            colors = colormap,
+            effects = fgdef.celeffects)
         
-        compiler = TSCompiler(self._pageman, init.colortab, self.loud)
-        self._objcode = compiler.compile(materialsets, fgdef.tilesets, 
-            fgdef.celeffects, fgdef.buildings, maxframes)
+        self._objcode = TSCompile(materialsets, fgdef.tilesets, ctx)
+            
         self.tcptr = TCCompile(self.tileresolve, fgdef.tileclasses, fgdef.tcflags)
+
         if 'objcode' in self.loud:
             print self._objcode
-        
-        
 
     def _map_dump(self, dumpfname):
         if self._mmap_fd:
@@ -1669,19 +1699,13 @@ class MapObject(object):
                 self.mat_ids[(klass, subklass)] = id
                 self.mat_ids[name] = id
 
-    def _assemble_blitcode(self, objcode, irdump=None):
-        # all used data is available before first map frame is to be
-        # rendered in game.
-        # eatpage receives individual tile pages and puts them into one big one
-        # maptile maps pagename, s, t into tiu, s, t  that correspond to the big one
-        # tile_names map tile names in raws to tile_ids in game
-        # inorg_ids and plant_ids map mat names in raws to effective mat ids in game
-        # (those can change every read of raws)
-        cutoff = self.cutoff
-        
-        if cutoff > objcode.maxframe:
-            cutoff = objcode.maxframe
-        self.codedepth = cutoff + 1
+    def _assemble_blitcode(self, objcode, irdump=None):       
+        # maxframes:for how many frames to extend cel's final framesequence
+        # (if cel don't have that much frames on its own)
+        # cutoff: cut all animations after this frame (this is done in _assemble_blitcode)
+        maxframe = self.cutoff if objcode.maxframe > self.cutoff else objcode.maxframe
+        self.codedepth = maxframe + 1
+
         tcount = 0
         for mat, tset in objcode.map.items():
             tcount += len(tset.keys())
@@ -1689,13 +1713,17 @@ class MapObject(object):
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
         self.codew = int(math.ceil(math.sqrt(tcount)))
         
-        self.matcount = self.max_mat_id + 1
+        self.matcount = self.max_mat_id + 1 #WTF??
         self.tiletypecount = len(self.tileresolve)
         
-        dispatch = np.zeros((self.tiletypecount, self.matcount ), dtype=self.dispatch_dt)
+        rep = "objcode: {1} mats, {0} defined tiles, codedepth={2}\n".format(tcount, len(objcode.map.keys()), self.codedepth)
+        rep += "dispatch: {}x{}, {} bytes\n".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
+        nf = self.codedepth * self.codew * self.codew
+        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codew, self.cutoff+1, nf, nf*16 )
+        print rep
         
-        blitcode = np.zeros((cutoff+1, self.codew, self.codew), dtype=self.blitcode_dt)
-        nf = (cutoff+1) * self.codew * self.codew
+        dispatch = np.zeros((self.tiletypecount, self.matcount ), dtype=self.dispatch_dt)
+        blitcode = np.zeros((self.codedepth, self.codew, self.codew), dtype=self.blitcode_dt)
         tc = 1
 
         # 'link' map tiles
@@ -1724,6 +1752,8 @@ class MapObject(object):
                     blitcode[frame_no, y, x]['mode'] = frame.mode
                     if frame.mode == 0:
                         continue
+                    if frame.blit is None:
+                        print mat_name, tilename
                     blitcode[frame_no, y, x]['s'] = frame.blit[0]
                     blitcode[frame_no, y, x]['t'] = frame.blit[1]
                     if frame.mode == 1:
@@ -1736,12 +1766,12 @@ class MapObject(object):
                     if irdump:
                         irdump.write("{:03d}:{:03d} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
                     frame_no += 1
-                    if frame_no > cutoff:
+                    if frame_no > self.codedepth - 1: # cutoff
                         break
+                
+                #  FIXME: add fill-out up to self.codedepth here
+
         self.dispatch, self.blitcode = dispatch, blitcode
-        print "objcode: {1} mats  {0} defined tiles, cutoff={2}".format(tcount, len(objcode.map.keys()), cutoff)
-        print "dispatch: {}x{}, {} bytes".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
-        print "blitcode: {}x{}x{} {} units, {} bytes".format(self.codew, self.codew, cutoff+1, nf, nf*16 )
 
     @property
     def codeptr(self):

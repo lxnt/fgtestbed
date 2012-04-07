@@ -172,7 +172,7 @@
     [tilesets:mineral:constructed]
     [buildings]
 
-[material:deep_special:mat:in:is_stone:mat:in:and] # raw adamantine
+[material:deep_special:mat:in:is_stone:mat:in:and] # raw adamantine (or just mn:raw_adamantine:eq)
     [tilesets:mineral]
 
 [material:deep_surface:mat:in] # slade
@@ -218,7 +218,7 @@
     [tile:Void][cel:none]
     [tile:Waterfall][cel:none]
 
-[material:mk:none:eq]
+[material:none]
     [tilesets:nonmat]
 
 
