@@ -982,7 +982,7 @@ def main():
     if pa.aldump:
         mo.pagedump(pa.aldump)
 
-    mo.use_dump(pa.dump, pa.irdump)    
+    mo.use_dump(pa.dump, irdump)    
     rednr.set(mo)
     rednr.loop(pa.afps, pa.choke)
     rednr.fini()

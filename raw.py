@@ -295,9 +295,9 @@ class ObjectCode(object):
     def add(self, mat, tile):
         bframes = Inflate(tile.name, mat, tile.cel.frames, self.ctx)
         try:
-            self.map[mat.name][tile.name] = bframes # add or overwrite it
+            self.map[(mat.name, mat.klass)][tile.name] = bframes # add or overwrite it
         except KeyError:
-            self.map[mat.name] = { tile.name: bframes }
+            self.map[(mat.name, mat.klass)] = { tile.name: bframes }
 
     def __str__(self):
         rv = 'maxframe={}\n'.format(self.maxframe)
@@ -711,7 +711,8 @@ class Derived(object):
         return "{}:{}".format(self.klass, self.name)
 
 class NoneMat(object):
-    name = klass = 'NONEMAT'
+    name = 'NONEMAT'
+    klass = 'BUILTIN'
     display_color = Color('NONE')
     pad_celdefs = lambda x: None
 
@@ -1175,6 +1176,7 @@ class MaterialSet(Token):
             self.nomat = True
             self.klass = 'NONE'
             self.materials = [ NoneMat() ] # ze nonemat
+            self.expr = None
             return
         self.nomat = False
         self.expr = RpnExpr(tail)
@@ -1194,6 +1196,8 @@ class MaterialSet(Token):
             self.default_color = tail[0].split(',')            
 
     def match(self, mat):
+        if not self.expr:
+            return False # nonemat matches no mat
         try:
             rv = self.expr(mat)
         except AttributeError: # attempt at mat.parent on inorganic mat
@@ -1691,13 +1695,14 @@ class MapObject(object):
                     if k == 'id':
                         name = v
                     elif k == 'subklass':
-                        subklass = ' ' + v
+                        subklass = v
                     elif k == 'klass':
                         klass = v
+                if klass == 'PLANT':
+                    klass = subklass
 
                 self.mat_ksk[id] = (name, klass, subklass)
-                self.mat_ids[(klass, subklass)] = id
-                self.mat_ids[name] = id
+                self.mat_ids[(name, klass)] = id
 
     def _assemble_blitcode(self, objcode, irdump=None):       
         # maxframes:for how many frames to extend cel's final framesequence
@@ -1731,7 +1736,8 @@ class MapObject(object):
             try:
                 mat_id = self.mat_ids[mat_name]
             except KeyError:
-                mat_id = 0
+                print '\n'.join(map(str, self.mat_ids.items()))
+                raise
                 
             for tilename, frameseq in tileset.items():
                 x = int (tc % self.codew)
@@ -1751,9 +1757,10 @@ class MapObject(object):
                 for frame in frameseq:
                     blitcode[frame_no, y, x]['mode'] = frame.mode
                     if frame.mode == 0:
+                        print "MODE0", mat_name, tilename, frame_no
                         continue
                     if frame.blit is None:
-                        print mat_name, tilename
+                        print "NONEBLIT", mat_name, tilename
                     blitcode[frame_no, y, x]['s'] = frame.blit[0]
                     blitcode[frame_no, y, x]['t'] = frame.blit[1]
                     if frame.mode == 1:
@@ -1769,7 +1776,7 @@ class MapObject(object):
                     if frame_no > self.codedepth - 1: # cutoff
                         break
                 
-                #  FIXME: add fill-out up to self.codedepth here
+                #  FIXME: add fill-out down to self.codedepth here
 
         self.dispatch, self.blitcode = dispatch, blitcode
 
