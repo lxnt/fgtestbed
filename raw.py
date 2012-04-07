@@ -1557,9 +1557,13 @@ class MapObject(object):
         
         self._parse_raws(dfprefix, fgraws)
 
-    def use_dump(self, dumpfname, irdump):
+    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None):
         self._parse_dump(dumpfname)
         self._assemble_blitcode(self._objcode, irdump)
+        if disdump:
+            disdump.write(self.dispatch.tostring())
+        if bcdump:
+            bcdump.write(self.blitcode.tostring())
         self._map_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
@@ -1757,10 +1761,8 @@ class MapObject(object):
                 for frame in frameseq:
                     blitcode[frame_no, y, x]['mode'] = frame.mode
                     if frame.mode == 0:
-                        print "MODE0", mat_name, tilename, frame_no
+                        #print "MODE0", mat_name, tilename, frame_no
                         continue
-                    if frame.blit is None:
-                        print "NONEBLIT", mat_name, tilename
                     blitcode[frame_no, y, x]['s'] = frame.blit[0]
                     blitcode[frame_no, y, x]['t'] = frame.blit[1]
                     if frame.mode == 1:
@@ -1828,19 +1830,20 @@ class MapObject(object):
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
-    ap.add_argument('-irdump', metavar='dfile', help="dump intermediate representation here")
+    ap.add_argument('-irdump', metavar='fname', help="dump intermediate representation here")
     ap.add_argument('-aldump', metavar='fname', help="dump texture album here, creates fname.png and fname.mapping")
+    ap.add_argument('-disdump', metavar='fname', help="dump dispatch table binary representation here")
+    ap.add_argument('-bcdump', metavar='fname', help="dump blitcode binary here")
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
-    ap.add_argument('-dump', nargs='?', metavar="dump-file", help="dump file name")
+    ap.add_argument('dump', metavar="dump-file", help="map dump file name")
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()
 
-    if pa.irdump:
-        irdump = file(pa.irdump, 'w')
-    else:
-        irdump = None
+    irdump = file(pa.irdump, 'w') if pa.irdump else None
+    disdump = file(pa.disdump, 'w') if pa.disdump else None
+    bcdump =  file(pa.bcdump, 'w') if pa.bcdump else None
     
     pygame.display.init()
     
@@ -1851,7 +1854,7 @@ def main():
         loud = pa.loud )
 
     if pa.irdump is not None:
-        mo.use_dump(pa.dump, file(pa.irdump, 'w'))
+        mo.use_dump(pa.dump, irdump, disdump, bcdump)
 
 if __name__ == '__main__':
     main()

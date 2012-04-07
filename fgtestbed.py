@@ -957,32 +957,23 @@ def main():
     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
-    ap.add_argument('-irdump', metavar='dfile', help="dump intermediate representation here")
-    ap.add_argument('-aldump', metavar='fname', help="dump texture album here, creates fname.png and fname.mapping")
     ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
-    ap.add_argument('-loud', action='store_true', help="spit lots of useless info")
-    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
+    ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
+    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
     pa = ap.parse_args()
     
     loud = ()
     if pa.loud:
         loud = ("gl", "reshape", "shaders", "parser")
-    if pa.irdump:
-        irdump = file(pa.irdump, 'w')
-    else:
-        irdump = None
 
     rednr = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
     mo = MapObject(pa.dfprefix, pa.rawsdir, loud = loud, apidir = '')
-    if pa.aldump:
-        mo.pagedump(pa.aldump)
-
-    mo.use_dump(pa.dump, irdump)    
+    mo.use_dump(pa.dump)
     rednr.set(mo)
     rednr.loop(pa.afps, pa.choke)
     rednr.fini()
