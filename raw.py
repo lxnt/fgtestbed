@@ -728,7 +728,6 @@ class TSParser(RawsParser0):
     
     def select(self):
         if self.mat is not None:
-            file('yoba/'+self.mat.name, 'w').write('\n'.join(self.mat.tokens))
             matched = False
             for sel in self.materialsets:
                 if sel.match(self.mat):
