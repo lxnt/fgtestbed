@@ -138,7 +138,7 @@ void main() {
 
     if (mouse > 0)
 	borderglow(color, mouse_color);
-    
+
     if ((debug > 0) && (mouse > 0))
 	frag = debug_output();
     else

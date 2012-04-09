@@ -254,13 +254,15 @@ class Hud(object):
         # max chars in hud: 31
         self.strs = (
             "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d} color: #{color:08x}",
+            "origin: {origin[0]}:{origin[1]}:{origin[2]}",
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
-            "x={tx:03d} y={ty:03d} z={z:03d}  dump12: {dump12[0]}:{dump12[1]}",
+            "x={tx:03d} y={ty:03d} z={z:03d} {debug} {showhidden}",
             "{designation}",
             "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
             "tile: {tile[0]} ({tile[1]}) ",
             "btile: {btile[0]} ({btile[1]})",
-            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}" )
+            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}",
+            )
             
     def init(self):
         self.font = pygame.font.SysFont("ubuntumono", 18, False)
@@ -294,16 +296,6 @@ class Hud(object):
         val = self.rr.last_render_time
         self.ema_rendertime = self.ema_alpha*val + (1-self.ema_alpha)*self.ema_rendertime
         return 1000.0/self.ema_rendertime
-        
-    @staticmethod
-    def restore9(v):
-        return None
-
-    @staticmethod
-    def restore10(v):
-        A = ( ( v & 0xFE000000 ) >> 22 ) | ( ( v & 0x00E00000 ) >> 21 )
-        B = ( ( v & 0x001E0000 ) >> 11 ) | ( (v & 0x0000FF00) >> 10 )
-        return A,B
 
     @staticmethod
     def restore12(v):
@@ -333,9 +325,6 @@ class Hud(object):
             'bmat': bmat,
             'grass': grass,
             'color': color,
-            'dump12': self.restore12(color),
-            'dump10': self.restore10(color),
-            'dump9': self.restore9(color),
             'vp': self.rr.viewpos,
             'pszx': self.rr.Pszx,
             'pszy': self.rr.Pszy,
@@ -344,7 +333,10 @@ class Hud(object):
             'fbovsz': self.rr.fbo.viewsize,
             'fbovp': self.rr.fbo.viewpos,
             'designation': Designation(designation),
-            'win': self.rr.surface.get_size(), }
+            'win': self.rr.surface.get_size(), 
+            'debug': '[debug_active]' if self.rr.debug_active else '              ',
+            'showhidden': '[show_hidden]' if self.rr.show_hidden else '             ',
+            }
 
         self.hudsurf.fill(self.bg)
         i = 0
@@ -715,12 +707,12 @@ class Rednerer(object):
     
         if vpy > 2 * ypad:
             delta = vpy - 2*ypad
-            y -= delta/ypad + 1
+            y += delta/ypad + 1
             vpy = delta % ypad + ypad
 
         elif vpy <  ypad:
             delta = ypad - vpy
-            y += delta/ypad + 1
+            y -= delta/ypad + 1
             vpy = 2*ypad - abs(delta) % ypad
 
         self.viewpos = [ vpx, vpy ]
