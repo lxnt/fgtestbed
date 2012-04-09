@@ -12,7 +12,6 @@
 
 import sys, time, math, struct, io, ctypes, zlib, ctypes
 import collections, argparse, traceback, os, types, mmap
-import numpy as np
 
 import pygame
 
@@ -139,7 +138,7 @@ class Tile_shader(Shader0):
         
         for loc in self.aloc.values():
             glEnableVertexAttribArray(loc) # is it the right place for this?
-        
+                
         glUniform1i(self.uloc['frame_no'], self.rr.frame_no)
         glUniform1f(self.uloc["darken"], darken)
 
@@ -148,7 +147,8 @@ class Tile_shader(Shader0):
         
         glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
         #glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
-        glUniform1i(self.uloc["show_hidden"], self.rr.show_hidden);
+        glUniform1i(self.uloc["show_hidden"], 1 if self.rr.show_hidden else 0);
+        glUniform1i(self.uloc['debug'], 1 if self.rr.debug_active else 0)
         
         glUniform2i(self.uloc["mouse_pos"], *self.rr.mouse_in_grid);
         
@@ -178,7 +178,7 @@ class Tile_shader(Shader0):
         glUniform1i(self.uloc["screen"], 3) # screen tiu
             
         self.rr.grid_vbo.bind()
-        glVertexAttribIPointer(self.aloc["position"], 2, GL_SHORT, 0, self.rr.grid_vbo )
+        glVertexAttribIPointer(self.aloc["position"], 2, GL_INT, 0, self.rr.grid_vbo )
         
 class Designation(object):
     def __init__(self, u32):
@@ -255,7 +255,7 @@ class Hud(object):
         self.strs = (
             "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d} color: #{color:08x}",
             "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
-            "x={tx:03d} y={ty:03d} z={z:03d}  dump10: {dump10[0]}:{dump10[1]}",
+            "x={tx:03d} y={ty:03d} z={z:03d}  dump12: {dump12[0]}:{dump12[1]}",
             "{designation}",
             "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
             "tile: {tile[0]} ({tile[1]}) ",
@@ -294,16 +294,19 @@ class Hud(object):
         val = self.rr.last_render_time
         self.ema_rendertime = self.ema_alpha*val + (1-self.ema_alpha)*self.ema_rendertime
         return 1000.0/self.ema_rendertime
-
-    def restore9(self, v):
+        
+    @staticmethod
+    def restore9(v):
         return None
 
-    def restore10(self, v):
+    @staticmethod
+    def restore10(v):
         A = ( ( v & 0xFE000000 ) >> 22 ) | ( ( v & 0x00E00000 ) >> 21 )
         B = ( ( v & 0x001E0000 ) >> 11 ) | ( (v & 0x0000FF00) >> 10 )
         return A,B
-        
-    def restore12(self, v):
+
+    @staticmethod
+    def restore12(v):
         return ( v >> 20, ( v >> 8 ) & ((1<<12)-1) )        
 
     def update(self):
@@ -377,12 +380,12 @@ class Hud(object):
     def _draw_quad(self, surf, dst): # dst assumed to be (left, bottom). surface not pre-flipped.
         x,y = dst
         w,h = surf.get_size()
-        data = np.array( (
-             ( x,   y,   0, 1), # left-bottom
-             ( x,   y+h, 0, 0), # left-top
-             ( x+w, y+h, 1, 0), # right-top
-             ( x+w, y,   1, 1), # right-bottom
-        ), dtype=np.int32 ) 
+        ddt = struct.Struct('IIII')
+        data = (ddt.pack(x,   y,   0, 1) +  # left-bottom
+                  ddt.pack(x,   y+h, 0, 0) +  # left-top
+                  ddt.pack(x+w, y+h, 1, 0) +  # right-top
+                  ddt.pack(x+w, y,   1, 1)) # right-bottom
+
         if self.vbo is None:
             # todo: make in STATIC_DRAW and reset only on resize
             self.vbo = vbo.VBO(data, usage=GL_DYNAMIC_DRAW) 
@@ -447,7 +450,7 @@ class Fbo(object):
         glBlitFramebuffer( 
             x0, y0, x1, y1,
             0, 0, self.viewsize[0], self.viewsize[1],
-            GL_COLOR_BUFFER_BIT, GL_NEAREST)
+            GL_COLOR_BUFFER_BIT, GL_LINEAR)
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glViewport(0, 0, self.viewsize[0], self.viewsize[1])
@@ -491,7 +494,8 @@ class Rednerer(object):
         self._zeddown = zeddown
         self.cheat = True
         self.had_input = False
-        self.show_hidden = 1
+        self.show_hidden = True
+        self.debug_active = False
         
         pygame.font.init()
         pygame.display.init()
@@ -574,16 +578,16 @@ class Rednerer(object):
         glBindTexture(GL_TEXTURE_2D,  txid)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         glTexImage2D(GL_TEXTURE_2D, 0, informat, tw, th, 0, dformat, dtype, dptr)
 
     def _upload_tex2da(self, txid, informat, tw, th, td, dformat, dtype, dptr):
         glBindTexture(GL_TEXTURE_2D_ARRAY,  txid)
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)       
 
     def update_textures(self):
@@ -620,22 +624,31 @@ class Rednerer(object):
             self.Pary = 1.0
 
     def update_grid(self, size):
+        """ The grid is a vertex attr holding an ivec2 offset from origin,
+            which coincides with lower-left corner of the GL viewport.
+            
+            Thus this ivec2 is at the same time the integer coordinates 
+            (in tile units) where to draw the tile.
+            
+            Conversion to GL viewport coordinates is a simple affine affair. 
+            (see three.vs' main() prolog)
+            
+            Since it's a vertex attr, values' order (row/column/random-wise) 
+                               does not matter at all.
+            """
         w, h = size
-        rv = np.zeros((2*w*h,) , np.uint16)
-        i = 0
-        for xt in xrange(0, w):
-            for yt in xrange(0, h):
-                rv[2 * i + 0] = xt
-                rv[2 * i + 1] = yt
-                i += 1
+        grid_dt = struct.Struct("II")
+        self.grid = bytearray(w*h*grid_dt.size)
+        for i in xrange(0, w*h):
+            offs = i * grid_dt.size
+            self.grid[offs:offs + grid_dt.size] = grid_dt.pack(i%w, i/w)
 
-        self.grid_w, self.grid_h = w, h
-        self.grid_tile_count = w*h
-        self.grid = rv
+        self.grid_w, self.grid_h, self.grid_tile_count = w, h, w*h
+        
         if self.grid_vbo is None:
-            self.grid_vbo = vbo.VBO(self.grid, usage=GL_STATIC_DRAW)
+            self.grid_vbo = vbo.VBO(str(self.grid), usage=GL_STATIC_DRAW)
         else:
-            self.grid_vbo.set_array(self.grid)
+            self.grid_vbo.set_array(str(self.grid))
 
     def reshape(self, winsize = None, zoompoint = None):
         assert self.Parx is not None
@@ -742,7 +755,8 @@ class Rednerer(object):
                 w = "** "
             else:
                 w = ""
-            print "{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w)
+            #print "{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w)
+            print "{0}: {1}".format(t[2], p, abs(t[0]), w)
 
     def zoom(self, zcmd, zpos = None):
         if zcmd == 'zoom_in' and self.Psz > 1:
@@ -756,22 +770,29 @@ class Rednerer(object):
     def update_mouse(self):
         mx, my = pygame.mouse.get_pos()
         my = self.surface.get_height() -  my
-        self.mouse_in_gl = (mx, my)
-        fbx, fby = mx + self.viewpos[0], my + self.viewpos[1]
-        mtx, mty = fbx/self.Pszx, fby/self.Pszy
+        self.mouse_in_gl = (mx, my) # coordinates in the viewport
+        fbx, fby = mx + self.viewpos[0], my + self.viewpos[1] # in the FBO
+        mtx, mty = fbx/self.Pszx, fby/self.Pszy # in grid
 
-        mwx, mwy, mwz =  ( mtx + self.render_origin[0], 
-                                self.grid_h - mty + self.render_origin[1] - 1, # no idea where this -1 comes from. srsly.
-                                self.render_origin[2] )
+        mwx, mwy, mwz = ( mtx + self.render_origin[0], 
+                          mty + self.render_origin[1],
+                          self.render_origin[2] )
         if self.gameobject.inside(mwx, mwy, mwz):
-            self.mouse_in_grid = ( mtx, self.grid_h -  mty - 1)
+            self.mouse_in_grid = (mtx, mty)
         else:
-            self.mouse_in_grid = ( 100500, 100500 )
+            self.mouse_in_grid = (100500, 100500)
         self.mouse_in_world = [ mwx, mwy, mwz ]
         
     def getpixel(self, posn):
         return  int(glReadPixels(posn[0], posn[1], 1, 1, GL_RGBA, 
                     GL_UNSIGNED_INT_8_8_8_8)[0][0])
+
+    def getdebug(self):
+        self.update_mouse()
+        # kay, now find where the hell this tile starts
+        # ... in gl vieport cs
+        
+        
         
     def render(self, frame_no):
         bgc = ( 0.0, 0.0, 0.0, 1 )
@@ -957,6 +978,7 @@ def main():
     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
+    ap.add_argument('-zoom', metavar='px', type=int, default=None, help="set zoom at start")
     ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
     ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
@@ -964,6 +986,7 @@ def main():
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
+    ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
     pa = ap.parse_args()
     
@@ -973,8 +996,12 @@ def main():
 
     rednr = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
     mo = MapObject(pa.dfprefix, pa.rawsdir, loud = loud, apidir = '')
+    mo.invert_tc = pa.inverty    
     mo.use_dump(pa.dump)
     rednr.set(mo)
+    if pa.zoom:
+        rednr.Psz = pa.zoom
+        rednr.reshape(zoompoint = (0,0))
     rednr.loop(pa.afps, pa.choke)
     rednr.fini()
     

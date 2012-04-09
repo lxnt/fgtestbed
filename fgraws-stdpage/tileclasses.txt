@@ -332,7 +332,6 @@
     [tile:BrookSE:flow]
     [tile:BrookTop]
 
-
 [tileclass:vegetation:13]
     [tile:Tree:fakefloor]
     [tile:Shrub:fakefloor]

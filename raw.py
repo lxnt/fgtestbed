@@ -2,7 +2,6 @@
 
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
-import numpy as np
 import pygame.image
 
 from tokensets import *
@@ -1532,21 +1531,9 @@ class CreaGraphicsSet(Token):
 
 class MapObject(object):
     def __init__(self, dfprefix,  fgraws=[], apidir='', cutoff = 0, loud=[]):
-        self.dispatch_dt = np.dtype({  # GL_RG16UI - 32 bits, all used.
-            'names': 's t'.split(),
-            'formats': ['u2', 'u2' ],
-            'offsets': [ 0, 2 ],
-            'titles': ['blitcode s-coord', 'blitcode t-coord'] })
-
-        self.blitcode_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
-            'names': 'un2 un1 t s mode fg bg'.split(),
-            'formats': ['u1', 'u1', 'u1', 'u1', 'u4', 'u4', 'u4'],
-            'offsets': [ 0, 1, 2, 3, 4, 8, 12 ] })
-        
-        self.data_dt = np.dtype({ # GL_RGBA32UI - 128 bits. 16 bits unused.
-            'names': 'stoti bmabui grass designation'.split(),
-            'formats': ['u4', 'u4', 'u4', 'u4'],
-            'offsets': [ 0, 4, 8, 12 ] })
+        self.dispatch_dt = struct.Struct("HH") # s t GL_RG16UI - 32 bits, all used.
+        self.blitcode_dt = struct.Struct("IIII") # cst mode fg bg GL_RGBA32UI - 128 bits. 16 bits unused.
+        self.data_dt = struct.Struct("IIII") # stoti bmabui grass designation GL_RGBA32UI - 128 bits. 16 bits unused.
         self._mmap_fd = None
         self.loud = loud
         self.cutoff = cutoff
@@ -1556,13 +1543,14 @@ class MapObject(object):
         
         self._parse_raws(dfprefix, fgraws)
 
-    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None):
+    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None, invert_tc = False):
+        self.invert_tc = invert_tc
         self._parse_dump(dumpfname)
-        self._assemble_blitcode(self._objcode, irdump)
+        self._assemble_blitcode(self._objcode, irdump, invert_tc)
         if disdump:
-            disdump.write(self.dispatch.tostring())
+            disdump.write(self.dispatch)
         if bcdump:
-            bcdump.write(self.blitcode.tostring())
+            bcdump.write(self.blitcode)
         self._map_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
@@ -1707,7 +1695,7 @@ class MapObject(object):
                 self.mat_ksk[id] = (name, klass, subklass)
                 self.mat_ids[(name, klass)] = id
 
-    def _assemble_blitcode(self, objcode, irdump=None):       
+    def _assemble_blitcode(self, objcode, irdump=None, invert_tc = False):       
         # maxframes:for how many frames to extend cel's final framesequence
         # (if cel don't have that much frames on its own)
         # cutoff: cut all animations after this frame (this is done in _assemble_blitcode)
@@ -1719,75 +1707,99 @@ class MapObject(object):
             tcount += len(tset.keys())
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
+
         self.codew = int(math.ceil(math.sqrt(tcount)))
+        self.codeh = self.codew
         
-        self.matcount = self.max_mat_id + 1 #WTF??
-        self.tiletypecount = len(self.tileresolve)
+        self.dispw = self.matcount = self.max_mat_id
+        self.disph = self.tiletypecount = len(self.tileresolve)
         
         rep = "objcode: {1} mats, {0} defined tiles, codedepth={2}\n".format(tcount, len(objcode.map.keys()), self.codedepth)
-        rep += "dispatch: {}x{}, {} bytes\n".format(self.matcount,  self.tiletypecount, self.matcount*self.tiletypecount*4)
-        nf = self.codedepth * self.codew * self.codew
-        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codew, self.cutoff+1, nf, nf*16 )
-        print rep
+        rep += "dispatch: {}x{}, {} bytes\n".format(self.dispw, self.disph, self.dispw*self.disph*self.dispatch_dt.size)
+        nf = self.codedepth * self.codew * self.codeh
+        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codeh, self.cutoff+1, 
+            self.codedepth * self.codew * self.codeh, 
+            self.codedepth * self.codew * self.codeh * self.blitcode_dt.size )
+            
+        print rep, "tc inverted" if invert_tc else "tc straight"
+        # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
+        dispatch = bytearray(self.dispw * self.disph * self.dispatch_dt.size)
+        blitcode = bytearray(self.codew * self.codeh * self.codedepth * self.blitcode_dt.size)
+        for i in xrange(self.dispw * self.disph * self.dispatch_dt.size):
+            dispatch[i] = 23
         
-        dispatch = np.zeros((self.tiletypecount, self.matcount ), dtype=self.dispatch_dt)
-        blitcode = np.zeros((self.codedepth, self.codew, self.codew), dtype=self.blitcode_dt)
-        tc = 1
-
-        # 'link' map tiles
+        # blitmodes:
+        BM_NONE = 0
+        BM_ASIS = 1
+        BM_CLASSIC = 2
+        BM_FGONLY = 3 
+        
+        tc = 1 # reserve 0,0 blitinsn as implicit nop
         for mat_name, tileset in objcode.map.items():
             try:
                 mat_id = self.mat_ids[mat_name]
             except KeyError:
                 print '\n'.join(map(str, self.mat_ids.items()))
                 raise
-                
+
             for tilename, frameseq in tileset.items():
-                x = int (tc % self.codew)
-                y = int (tc / self.codew)
-                tc += 1
                 try:
                     tile_id = self.tileresolve[tilename]
                 except KeyError:
-                    print "unk tname {} in mat {}".format(tilename, mat_name)
-                    raise
+                    raise CompileError("unk tname {} in mat {}".format(tilename, mat_name))
+                    
+                x = int (tc % self.codew)
+                y = int (tc / self.codew)
+                y_inverted = (self.codeh - 1) - y
 
                 hx = mat_id
                 hy = tile_id
-                dispatch[hy, hx]['s'] = x
-                dispatch[hy, hx]['t'] = y               
+                hy_inverted = (self.disph - 1) - hy
+                
+                if self.invert_tc:
+                    dp_offs = (hx + hy_inverted * self.dispw) * self.dispatch_dt.size
+                    bc_plane_offs = (x + y_inverted * self.codew) * self.blitcode_dt.size
+                else:
+                    dp_offs = (hx + hy * self.dispw) * self.dispatch_dt.size
+                    bc_plane_offs = (x + y * self.codew) * self.blitcode_dt.size
+                
+                bc_plane_size =  self.codew * self.codeh * self.blitcode_dt.size
+                
+                # write dispatch record: (mat, tile) -> blitcode
+                dispatch[dp_offs:dp_offs + self.dispatch_dt.size] = self.dispatch_dt.pack(x, y)
+
                 frame_no = 0
                 for frame in frameseq:
-                    blitcode[frame_no, y, x]['mode'] = frame.mode
-                    if frame.mode == 0:
-                        #print "MODE0", mat_name, tilename, frame_no
-                        continue
-                    blitcode[frame_no, y, x]['s'] = frame.blit[0]
-                    blitcode[frame_no, y, x]['t'] = frame.blit[1]
-                    if frame.mode == 1:
-                        continue
-                    blitcode[frame_no, y, x]['fg'] = frame.fg
-                    if frame.mode == 3:
-                        continue
-                    assert frame.mode == 2
-                    blitcode[frame_no, y, x]['bg'] = frame.bg
+                    cst = (frame.blit[0] << 16) | frame.blit[1] if frame.mode != BM_NONE else 0
+                    fg = frame.fg if frame.mode in ( BM_CLASSIC, BM_FGONLY ) else 0
+                    bg = frame.bg if frame.mode == BM_CLASSIC else 0
+                        
+                    bc_offs = bc_plane_offs + frame_no * bc_plane_size;
+                    
+                    blitcode[bc_offs:bc_offs + self.blitcode_dt.size] = self.blitcode_dt.pack(cst, frame.mode, fg, bg)
+                        
                     if irdump:
                         irdump.write("{:03d}:{:03d} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
                     frame_no += 1
                     if frame_no > self.codedepth - 1: # cutoff
                         break
-                
+                tc += 1                
                 #  FIXME: add fill-out down to self.codedepth here
 
         self.dispatch, self.blitcode = dispatch, blitcode
 
     @property
     def codeptr(self):
-        return ctypes.c_void_p(self.blitcode.__array_interface__['data'][0])
+        return self._bytearray_void_p(self.blitcode)
 
     @property
     def disptr(self):
-        return ctypes.c_void_p(self.dispatch.__array_interface__['data'][0])
+        return self._bytearray_void_p(self.dispatch)
+
+    @staticmethod
+    def _bytearray_void_p(ba):
+        return str(ba)
+        return ctypes.pythonapi.PyByteArray_AsString(id(ba))
 
     @property
     def mapptr(self):
@@ -1800,8 +1812,8 @@ class MapObject(object):
 
     def gettile(self, posn):
         x, y, z = posn
-        offs = 16*(self.xdim*self.ydim*z + y*self.xdim + x)
-        stoti, bmabui, grass, designation = struct.unpack("IIII", self._tiles_mmap[offs:offs+16])
+        offs = self.data_dt.size*(self.xdim*self.ydim*z + y*self.xdim + x)
+        stoti, bmabui, grass, designation = self.data_dt.unpack(self._tiles_mmap[offs:offs+self.data_dt.size])
         tile_id  = stoti & 0xffff
         mat_id   = stoti >> 16
         btile_id = bmabui & 0xffff # can also hold building_type+768
@@ -1826,6 +1838,79 @@ class MapObject(object):
                 and  ( y < self.ydim) and (y >= 0)
                 and (z < self.zdim) and (z>= 0))
 
+    def lint(self):
+        """ verifies that (most of) map tiles in the dump are drawable """
+        class dreader(object):
+            def __init__(self, fmt, w, h, d, data, yinvert = False):
+                self.yinvert = yinvert
+                self.w = w
+                self.h = h 
+                self.d = d
+                self.data = data
+                self.struct = struct.Struct(fmt)
+                if len(data) > self.struct.size*w*h*d:
+                    print "warn, extra data: {} > {}".format(len(data), self.struct.size*w*h*d)
+                elif len(data) < self.struct.size*w*h*d:
+                    raise LintError("insufficient data: {} < {}".format(len(data), self.struct.size*w*h*d))
+
+            def get(self, x, y, z,):
+                sss = self.struct.size
+                if self.yinvert:
+                    y = (self.h - 1) -y
+                offs = sss*(x + y*self.w + z*self.w*self.h)
+                try:
+                    return self.struct.unpack(str(self.data[offs:offs+sss]))
+                except struct.error:
+                    print "sz={} offs={} xyz=({},{},{}) whd=({},{},{})".format(sss, offs, x, y, z, self.w, self.h)
+                    raise
+
+        print "Lint: tilecount={} matcount={} codew={} invert_tc={}".format(self.tiletypecount, 
+            self.matcount, self.codew, self.invert_tc)
+
+        dispatch = dreader("HH", self.matcount, self.tiletypecount, 1, self.dispatch, self.invert_tc) #ST
+        blitcode = dreader("IIII",  self.codedepth, self.codew, self.codew, self.blitcode, self.invert_tc) #CstMdBgFg
+        mapdump = dreader("IIII", self.xdim, self.ydim, self.zdim, self._tiles_mmap) # 'stoti bmabui grass designation'.
+        cent = self.xdim*self.ydim*self.zdim/100
+        num = 0
+        oks = {}
+        fails = {}
+        try:
+            for _z in xrange(self.zdim):
+                z = (self.zdim - 1) - _z # go from top to bottom
+                for y in xrange(self.ydim):
+                    for x in xrange(self.xdim):
+                        if num % (5*cent) == 0:
+                            print "{: 2d}%".format(num/cent)
+                            if num/cent > 23:
+                                raise StopIteration
+                        num += 1
+                        st_tm, b_tm, grass, des = mapdump.get(x,y,z)
+                        st_mat = st_tm >> 16
+                        st_tile = st_tm & 0xffff
+                        gr_mat = grass & 0xffff
+                        
+                        if (self.tcptr[st_tile] & 0xff == 3): # grass
+                            st_mat = gr_mat
+                        
+                        addr_s, addr_t = dispatch.get(st_mat, st_tile, 0)
+                        if (addr_s ==0) and (addr_t == 0):
+                            fails[(st_mat, st_tile)] = "00 addr"
+                        else:
+                            try:
+                                oks[(st_mat, st_tile)][0] += 1
+                            except KeyError:
+                                oks[(st_mat, st_tile)] = [1, (addr_s, addr_t)]
+        except StopIteration:
+            pass
+        print "{} tiles; fails={} oks={}".format(num,  len(fails), len(oks))
+        print "OKs:"
+        for eka, val in oks.items():
+            print "{} {} {} {} {}:{}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1])
+        print "FAILs:"
+        for eka in fails.keys():
+            print "{} {} {} {}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]])
+            
+
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
     ap.add_argument('-irdump', metavar='fname', help="dump intermediate representation here")
@@ -1835,6 +1920,8 @@ def main():
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="map dump file name")
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
+    ap.add_argument('-lint', action='store_true', help="cross-check compiler output", default=False)
+    ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()
@@ -1850,9 +1937,11 @@ def main():
         fgraws = pa.rawsdir,
         apidir = '',
         loud = pa.loud )
-
-    if pa.irdump is not None:
-        mo.use_dump(pa.dump, irdump, disdump, bcdump)
+    mo.invert_tc = pa.inverty
+    mo.use_dump(pa.dump, irdump, disdump, bcdump)
+        
+    if pa.lint:
+        mo.lint()
 
 if __name__ == '__main__':
     main()
