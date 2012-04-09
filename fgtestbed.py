@@ -889,19 +889,15 @@ class Rednerer(object):
                             else:
                                 finished = True
                         elif ev.key == pygame.K_KP_MULTIPLY:
-                            if self.show_hidden == 1:
-                                self.show_hidden = 0
-                            else:
-                                self.show_hidden = 1
+                            self.show_hidden = False if self.show_hidden else True
+                        elif ev.key == pygame.K_KP_DIVIDE:
+                            self.debug_active = False if self.debug_active else True
                         elif ev.key == pygame.K_PERIOD and ev.mod & 3:
                             self.zpan(-1)
                         elif ev.key == pygame.K_COMMA  and ev.mod & 3:
                             self.zpan(1)
                         elif ev.key in scrolldict:
-                            if ev.mod & 3:
-                                boost = 10
-                            else:
-                                boost = 1
+                            boost = 10 if ev.mod & 3 else 1
                             self.render_origin[0] += scrolldict[ev.key][0] * boost
                             self.render_origin[1] += scrolldict[ev.key][1] * boost
                         elif ev.key == pygame.K_BACKSPACE:
