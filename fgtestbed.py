@@ -1,5 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
+#
 # lxnt has created fgtestbed, a lump of python code
 # all masterwork is of dubious quiality.
 # it is studded with bugs
@@ -83,7 +84,7 @@ class Shader0(object):
         for name, loc in self.aloc.items():
             glBindAttribLocation(program, loc, name)
             if self.loud:
-                print "  {0}: name={1} loc={2}".format('-', name, loc)
+                print("  {0}: name={1} loc={2}".format('-', name, loc))
         glBindFragDataLocation(program, 0, 'color')
 
         glLinkProgram(program)
@@ -98,12 +99,12 @@ class Shader0(object):
     
         self.uloc = collections.defaultdict(lambda:-1)
         au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
-        for i in xrange(au):
+        for i in range(au):
             name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
             loc = glGetUniformLocation(program, name)
             self.uloc[name] = loc
             if self.loud:
-                print "  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc)
+                print("  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc))
         
         self.program = program
 
@@ -271,8 +272,8 @@ class Hud(object):
         self.hud_w = 2*self.padding + self.font.size("n"*25 + "m"*25)[0]
         self.hud_h = 2*self.padding + self.font.get_linesize() * len(self.strs)
         self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
-        cheat_lines = map(lambda x: x.strip(), CONTROLS.split("\n"))
-        cs_maxline = max(map( lambda x: self.font.size(x)[0], cheat_lines ))
+        cheat_lines = [x.strip() for x in CONTROLS.split("\n")]
+        cs_maxline = max([self.font.size(x)[0] for x in cheat_lines])
         cw = 2*self.padding + cs_maxline
         ch = 2*self.padding + self.ystep * len(cheat_lines)
         self.cheatsurf = pygame.Surface( ( cw, ch ), pygame.SRCALPHA, 32)
@@ -282,9 +283,8 @@ class Hud(object):
         for l in cheat_lines:
             try:
                 surf = self.font.render(l, True, self.fg)
-            except ValueError, e:
-                print e
-                print s, repr(data)
+            except ValueError as e:
+                print(e, s, repr(data))
             self.cheatsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )            
             i+=1
         self.vbo = None
@@ -343,9 +343,8 @@ class Hud(object):
         for s in self.strs:
             try:
                 surf = self.font.render(s.format(**data), True, self.fg)
-            except ValueError, e:
-                print e
-                print s, repr(data)
+            except ValueError as e:
+                print(e, s, repr(data))
             self.hudsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )
             i += 1
     
@@ -585,10 +584,10 @@ class Rednerer(object):
     def update_textures(self):
         self.txsz = self.gameobject.txsz
         
-        print "font: {}x{} {}x{} tiles, {}x{}, {}K".format(
+        print("font: {}x{} {}x{} tiles, {}x{}, {}K".format(
             self.txsz[0], self.txsz[1], self.txsz[2], self.txsz[3],
             self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],  
-            self.txsz[0]*self.txsz[2]*self.txsz[1]*self.txsz[3]*4>>10)        
+            self.txsz[0]*self.txsz[2]*self.txsz[1]*self.txsz[3]*4>>10))
         
         self._upload_tex2d(self.font_txid, GL_RGBA8, 
             self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],
@@ -631,7 +630,7 @@ class Rednerer(object):
         w, h = size
         grid_dt = struct.Struct("II")
         self.grid = bytearray(w*h*grid_dt.size)
-        for i in xrange(0, w*h):
+        for i in range(0, w*h):
             offs = i * grid_dt.size
             self.grid[offs:offs + grid_dt.size] = grid_dt.pack(i%w, i/w)
 
@@ -740,15 +739,15 @@ class Rednerer(object):
         ]
         exts = glGetString(GL_EXTENSIONS)
         for e,s in strs.items():
-            print "{0}: {1}".format(s, glGetString(e))
+            print("{0}: {1}".format(s, glGetString(e)))
         for t in ints:
             p = glGetInteger(t[1])
             if (p<t[0]) or ((t[0]<0) and (p+t[0] >0)):
                 w = "** "
             else:
                 w = ""
-            #print "{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w)
-            print "{0}: {1}".format(t[2], p, abs(t[0]), w)
+            #print("{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w))
+            print("{0}: {1}".format(t[2], p, abs(t[0]), w))
 
     def zoom(self, zcmd, zpos = None):
         if zcmd == 'zoom_in' and self.Psz > 1:
@@ -798,7 +797,7 @@ class Rednerer(object):
 
         zed = self.render_origin[2]
         zd = self._zdtab[self._zeddown]
-        for i in xrange(1-len(zd), 1): # draw starting from -zeddown zlevels and up
+        for i in range(1-len(zd), 1): # draw starting from -zeddown zlevels and up
             # draw the map.
             if i + zed < 0:
                 continue
@@ -911,7 +910,7 @@ class Rednerer(object):
                         elif ev.key == pygame.K_F2:
                             self.crap = True
                         else:
-                            print repr(ev.key), repr(ev)
+                            print(repr(ev.key), repr(ev))
                         if not self.had_input:
                             self.had_input = True
                             self.cheat = False

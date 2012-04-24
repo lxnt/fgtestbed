@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/python3.2
+# -*- encoding: utf-8 -*-
 
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
@@ -75,7 +76,7 @@ class DfapiEnum(object):
         return len(self.enums)
 
     def __getitem__(self, key):
-        if type(key) in (long, int):
+        if isinstance(key, int):
             try:
                 return self.enums[key]
             except IndexError:
@@ -98,7 +99,7 @@ class Pageman(object):
         
         for page in pages:
             self.eatpage(page)
-        if 'STD' not in self.pages.keys():
+        if 'STD' not in self.pages:
             stdts = CelPage(None, ['std'])
             stdts.pdim = (16, 16)
             stdts.file = std_tileset
@@ -113,8 +114,8 @@ class Pageman(object):
         if page.cdim[1] > self.max_cdim[1]:
             self.max_cdim[1] = page.cdim[1]
         page.load()
-        for j in xrange(page.pdim[1]):
-            for i in xrange(page.pdim[0]):
+        for j in range(page.pdim[1]):
+            for i in range(page.pdim[0]):
                 self.mapping[(page.name.upper(), i, j)] = (self.current_i, self.current_j)
                 dx, dy = self.current_i*self.max_cdim[0], self.current_j*self.max_cdim[1]
                 sx, sy = i*page.cdim[0], j*page.cdim[1]
@@ -129,8 +130,7 @@ class Pageman(object):
         self.pages[page.name.upper()] = page
         
     def dump(self, fname):
-        sk = self.mapping.keys()
-        sk.sort()
+        sk = sorted(self.mapping.keys())
         with file(fname + '.mapping', 'w') as f:
             for k in sk:
                 f.write("{}:{}:{} -> {}:{} \n".format(
@@ -167,7 +167,7 @@ class Pageman(object):
                 s = tmp % page.pdim[0]
                 t = tmp / page.pdim[1]
         else:
-            s, t = map(int, ref)
+            s, t = int(ref[0]), int(ref[1])
         return self.mapping[(pagename, s, t)]  
 
     @property
@@ -228,7 +228,7 @@ def Inflate(tilename, material, keyframes, ctx):
         return kf
 
     # 'instantiate' MAT colors
-    keyframes = map(lahy, copy.deepcopy(keyframes)) 
+    keyframes = list(map(lahy, copy.deepcopy(keyframes)))
     
     # for no reason at all 'mat_name/mat_idx' blits
     # are handled inside CelRef class. Boooo.
@@ -263,7 +263,7 @@ def Inflate(tilename, material, keyframes, ctx):
         dbg = _delta(bg0, bg1, float(toframe.no - fromframe.no))
         
         blit = fromframe._blit.emit(material, ctx.pageman)
-        for no in xrange(fromframe.no, toframe.no):
+        for no in range(fromframe.no, toframe.no):
             if fromframe.glow:
                 blend = (mode0, _advance(fg0, dfg, no), _advance(bg0, dbg, no))
             else:
@@ -325,7 +325,7 @@ class ObjectCode(object):
             for frameseq in tilesframes.values():
                 if len(frameseq) not in seen:
                     maxframes = lcm(maxframes, len(frameseq))
-        print "maxframe", maxframes - 1
+        print("maxframe {}".format(maxframes - 1))
         return maxframes
 
 
@@ -347,7 +347,7 @@ class RawsParser0(object):
                     name = name[1:].upper()
                     tail = tail.split(':')
                     if name not in  ( 'FILE', 'FONT' ):
-                        tail = map(lambda x:x.upper(), tail)
+                        tail = [x.upper() for x in tail]
                 except ValueError:
                     name = token[1:].upper()
                     tail = []
@@ -356,11 +356,11 @@ class RawsParser0(object):
                 except StopIteration:
                     return
                 except :
-                    print "{}:{}:{}".format(fna, lnum, l.rstrip())
+                    print("{}:{}:{}".format(fna, lnum, l.rstrip()))
                     traceback.print_exc(limit=32)
                     raise SystemExit
         if self.loud:
-            print "{} parsed {}".format(self.__class__.__name__, fna)
+            print("{} parsed {}".format(self.__class__.__name__, fna))
 
     @staticmethod
     def tileparse(t):
@@ -459,7 +459,7 @@ class Color(object):
         elif len(coldef) == 2:
             self.color = (self.parse_rgb(coldef[0]), self.parse_rgb(coldef[1]))
         elif len(coldef) == 3:
-            self.color = map(int, coldef)
+            self.color = list(map(int, coldef))
         else:
             raise ParseError("can't parse colordef {}".format(':'.join(color)))
         
@@ -481,7 +481,7 @@ class Color(object):
             return (0, None, None) 
         elif self.color in ('ASIS', 'AS_IS'):
             return (1, None, None)
-        elif type(self.color) == int: # fg
+        elif isinstance(self.color, int): # fg
             return (3, self.color, None)
         elif len(self.color) == 2: # fg,bg
             return (2, self.color[0], self.color[1])
@@ -495,7 +495,7 @@ class Color(object):
 class CelRef(object):
     """ celref can """
     def __init__(self, page = 'STD', idx = None, st = None, cref = None):
-        if issubclass(type(idx), basestring):
+        if isinstance(idx, str):
             idx = RawsParser0.tileparse(idx)
         
         self.page = page
@@ -508,9 +508,7 @@ class CelRef(object):
             assert idx is None
             assert page == 'STD'
             return
-        self.st = map(int, st)
-        assert issubclass(type(st), (type(None), list, tuple))
-        self.st = st
+        self.st = list(map(int, st))
 
     def emit(self, material, pageman):
         """ returns st tuple as returned by the pageman lookup """
@@ -637,7 +635,7 @@ class Plant(RawsObject0):
                 i += 1
                 self._addcref(i, t)
         elif name == 'GRASS_COLORS':
-            colors = map(int, tail)
+            colors = list(map(int, tail))
             fgs = colors[0::3]
             bgs = colors[1::3]
             brs = colors[2::3]
@@ -780,7 +778,7 @@ class TSParser(RawsParser0):
             elif self.otype == 'PLANT':
                 self.parse_plant(name, tail)
         except KeyError:
-            print self.templates
+            print(self.templates)
             raise
 
     def __call__(self):
@@ -870,7 +868,7 @@ class CelEffect(Token):
             else:
                 rv.append(int(k))
         return rv
-        #print "effect {}:{}  {}->{}".format(self.name, self.color, color, rv)
+        #print("effect {}:{}  {}->{}".format(self.name, self.color, color, rv))
 
 class Tile(Token):
     tokens = ( 'TILE', )
@@ -883,7 +881,7 @@ class Tile(Token):
             self.add(Cel(None, tail))
             
     def add(self, token):
-        if type(token) == Cel:
+        if isinstance(token, Cel):
             self.cel = token
             return True
             
@@ -902,7 +900,7 @@ class TileSet(Token):
         self.tiles = []
         
     def add(self, token):
-        if type(token) == Tile:
+        if isinstance(token, Tile):
             self.tiles.append(token)
             return True
 
@@ -966,7 +964,7 @@ def TCCompile(tires, classes, flags):
     for f, k in _tmp:
         rs += struct.pack("<HH", f, k)
         if loud:
-            print "{}: {} {}".format(tires[i], f, k)
+            print("{}: {} {}".format(tires[i], f, k))
             i += 1
     return rs """
 def TSCompile(materialsets, tilesets, ctx):
@@ -1182,7 +1180,7 @@ class MaterialSet(Token):
         self.expr = RpnExpr(tail)
         
     def add(self, token):
-        if type(token) == Tile:
+        if isinstance(token, Tile):
             self.tiles.append(token)
             return True
 
@@ -1202,12 +1200,12 @@ class MaterialSet(Token):
             rv = self.expr(mat)
         except AttributeError: # attempt at mat.parent on inorganic mat
             return False
-        assert type(rv) is bool
+        assert isinstance(rv, bool)
         if rv: self.materials.append(mat)
         return rv
 
     def __str__(self):
-        rv =  "MaterialSet(selector={}, emits={})".format(self.expr, map(str, self.tilesets))
+        rv =  "MaterialSet(selector={}, emits={})".format(self.expr, ', '.join([str(x) for x in self.tilesets]))
         if len(self.materials) == 0:
             return rv + " empty.\n"
         for m in self.materials:
@@ -1227,7 +1225,7 @@ class Building(Token):
         self.dim = (1,1)
         
     def add(self, token):
-        if type(token) == Cel:
+        if isinstance(token, Cel):
             self.current_def.append(token)
             return True
         
@@ -1266,23 +1264,23 @@ class FullGraphics(Token):
         self.tcflags = {}
         
     def add(self, token):
-        if type(token) == TileSet:
+        if isinstance(token, TileSet):
             self.tilesets[token.name] = token
-        elif type(token) == Tile:
+        elif isinstance(token, Tile):
             self.toplevel_tileset.add(token)
-        elif type(token) == CelEffect:
+        elif isinstance(token, CelEffect):
             self.celeffects[token.name] = token
-        elif type(token) == CelPage:
+        elif isinstance(token, CelPage):
             self.celpages.append(token)
-        elif type(token) == MaterialSet:
+        elif isinstance(token, MaterialSet):
             self.materialsets.append(token)
-        elif type(token) == Building:
+        elif isinstance(token, Building):
             self.buildings[token.name] = token
-        elif type(token) == TileClass:
+        elif isinstance(token, TileClass):
             self.tileclasses.append(token)
-        elif type(token) == TcFlag:
+        elif isinstance(token, TcFlag):
             self.tcflags[token.name] = token
-        elif type(token) == FullGraphics:
+        elif isinstance(token, FullGraphics):
             return False
         else:
             raise ParseError("unexpected token at top level: " + repr(token))
@@ -1310,7 +1308,7 @@ class MaterialTemplates(Token):
         self.templates = {}
     
     def add(self, token):
-        if type(token) == MaterialTemplate:
+        if isinstance(token, MaterialTemplate):
             self.templates[token.name] = token
             return True
     
@@ -1367,7 +1365,7 @@ class AdvRawsParser(RawsParser0):
                     self.root = self.dispatch[name](name, tail)
             except KeyError:
                 if self.loud:
-                    print "unknown root token {}".format(name)
+                    print("unknown root token {}".format(name))
                 # unknown root token in a file: skip whole file
                 raise StopIteration
             self.stack.append(self.root)
@@ -1376,14 +1374,14 @@ class AdvRawsParser(RawsParser0):
         # see if current object can handle the token itself.        
         if name in self.stack[-1].parses:
             if self.loud:
-                print "{} parses {}".format(self.stack[-1].__class__.__name__, name)
+                print("{} parses {}".format(self.stack[-1].__class__.__name__, name))
             self.stack[-1].parse(name, tail)
             return True
         
         # see if current object is eager to contain it
         if name in self.stack[-1].contains:
             if self.loud: 
-                print "{} contains {}".format(self.stack[-1].__class__.__name__, name)
+                print("{} contains {}".format(self.stack[-1].__class__.__name__, name))
             o = self.dispatch[name](name, tail)
             self.stack.append(o)
             return True
@@ -1398,7 +1396,7 @@ class AdvRawsParser(RawsParser0):
                     
             if not een:
                 if self.loud:
-                    print "dropped unknown token {}, stack: {}".format(name, map(lambda x: x.__class__.__name__, self.stack))
+                    print("dropped unknown token {}, stack: {}".format(name, map(lambda x: x.__class__.__name__, self.stack)))
                 return not een # completely unknown token, just drop it
 
         if len(self.stack) == 1: # got root only.
@@ -1408,22 +1406,22 @@ class AdvRawsParser(RawsParser0):
             except KeyError:
                 # NEH aka HFS
                 raise ParseError("unknown token '{}'".format(name))
-            if type(o) == type(self.root):
+            if isinstance(o, type(self.root)):
                 if self.loud:
-                    print "accepted next root token {}:{}".format(name, tail[0])
+                    print("accepted next root token {}:{}".format(name, tail[0]))
                 return True
             raise ParseError("WTF")
             
         if self.loud: 
-            print 'unwinding stack: {} for {}'.format(' '.join(map(lambda x: x.__class__.__name__, self.stack)), name)
+            print('unwinding stack: {} for {}'.format(' '.join(map(lambda x: x.__class__.__name__, self.stack)), name))
 
         o = self.stack.pop(-1)
         if self.stack[-1].add(o):
             if self.loud: 
-                print "{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+                print("{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
         else:
             if self.loud: 
-                print "{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+                print("{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
         
         # continue unwinding stack until we've put the token somewhere.
         self.parse_token(name, tail)
@@ -1432,17 +1430,17 @@ class AdvRawsParser(RawsParser0):
     def __call__(self):
         while len(self.stack) > 1:
             if self.loud: 
-                print 'fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
+                print('fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack))))
             o = self.stack.pop(-1)
             if self.stack[-1].add(o):
                 if self.loud: 
-                    print "fin(): {} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+                    print("fin(): {} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
             else:
                 if self.loud: 
-                    print "fin(): {} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__) 
+                    print("fin(): {} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
             
         if self.loud: 
-            print 'fin(): stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack)))
+            print('fin(): stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack))))
         
         try:
             self.stuff = self.stack[0]
@@ -1498,10 +1496,10 @@ class CreaGraphicsSet(Token):
         self.cgraphics = {}
             
     def add(self, token):
-        if type(token) == CelPage:
+        if isinstance(token, CelPage):
             self.pages.append(token)
             return True
-        elif type(token) == CreaGraphics:
+        elif isinstance(token, CreaGraphics):
             self.cgraphics[token.race] = token
             return True
 
@@ -1538,23 +1536,24 @@ class MapObject(object):
         stdraws = os.path.join(dfprefix, 'raw')
         mtparser.eat(stdraws)
         gsparser.eat(stdraws)
-        map(fgparser.eat,  fgraws)
+        for fgraw in fgraws:
+            fgparser.eat(fgraw)
         
         mtset = mtparser()
         fgdef = fgparser()
         cgset = gsparser()
         
         if "fgdef" in self.loud:
-            print fgdef
+            print(fgdef)
         
         stdparser = TSParser(mtset.templates, fgdef.materialsets, loud = 'stdparser' in self.loud)
             
-        map(stdparser.eat, [stdraws])
+        stdparser.eat(stdraws)
         materialsets = stdparser()
 
         if 'materialset' in self.loud:
             for ms in materialsets:
-                print ms
+                print(ms)
 
         fontpath, colormap = InitParser(dfprefix)()
         self._pageman = Pageman(fontpath, pages = fgdef.celpages) 
@@ -1572,7 +1571,7 @@ class MapObject(object):
         self.tcptr = TCCompile(self.tileresolve, fgdef.tileclasses, fgdef.tcflags)
 
         if 'objcode' in self.loud:
-            print self._objcode
+            print(self._objcode)
 
     def _map_dump(self, dumpfname):
         if self._mmap_fd:
@@ -1588,11 +1587,11 @@ class MapObject(object):
             self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, 
                 offset = self.tiles_offset, access = mmap.ACCESS_READ)
         except ValueError:
-            print "fsize: {} tiles {},{} effects: {}".format(fsize, 
-                self.tiles_offset, self.tiles_size, self.effects_offset )
+            print("fsize: {} tiles {},{} effects: {}".format(fsize, 
+                self.tiles_offset, self.tiles_size, self.effects_offset ))
             raise
 
-        print "mapdata: {}x{}x{} {}M".format(self.xdim, self.ydim, self.zdim, self.tiles_size >>20)
+        print("mapdata: {}x{}x{} {}M".format(self.xdim, self.ydim, self.zdim, self.tiles_size >>20))
         
 
     def _parse_dump(self, dumpfname):
@@ -1697,7 +1696,7 @@ class MapObject(object):
             self.codedepth * self.codew * self.codeh, 
             self.codedepth * self.codew * self.codeh * self.blitcode_dt.size )
             
-        print rep, "tc inverted" if invert_tc else "tc straight"
+        print(rep, "tc inverted" if invert_tc else "tc straight")
         # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
         dispatch = bytearray(self.dispw * self.disph * self.dispatch_dt.size)
         blitcode = bytearray(self.codew * self.codeh * self.codedepth * self.blitcode_dt.size)
@@ -1715,7 +1714,7 @@ class MapObject(object):
             try:
                 mat_id = self.mat_ids[mat_name]
             except KeyError:
-                print '\n'.join(map(str, self.mat_ids.items()))
+                print('\n'.join(map(str, self.mat_ids.items())))
                 raise
 
             for tilename, frameseq in tileset.items():
@@ -1825,7 +1824,7 @@ class MapObject(object):
                 self.data = data
                 self.struct = struct.Struct(fmt)
                 if len(data) > self.struct.size*w*h*d:
-                    print "warn, extra data: {} > {}".format(len(data), self.struct.size*w*h*d)
+                    print("warn, extra data: {} > {}".format(len(data), self.struct.size*w*h*d))
                 elif len(data) < self.struct.size*w*h*d:
                     raise LintError("insufficient data: {} < {}".format(len(data), self.struct.size*w*h*d))
 
@@ -1837,11 +1836,11 @@ class MapObject(object):
                 try:
                     return self.struct.unpack(str(self.data[offs:offs+sss]))
                 except struct.error:
-                    print "sz={} offs={} xyz=({},{},{}) whd=({},{},{})".format(sss, offs, x, y, z, self.w, self.h)
+                    print("sz={} offs={} xyz=({},{},{}) whd=({},{},{})".format(sss, offs, x, y, z, self.w, self.h))
                     raise
 
-        print "Lint: tilecount={} matcount={} codew={} invert_tc={}".format(self.tiletypecount, 
-            self.matcount, self.codew, self.invert_tc)
+        print("Lint: tilecount={} matcount={} codew={} invert_tc={}".format(self.tiletypecount, 
+            self.matcount, self.codew, self.invert_tc))
 
         dispatch = dreader("HH", self.matcount, self.tiletypecount, 1, self.dispatch, self.invert_tc) #ST
         blitcode = dreader("IIII",  self.codedepth, self.codew, self.codew, self.blitcode, self.invert_tc) #CstMdBgFg
@@ -1856,7 +1855,7 @@ class MapObject(object):
                 for y in xrange(self.ydim):
                     for x in xrange(self.xdim):
                         if num % (5*cent) == 0:
-                            print "{: 2d}%".format(num/cent)
+                            print("{: 2d}%".format(num/cent))
                             if num/cent > 23:
                                 raise StopIteration
                         num += 1
@@ -1878,13 +1877,12 @@ class MapObject(object):
                                 oks[(st_mat, st_tile)] = [1, (addr_s, addr_t)]
         except StopIteration:
             pass
-        print "{} tiles; fails={} oks={}".format(num,  len(fails), len(oks))
-        print "OKs:"
+        print("{} tiles; fails={} oks={}\nOKs:".format(num,  len(fails), len(oks)))
         for eka, val in oks.items():
-            print "{} {} {} {} {}:{}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1])
-        print "FAILs:"
+            print("{} {} {} {} {}:{}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1]))
+        print("FAILs:")
         for eka in fails.keys():
-            print "{} {} {} {}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]])
+            print("{} {} {} {}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]]))
             
 
 def main():
