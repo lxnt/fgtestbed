@@ -390,6 +390,8 @@ class RawsParser0(object):
             for path in paths:
                 numit += 1
                 if stat.S_ISDIR(os.stat(path).st_mode):
+                    if os.path.basename(path) == 'text':
+                        continue # ignore strangeness under raw/objects/text
                     nextpaths += glob.glob(os.path.join(path, '*'))
                 elif path.lower().endswith('.txt'):
                     final.append(path)
