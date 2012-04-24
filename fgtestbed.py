@@ -995,7 +995,7 @@ def main():
     ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
-    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
+    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws-stdpage'])
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
     ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
