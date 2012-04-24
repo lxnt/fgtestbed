@@ -24,9 +24,11 @@ must not be misrepresented as being the original software.
 distribution.
 
 """
+from __future__ import division
 
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
+
 import pygame.image
 
 from tokensets import *
@@ -119,7 +121,7 @@ class Pageman(object):
         self.current_i = self.current_j = 0
         self.max_cdim = [0,0]
         
-        self.i_span = self.album_w / 32 # shit
+        self.i_span = self.album_w // 32 # shit
         
         for page in pages:
             self.eatpage(page)
@@ -129,7 +131,7 @@ class Pageman(object):
             stdts.file = std_tileset
             stdts.surf = pygame.image.load(std_tileset)
             w,h = stdts.surf.get_size()
-            stdts.cdim = (w/16, h/16)
+            stdts.cdim = (w//16, h//16)
             self.eatpage(stdts)
 
     def eatpage(self, page):
@@ -189,7 +191,7 @@ class Pageman(object):
                 s, t = ref
             else: # it's an index.
                 s = tmp % page.pdim[0]
-                t = tmp / page.pdim[1]
+                t = tmp // page.pdim[1]
         else:
             s, t = int(ref[0]), int(ref[1])
         return self.mapping[(pagename, s, t)]  
@@ -199,7 +201,7 @@ class Pageman(object):
         "returns txsz tuple"
         self.shrink()
         cw, ch = self.max_cdim
-        wt, ht = self.album_w/cw, self.album_h/ch
+        wt, ht = self.album_w//cw, self.album_h//ch
         return (wt, ht, cw, ch)
     
     @property
@@ -277,7 +279,7 @@ def Inflate(tilename, material, keyframes, ctx):
         else:
             mode0, fg0, bg0 = mode1, fg1, bg1
             
-        def _delta(a, b, amt):
+        def _delta(a, b, amt): # delta is okay to be float
             return ( (b[0]-a[0])/amt, (b[1]-a[1])/amt, (b[2]-a[2])/amt, 0 )
 
         def _advance(base, delta, amt):
@@ -341,7 +343,7 @@ class ObjectCode(object):
             if a > b: a, b = b, a
             while a > 0: a, b = (b % a), a
             return b
-        lcm = lambda a, b: a * b / gcd(a, b)
+        lcm = lambda a, b: a * b / gcd(a, b) #todo: think over round vs floor
         
         seen = set([1])
         maxframes = 1
@@ -853,7 +855,7 @@ class CelPage(Token):
             elif len(tail) == 2:
                 idx = int(tail[1])
                 s = idx % self.pdim[1]
-                t = idx / self.pdim[0]
+                t = idx // self.pdim[0]
                 self.defs[tail[0]] = ( s, t )
             else:
                 raise ValueError("Incomprehensible DEF")
@@ -1748,7 +1750,7 @@ class MapObject(object):
                     raise CompileError("unk tname {} in mat {}".format(tilename, mat_name))
                     
                 x = int (tc % self.codew)
-                y = int (tc / self.codew)
+                y = int (tc // self.codew)
                 y_inverted = (self.codeh - 1) - y
 
                 hx = mat_id

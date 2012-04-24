@@ -34,6 +34,7 @@ must not be misrepresented as being the original software.
 distribution.
 
 """
+from __future__ import division
 
 import sys, time, math, struct, io, ctypes, zlib, ctypes
 import collections, argparse, traceback, os, types, mmap
@@ -63,6 +64,7 @@ CONTROLS = """
     Backspace: recenter map
     Keypad +/-: adjust animation FPS
     Keypad *: toggle reveal_all
+    Keypad /: toggle debug feedback mode
     Left mouse button, Space: toggle animation
     Esc: quit"""
 
@@ -168,7 +170,7 @@ class Tile_shader(Shader0):
         glUniform1f(self.uloc["darken"], darken)
 
         glUniform2i(self.uloc['grid'], self.rr.grid_w, self.rr.grid_h)
-        glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Pszx)
+        glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Psz)
         
         glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
         #glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
@@ -278,9 +280,11 @@ class Hud(object):
         # same for material   = 23
         # max chars in hud: 31
         self.strs = (
-            "gfps: {gfps:2.0f} afps: {fps:02d} frame# {fno:03d} color: #{color:08x}",
-            "origin: {origin[0]}:{origin[1]}:{origin[2]}",
-            "zoom: {psz} grid: {gx}x{gy} map: {xdim}x{ydim}x{zdim}",
+            "gfps: {gfps:2.0f} afps: {rr.anim_fps:02d} frame# {rr.frame_no:03d} color: #{color:08x}",
+            "origin: {origin[0]}:{origin[1]}:{origin[2]} grid: {rr.grid_w}x{rr.grid_h} map: {map.xdim}x{map.ydim}x{map.zdim}",
+            "pszar: {rr.Psz} {rr.Parx:.2f} {rr.Pary:.2f};  {rr.Pszx}x{rr.Pszy} px",
+            "rr-viewpos: {rr.viewpos[0]:02d} {rr.viewpos[1]:02d} window: {window[0]} {window[1]}",
+            "fbo: viewpos={fbo.viewpos[0]:02d} {fbo.viewpos[1]:02d} viewsize={fbo.viewsize[0]} {fbo.viewsize[1]} size={fbo.size[0]} {fbo.size[1]}",
             "x={tx:03d} y={ty:03d} z={z:03d} {debug} {showhidden}",
             "{designation}",
             "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
@@ -331,33 +335,20 @@ class Hud(object):
         material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
-            'fps': self.rr.anim_fps,
+            'rr': self.rr,              # the renderer object
+            'fbo': self.rr.fbo,         # the fbo object
+            'map': self.rr.gameobject,  # raw.MapObject
+            'origin': self.rr.render_origin,
             'gfps': self.ema_fps(),
-            'fno':  self.rr.frame_no,
-            'tx': tx,
-            'ty': ty,
-            'z': tz,
-            'psz': self.rr.Psz,
-            'gx': self.rr.grid_w,
-            'gy': self.rr.grid_h,
-            'xdim': self.rr.gameobject.xdim,
-            'ydim': self.rr.gameobject.ydim,
-            'zdim': self.rr.gameobject.zdim,
+            'tx': tx, 'ty': ty, 'z': tz,
             'tile': tile,
             'mat': material,
             'btile': btile,
             'bmat': bmat,
             'grass': grass,
             'color': color,
-            'vp': self.rr.viewpos,
-            'pszx': self.rr.Pszx,
-            'pszy': self.rr.Pszy,
-            'origin': self.rr.render_origin,
-            'fbosz': self.rr.fbo.size,
-            'fbovsz': self.rr.fbo.viewsize,
-            'fbovp': self.rr.fbo.viewpos,
             'designation': Designation(designation),
-            'win': self.rr.surface.get_size(), 
+            'window': self.rr.surface.get_size(), 
             'debug': '[debug_active]' if self.rr.debug_active else '              ',
             'showhidden': '[show_hidden]' if self.rr.show_hidden else '             ',
             }
@@ -386,8 +377,8 @@ class Hud(object):
         
         if self.rr.cheat:
             w, h = self.cheatsurf.get_size()
-            left = win_w/2 - w/2
-            bottom = win_h/2 - h/2
+            left = (win_w - w)//2
+            bottom = (win_h - h)//2
             self._draw_quad(self.cheatsurf, ( left, bottom ) )
         
         self.rr.hudshader.cleanup()
@@ -656,7 +647,7 @@ class Rednerer(object):
         self.grid = bytearray(w*h*grid_dt.size)
         for i in range(0, w*h):
             offs = i * grid_dt.size
-            self.grid[offs:offs + grid_dt.size] = grid_dt.pack(i%w, i/w)
+            self.grid[offs:offs + grid_dt.size] = grid_dt.pack(i%w, i//w)
 
         self.grid_w, self.grid_h, self.grid_tile_count = w, h, w*h
         
@@ -682,7 +673,7 @@ class Rednerer(object):
         self.Pszx = int(self.Psz * self.Parx)
         self.Pszy = int(self.Psz * self.Pary)
         
-        newgrid = ( window[0] / self.Pszx + 4, window[1] / self.Pszy + 4)
+        newgrid = ( window[0] // self.Pszx + 4, window[1] // self.Pszy + 4)
         if self.grid_w is not None:
             delta_gw = newgrid[0] - self.grid_w
             delta_gh = newgrid[1] - self.grid_h
@@ -701,7 +692,7 @@ class Rednerer(object):
             # zoom out: delta_psz is negative, render_origin decreases
             
             delta_pszx, delta_pszy =  orig_pszxy[0] - self.Pszx, orig_pszxy[1] - self.Pszy
-            mtx, mty = zoompoint[0]/orig_pszxy[0], zoompoint[1]/orig_pszxy[1]
+            mtx, mty = zoompoint[0] // orig_pszxy[0], zoompoint[1] // orig_pszxy[1]
             mty = orig_grid_h - mty
             delta_vp =  mtx * delta_pszx, mty * delta_pszy
             self.pan(delta_vp)
@@ -720,22 +711,22 @@ class Rednerer(object):
         
         if vpx > 2 * xpad:
             delta = vpx - 2 * xpad 
-            x += delta / xpad + 1
+            x += delta // xpad + 1
             vpx = delta % xpad + xpad
             
         elif vpx < xpad:
             delta = xpad - vpx
-            x -= delta/xpad + 1
+            x -= delta // xpad + 1
             vpx = 2*xpad - abs(delta) % xpad
     
         if vpy > 2 * ypad:
             delta = vpy - 2*ypad
-            y += delta/ypad + 1
+            y += delta // ypad + 1
             vpy = delta % ypad + ypad
 
         elif vpy <  ypad:
             delta = ypad - vpy
-            y -= delta/ypad + 1
+            y -= delta // ypad + 1
             vpy = 2*ypad - abs(delta) % ypad
 
         self.viewpos = [ vpx, vpy ]
@@ -787,7 +778,7 @@ class Rednerer(object):
         my = self.surface.get_height() -  my
         self.mouse_in_gl = (mx, my) # coordinates in the viewport
         fbx, fby = mx + self.viewpos[0], my + self.viewpos[1] # in the FBO
-        mtx, mty = fbx/self.Pszx, fby/self.Pszy # in grid
+        mtx, mty = fbx // self.Pszx, fby // self.Pszy # in grid
 
         mwx, mwy, mwz = ( mtx + self.render_origin[0], 
                           mty + self.render_origin[1],
@@ -846,8 +837,8 @@ class Rednerer(object):
         self.mouse_in_world[2] = self.render_origin[2]
             
     def recenter(self):
-        self.render_origin = [ self.gameobject.xdim/2, 
-                               self.gameobject.ydim/2,
+        self.render_origin = [ self.gameobject.xdim//2, 
+                               self.gameobject.ydim//2,
                                self.gameobject.zdim - 23 ]
         if self.render_origin[2] < 0:
             self.render_origin[2] = 0
