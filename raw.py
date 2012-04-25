@@ -171,7 +171,7 @@ class Pageman(object):
             self.reallocate(min_h - self.album_h)
         
     def __str__(self):
-        return 'pageman({})'.format(' '.join(self.pages.keys()))
+        return 'pageman({})'.format(' '.join(map(str, self.pages.values())))
         
     def reallocate(self, plus_h):
         self.album_h  += plus_h
@@ -380,7 +380,9 @@ class RawsParser0(object):
                 try:
                     handler(name, tail)
                 except StopIteration:
-                    return
+                    if self.loud:
+                        print("{} stopiteration {}:{}".format(self.__class__.__name__, fna, lnum))
+                        return
                 except :
                     print("{}:{}:{}".format(fna, lnum, l.rstrip()))
                     traceback.print_exc(limit=32)
@@ -457,11 +459,24 @@ class InitParser(RawsParser0):
         self.colortab[colorseq.index(color)] = self.colortab[colorseq.index(color)] | int(tail[0])<< cshift[channel]
         
     def init_handler(self, name, tail):
-        if name == 'FONT':
-            self.fontpath = os.path.join(self.dfprefix, 'data', 'art', tail[0])
-            raise StopIteration
+        if name.endswith('FONT'):
+            self.fonts[name] = os.path.join(self.dfprefix, 'data', 'art', tail[0])
+        elif name == 'WINDOWED':
+            self.windowed = tail[0] == 'YES'
+        elif name == 'GRAPHICS':
+            self.graphics = tail[0] == 'YES'
             
     def __call__(self):
+        if self.graphics:
+            if self.windowed:
+                font = self.fonts['GRAPHICS_FONT']
+            else:
+                font = self.fonts['GRAPHICS_FULLFONT']
+        else:
+            if self.windowed:
+                font = self.fonts['FONT']
+            else:
+                font = self.fonts['FULLFONT']
         return self.fontpath, ColorMap(self.colortab)
 
 class Color(object):
@@ -815,7 +830,7 @@ class Token(object):
     tokens = ()
     parses = ()
     contains = ()
-    ignores_unknown = False
+
     def __init_(self, name, tail):
         self.name = name
         
@@ -835,6 +850,7 @@ class CelPage(Token):
         self.pdim = None
         self.defs = {}
         self.surf = None
+
     def __str__(self):
         return '{}:{}:{}x{}:{}x{}'.format(self.name, self.file, 
             self.pdim[0], self.pdim[1], self.cdim[0], self.cdim[1])
@@ -1411,19 +1427,6 @@ class AdvRawsParser(RawsParser0):
             o = self.dispatch[name](name, tail)
             self.stack.append(o)
             return True
-        
-
-        # so it's an unknown token for this level. see if we're to ignore it
-        if self.stack[-1].ignores_unknown:
-            een = False
-            for s in self.stack:
-                if name in s.tokens:
-                    een = True # someone in the stack knows what to do with it
-                    
-            if not een:
-                if self.loud:
-                    print("dropped unknown token {}, stack: {}".format(name, map(lambda x: x.__class__.__name__, self.stack)))
-                return not een # completely unknown token, just drop it
 
         if len(self.stack) == 1: # got root only.
             # insidious kludge. :(
@@ -1431,7 +1434,7 @@ class AdvRawsParser(RawsParser0):
                 o = self.dispatch[name](name, tail)
             except KeyError:
                 # NEH aka HFS
-                raise ParseError("unknown token '{}'".format(name))
+                raise ParseError("unknown token '{}' (root={})".format(name, self.stack[0]))
             if isinstance(o, type(self.root)):
                 if self.loud:
                     print("accepted next root token {}:{}".format(name, tail[0]))
@@ -1565,7 +1568,7 @@ class MapObject(object):
         for fgraw in fgraws:
             fgparser.eat(fgraw)
         
-        mtset = mtparser()
+        mtset = mtparser() # FIXME: change to something more obvious.
         fgdef = fgparser()
         cgset = gsparser()
         
@@ -1598,6 +1601,8 @@ class MapObject(object):
 
         if 'objcode' in self.loud:
             print(self._objcode)
+        if 'pageman' in self.loud:
+            print(self._pageman)
 
     def _map_dump(self, dumpfname):
         if self._mmap_fd:
@@ -1722,7 +1727,7 @@ class MapObject(object):
             self.codedepth * self.codew * self.codeh, 
             self.codedepth * self.codew * self.codeh * self.blitcode_dt.size )
             
-        print(rep, "tc inverted" if invert_tc else "tc straight")
+        print(rep + "tc inverted" if invert_tc else rep + "tc straight")
         # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
         dispatch = bytearray(self.dispw * self.disph * self.dispatch_dt.size)
         blitcode = bytearray(self.codew * self.codeh * self.codedepth * self.blitcode_dt.size)
