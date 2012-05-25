@@ -1,4 +1,4 @@
-#!/usr/bin/python3.2
+#!/usr/bin/python2.7
 # -*- encoding: utf-8 -*-
 """
 https://github.com/lxnt/fgtestbed

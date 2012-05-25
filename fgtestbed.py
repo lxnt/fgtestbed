@@ -1,4 +1,4 @@
-#!/usr/bin/python3.2
+#!/usr/bin/python2.7
 # -*- encoding: utf-8 -*-
 #
 # lxnt has created fgtestbed, a lump of python code
