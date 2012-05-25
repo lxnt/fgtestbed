@@ -279,27 +279,32 @@ class Hud(object):
         # tile name maxlength = 25
         # same for material   = 23
         # max chars in hud: 31
-        self.strs = (
+        self.state_strs = (
             "gfps: {gfps:2.0f} afps: {rr.anim_fps:02d} frame# {rr.frame_no:03d} color: #{color:08x}",
             "origin: {origin[0]}:{origin[1]}:{origin[2]} grid: {rr.grid_w}x{rr.grid_h} map: {map.xdim}x{map.ydim}x{map.zdim}",
             "pszar: {rr.Parx:.2f} {rr.Pary:.2f} {rr.Psz};  {rr.Pszx}x{rr.Pszy} px",
             "rr-viewpos: {rr.viewpos[0]:02d} {rr.viewpos[1]:02d} window: {window[0]} {window[1]}",
             "fbo: viewpos={fbo.viewpos[0]:02d} {fbo.viewpos[1]:02d} viewsize={fbo.viewsize[0]} {fbo.viewsize[1]} size={fbo.size[0]} {fbo.size[1]}",
-            "x={tx:03d} y={ty:03d} z={z:03d} {debug} {showhidden}",
+            "flags:  {debug} {showhidden}", 
+            )
+        self.mouse_strs = (
+            "x={tx:03d} y={ty:03d} z={z:03d} gx={mgx:03d} gy={mgy:03d}",
             "{designation}",
             "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
             "tile: {tile[0]} ({tile[1]}) ",
             "btile: {btile[0]} ({btile[1]})",
-            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}",
+            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}", 
             )
             
     def init(self):
         self.font = pygame.font.SysFont("ubuntumono", 18, False)
         self.ystep = self.font.get_linesize()
         self.txid = glGenTextures(1)
+
         self.hud_w = 2*self.padding + self.font.size("n"*25 + "m"*25)[0]
-        self.hud_h = 2*self.padding + self.font.get_linesize() * len(self.strs)
+        self.hud_h = 2*self.padding + self.font.get_linesize() *  ( len(self.state_strs) + len(self.mouse_strs) )
         self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
+
         cheat_lines = [x.strip() for x in CONTROLS.split("\n")]
         cs_maxline = max([self.font.size(x)[0] for x in cheat_lines])
         cw = 2*self.padding + cs_maxline
@@ -332,7 +337,6 @@ class Hud(object):
     def update(self):
         self.rr.update_mouse()
         tx, ty, tz =  self.rr.mouse_in_world
-        material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
         color = self.rr.getpixel(self.rr.mouse_in_gl)
         data = {
             'rr': self.rr,              # the renderer object
@@ -340,28 +344,42 @@ class Hud(object):
             'map': self.rr.gameobject,  # raw.MapObject
             'origin': self.rr.render_origin,
             'gfps': self.ema_fps(),
-            'tx': tx, 'ty': ty, 'z': tz,
-            'tile': tile,
-            'mat': material,
-            'btile': btile,
-            'bmat': bmat,
-            'grass': grass,
-            'color': color,
-            'designation': Designation(designation),
-            'window': self.rr.surface.get_size(), 
             'debug': '[debug_active]' if self.rr.debug_active else '              ',
             'showhidden': '[show_hidden]' if self.rr.show_hidden else '             ',
-            }
-
+            'color': color,
+            'window': self.rr.surface.get_size(), 
+        }
         self.hudsurf.fill(self.bg)
         i = 0
-        for s in self.strs:
+        for s in self.state_strs:
             try:
                 surf = self.font.render(s.format(**data), True, self.fg)
             except ValueError as e:
                 print(e, s, repr(data))
             self.hudsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )
             i += 1
+    
+        if tx != 100500:
+            mgx, mgy = self.rr.mouse_in_grid
+            material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
+            data.update({
+                'tx': tx, 'ty': ty, 'z': tz,
+                'mgx': mgx, 'mgy': mgy,
+                'tile': tile,
+                'mat': material,
+                'btile': btile,
+                'bmat': bmat,
+                'grass': grass,
+                'designation': Designation(designation),
+            })
+            for s in self.mouse_strs:
+                try:
+                    surf = self.font.render(s.format(**data), True, self.fg)
+                except ValueError as e:
+                    print(e, s, repr(data))
+                self.hudsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )
+                i += 1
+
     
     def draw(self):
         self.update()
@@ -695,7 +713,7 @@ class Rednerer(object):
 
         if delta_w != 0 or delta_h != 0: # aha, a resize.
             # center of map viewport should be kept stationary wrt whole display
-            self.pan((-delta_w/2, -delta_h/2))
+            self.pan((-delta_w // 2, -delta_h // 2))
 
         elif zoompoint:
             # the zoompoint should be kept stationary wrt whole display
@@ -795,9 +813,11 @@ class Rednerer(object):
                           self.render_origin[2] )
         if self.gameobject.inside(mwx, mwy, mwz):
             self.mouse_in_grid = (mtx, mty)
+            self.mouse_in_world = [ mwx, mwy, mwz ]
         else:
-            self.mouse_in_grid = (100500, 100500)
-        self.mouse_in_world = [ mwx, mwy, mwz ]
+            self.mouse_in_grid = ( 100500, 100500 )
+            self.mouse_in_world = [ 100500, 100500, mwz ]
+        
         
     def getpixel(self, posn):
         return  int(glReadPixels(posn[0], posn[1], 1, 1, GL_RGBA, 
