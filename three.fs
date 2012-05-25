@@ -144,5 +144,6 @@ void main() {
 	frag = debug_output();
     else
 	frag = color; // what a mess
-    frag.a = 1.0;
+    if ( fl_mode > 0 )
+	frag.a = 1.0;
 }
