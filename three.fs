@@ -26,7 +26,7 @@ flat in  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 flat in ivec4 debug0; // 4x4 = 16 values pushed through the tile
 flat in ivec4 debug1; // under mouse at 'debug' frame as signalled 
 flat in ivec4 debug2; // by debug_frame uniform. 
-flat in ivec4 debug3; // pszar better be 1:1
+flat in ivec4 debug3; // pszar better be 1,1,4n
 
 out vec4 frag; // telefrag ?
 
@@ -68,7 +68,7 @@ vec4 blit_execute(in vec2 pc, in int mode, in vec4 blit, in vec4 fg, in vec4 bg)
     vec2 texcoords = vec2 (blit.x + pc.x * blit.z, blit.y + pc.y * blit.w );
     vec4 tile_color = texture(font, texcoords);
     vec4 rv;
-    
+
     switch (mode) {
 	case BM_FGONLY: 
 	    rv = fg * tile_color;
@@ -90,14 +90,15 @@ vec4 blit_execute(in vec2 pc, in int mode, in vec4 blit, in vec4 fg, in vec4 bg)
     return rv;
 }
 
-void borderglow(inout vec4 color, in vec4 base_color) {
-    vec2 pc = gl_PointCoord * pszar.xy * pszar.z;
-    float w = 1.0;
-    if (pszar.z > 29.0) { w = 2.0; }
-    if (   (pc.x < w) || (pc.x > pszar.z*pszar.x - w)
-	|| (pc.y < w) || (pc.y > pszar.z*pszar.y - w) ) {
-	color = base_color;
-    }
+void borderglow(inout vec4 color, in vec4 border_color) {
+    vec2 wh = pszar.xy * pszar.z;
+    vec2 pc = gl_PointCoord * wh;
+    float w = 1;
+    if (pc.x > 29.0)  { w = 2 ; }
+    if (   ( pc.x < w) || (pc.x > wh.x - w) 
+	|| ( pc.y < w) || (pc.y > wh.y - w)) 
+	color = border_color;
+    return;
 }
 
 void main() {
@@ -129,11 +130,11 @@ void main() {
 	color = liquicolor;
     color = color * darken;
 
-#if 1
+#if 0
     if (fl_mode == BM_BAD_DISPATCH)
-	borderglow(color, vec4(mouse_color.r, 0,0,1));
+	borderglow(color, vec4(mouse_color.r, 0, 0, 1));
     if (fl_mode == BM_CODEDBAD)
-	borderglow(color, vec4(mouse_color.r, mouse_color.g,0,1));
+	borderglow(color, vec4(mouse_color.r, mouse_color.g, 0, 1));
 #endif
 
     if (mouse > 0)
@@ -143,4 +144,5 @@ void main() {
 	frag = debug_output();
     else
 	frag = color; // what a mess
+    frag.a = 1.0;
 }

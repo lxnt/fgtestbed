@@ -1930,7 +1930,7 @@ def main():
     ap.add_argument('dump', metavar="dump-file", help="map dump file name")
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
     ap.add_argument('-lint', action='store_true', help="cross-check compiler output", default=False)
-    ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
+    ap.add_argument('-inverty', action='store_true', help="invert y-coord in blitcode and dispatch textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()

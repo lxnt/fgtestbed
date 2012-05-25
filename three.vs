@@ -40,12 +40,12 @@ uniform usampler2D      dispatch; // blit_insn to blitcode_idx lookup table. Tex
 uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA32UI ARRAY
 
 uniform  int  frame_no;
-uniform int show_hidden;
+uniform  int  show_hidden;
 uniform ivec3 origin;
 uniform ivec2 grid;
-uniform  vec3 pszar;               // { parx, pary, psz }
+uniform  vec3 pszar;              // { parx, pary, psz }
 uniform ivec2 mouse_pos;
-uniform int tileclass[TILECOUNT];
+uniform  int  tileclass[TILECOUNT];
 uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 
 in ivec2 position;
@@ -57,7 +57,6 @@ flat out  vec4 fl_blit, fl_fg, fl_bg; 	// floor or the only blit
 flat out ivec4 stuff;      		// up_mode, fl_mode, mouse, hidden
 flat out  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 
-
 flat out ivec4 debug0;			// do_dump, value, unused, unused
 flat out ivec4 debug1;
 flat out ivec4 debug2;
@@ -68,7 +67,17 @@ void decode_tile(in ivec2 offs,
                  out int bmat, out int btile, 
                  out int gmat, out int gamt, 
                  out uint des) {
+    
+#if 0
     uvec4 vc = texelFetch(screen, origin + ivec3(position.x + offs.x, position.y + offs.y, 0), 0);
+#else
+    /* texcoord inversion happens here. */
+    ivec3 posn = origin + ivec3(position.x + offs.x, position.y + offs.y, 0);
+    ivec3 sz = textureSize(screen, 0);
+    posn.y = sz.y - posn.y;
+    uvec4 vc = texelFetch(screen, posn, 0);
+#endif
+    
     mat   = int(vc.r >> 16u);
     tile  = int(vc.r & 65535u);
     bmat  = int(vc.g >> 16u);

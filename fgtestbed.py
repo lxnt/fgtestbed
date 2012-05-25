@@ -282,7 +282,7 @@ class Hud(object):
         self.strs = (
             "gfps: {gfps:2.0f} afps: {rr.anim_fps:02d} frame# {rr.frame_no:03d} color: #{color:08x}",
             "origin: {origin[0]}:{origin[1]}:{origin[2]} grid: {rr.grid_w}x{rr.grid_h} map: {map.xdim}x{map.ydim}x{map.zdim}",
-            "pszar: {rr.Psz} {rr.Parx:.2f} {rr.Pary:.2f};  {rr.Pszx}x{rr.Pszy} px",
+            "pszar: {rr.Parx:.2f} {rr.Pary:.2f} {rr.Psz};  {rr.Pszx}x{rr.Pszy} px",
             "rr-viewpos: {rr.viewpos[0]:02d} {rr.viewpos[1]:02d} window: {window[0]} {window[1]}",
             "fbo: viewpos={fbo.viewpos[0]:02d} {fbo.viewpos[1]:02d} viewsize={fbo.viewsize[0]} {fbo.viewsize[1]} size={fbo.size[0]} {fbo.size[1]}",
             "x={tx:03d} y={ty:03d} z={z:03d} {debug} {showhidden}",
@@ -550,11 +550,21 @@ class Rednerer(object):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glDisable(GL_DEPTH_TEST)
         glDepthMask(GL_FALSE)
-        glEnable(GL_POINT_SPRITE)
-        glEnable(GL_PROGRAM_POINT_SIZE)
-        #glDisable(GL_POINT_SMOOTH)
-        glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT)
+        
         self.maxPsz = glGetInteger(GL_POINT_SIZE_MAX)
+        
+        glEnable(GL_POINT_SPRITE)
+        # glDisable(GL_POINT_SMOOTH) ignored due to above (glspec30 3.4)
+        # glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT) default, ref above
+        glEnable(GL_PROGRAM_POINT_SIZE)       
+        
+        if 1: # various crap
+            glPointParameteriv(GL_POINT_DISTANCE_ATTENUATION, (1, 0, 0))
+            glPointParameteri(GL_POINT_SIZE_MIN, 0)
+            glPointParameteri(GL_POINT_SIZE_MAX, self.maxPsz)
+            glPointParameteri(GL_POINT_FADE_THRESHOLD_SIZE, 0)
+        
+        glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE)
         
         self.fbo.init()
         self.hud.init()
