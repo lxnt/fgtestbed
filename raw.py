@@ -64,6 +64,7 @@ class DfapiEnum(object):
         self.gotit = False
         self.name = name
         self.parse(f)
+        print("DfapiEnum({}): {} items".format(name, len(self.enums)))
 
     def start_element(self, tagname, attrs):
         if tagname == 'enum-type' and attrs['type-name'] == self.name:
