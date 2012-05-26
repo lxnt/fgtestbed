@@ -807,10 +807,14 @@ class Rednerer(object):
         self.mouse_in_gl = (mx, my) # coordinates in the viewport
         fbx, fby = mx + self.viewpos[0], my + self.viewpos[1] # in the FBO
         mtx, mty = fbx // self.Pszx, fby // self.Pszy # in grid
+        # in fact not in grid, but in the frame buffer. 
+        # to get grid coords, one shall fetch viewpos from the fbo, divide
+        # it by Pszxy and maybe fudge it with pan data or something.
 
         mwx, mwy, mwz = ( mtx + self.render_origin[0], 
-                          mty + self.render_origin[1],
+                          self.gameobject.ydim - (mty + self.render_origin[1]), # hmm. WTF is DF's coord system anyway?
                           self.render_origin[2] )
+
         if self.gameobject.inside(mwx, mwy, mwz):
             self.mouse_in_grid = (mtx, mty)
             self.mouse_in_world = [ mwx, mwy, mwz ]
