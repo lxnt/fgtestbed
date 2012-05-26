@@ -210,22 +210,21 @@ class HudVAO(object):
         self._vattr_idx = vattr_idx # vertex attr index
     
     def __len__(self):
-        return 4
+        return len(self.cps)
     
     def update(self, a_rect):
         """ a_rect: tuple(x, y, w, h) """
-        barr = bytearray(4*self._dt.size)
-        cps = ( 
-            ( a_rect[0],             a_rect[1],             0, 0 ),
-            ( a_rect[0] + a_rect[2], a_rect[1],             1, 0 ),
-            ( a_rect[0],             a_rect[1] + a_rect[3], 0, 1 ),
-            ( a_rect[0] + a_rect[2], a_rect[1] + a_rect[3], 1, 1 ))
-            
-        print("cps", repr(cps))
-            
-        for i in range(0, 4):
+        
+        self.cps = ( 
+            ( a_rect[0],             a_rect[1],             0, 1 ),
+            ( a_rect[0],             a_rect[1] + a_rect[3], 0, 0 ),
+            ( a_rect[0] + a_rect[2], a_rect[1],             1, 1 ),
+            ( a_rect[0] + a_rect[2], a_rect[1] + a_rect[3], 1, 0 ))
+                
+        barr = bytearray(len(self)*self._dt.size)
+        for i in range(0, len(self)):
             offs = i * self._dt.size
-            barr[offs:offs + self._dt.size] = self._dt.pack(*cps[i])
+            barr[offs:offs + self._dt.size] = self._dt.pack(*self.cps[i])
         
         _data = bytes(barr)
         
@@ -238,7 +237,7 @@ class HudVAO(object):
             glBindVertexArray(0) # guard against stray modifications
         else:
             self._vbo.set_array(_data)        
-        
+
     def bind(self):
         glBindVertexArray(self._vao_name) # use it
         
@@ -261,20 +260,22 @@ class HudShader(Shader0):
     def __call__(self, screen_rect, hud_rect, texture_name):
         """ *_rect : tuple(x, y, w, h)
             texture_name - off glGenTextures() """
-        print("screen_rect", repr(screen_rect), "hud_rect", repr(hud_rect), "texture_name", repr(texture_name))
         glUseProgram(self.program)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, texture_name)
-        glUniform1i(self.uloc["hudtex"], 0)
-        glUniform2i(self.uloc["resolution"], *screen_rect[2:])
+        glUniform1i(self.uloc[b"hudtex"], 0)
+        glUniform2i(self.uloc[b"resolution"], *screen_rect[2:])
+        glUniform4f(self.uloc[b"fg"], 1.0, 1.0, 1.0, 1.0)
+        glUniform4f(self.uloc[b"bg"], 0.0, 0.0, 0.0, 0.68)
         self._vao.update(hud_rect)
         self._vao.bind()
         glDrawArrays(GL_TRIANGLE_STRIP, 0, len(self._vao))
 
 class HudPanel(object):
     def __init__(self, font, strs, longest_str = None):
-        self.bg = SDL_Color( 0x000000B0 )
-        self.fg = SDL_Color( 0xccccccff)
+        self.fg = SDL_Color( 0xffffffff )
+        self.bg = 0xff
+        
         self.texture_name = glGenTextures(1)
         self.font = font
         self.padding = 8
@@ -291,10 +292,11 @@ class HudPanel(object):
         self.width = 2*self.padding + longest_str_px
         self.ystep = ttf.font_line_skip(self.font)
         self.height = 2*self.padding + self.ystep * len(strs)
+        self.surface = sdlsurface.create_rgb_surface(
+            self.width, self.height, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF)
 
     def update(self, data = None):
-        surface = sdlsurface.create_rgb_surface(
-            self.width, self.height, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF)
+        sdlsurface.fill_rect(self.surface, None, self.bg)
         i = 0
         for s in self.strings:
             if isinstance(data, dict):
@@ -302,7 +304,7 @@ class HudPanel(object):
             srcrect = None
             dstrect = SDL_Rect(self.padding, self.padding + i * self.ystep)
             strsurf = ttf.render_blended(self.font, s, self.fg)
-            sdlsurface.blit_surface(strsurf, srcrect, surface, dstrect)
+            sdlsurface.blit_surface(strsurf, srcrect, self.surface, dstrect)
             sdlsurface.free_surface(strsurf)
             i += 1
 
@@ -312,16 +314,16 @@ class HudPanel(object):
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
         
-        assert surface.pitch == 4 * self.width # muahahaha
+        assert self.surface.pitch == 4 * self.width # muahahaha
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.width, self.height, 
-            0, GL_RGBA, GL_UNSIGNED_BYTE, surface.pixels)
-        sdlsurface.free_surface(surface)
-
+            0, GL_RGBA, GL_UNSIGNED_BYTE, self.surface.pixels)
+            
         glBindTexture(GL_TEXTURE_2D, 0)
 
     def __del__(self):
         glDeleteTextures(self.texture_name)
+        sdlsurface.free_surface(self.surface)
 
 class Hud(object):
     def __init__(self, shader, w, h):
@@ -384,7 +386,6 @@ def glinfo():
                 w = "** "
             else:
                 w = ""
-            #print("{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w))
             print("{0}: {1}".format(t[2], p, abs(t[0]), w))
         except GLError as e:
             if e.err != 1280:
@@ -460,8 +461,8 @@ def main():
     glinfo()
     grid_shader = GridShader("py3sdl2.vs", "py3sdl2.fs", loud = True)
     hud = Hud(HudShader("hud.vs", "hud.fs", loud = True), window._w, window._h)
-    
-    font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 18)
+
+    font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
     p = HudPanel(font, [ "ekarny babai" ])
     hud.addpanel(p, (100, 100))
     
@@ -469,6 +470,8 @@ def main():
     psize = int(sys.argv[1]) if len(sys.argv) > 1 else 128
     pszar = (1.0, 1.0, psize)
     loop(window, grid_shader, grid, pszar, hud)
+    del hud
+    del grid_shader
     sdl_fini()
     return 0
 
