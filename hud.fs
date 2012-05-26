@@ -4,8 +4,8 @@
 uniform sampler2D hudtex;
 
 in vec2 coord;
-out vec4 color;
+out vec4 frag;
 
 void main() {
-    color = texture(hudtex,  coord);
+    frag = texture(hudtex,  coord);
 }
