@@ -1548,27 +1548,11 @@ class MapObject(object):
         self._map_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
-        """
-        mtparser = ObjectHandler( MaterialTemplates, MaterialTemplate, loud = 'mtparser' in self.loud)
-        fgparser = ObjectHandler( FullGraphics, Tile, TileSet, TileClass, TcFlag, 
-            CelEffect, CelPage, Cel, Building, MaterialSet, loud = 'fgparser' in self.loud )
-        gsparser = ObjectHandler( CreaGraphics, CreaGraphicsSet, CelPage, loud = 'gsparser' in self.loud )
-        """
         stdraws = os.path.join(dfprefix, 'raw')
         
         boo = ObjectHandler(MaterialTemplates, FullGraphics, CreaGraphicsSet, loud='objecthandler' in self.loud)
         boo.eat(stdraws, *fgraws)
-        """
-        raise FuckingError
-        mtparser.eat(stdraws)
-        gsparser.eat(stdraws)
-        for fgraw in fgraws:
-            fgparser.eat(fgraw)
-        
-        mtset = mtparser() # FIXME: change to something more obvious.
-        fgdef = fgparser() # hm. getvalue() which possibly doesn't affect internal state?
-        cgset = gsparser()
-        """
+
         mtset = boo.get(MaterialTemplates)
         fgdef = boo.get(FullGraphics)
         cgset = boo.get(CreaGraphicsSet)
