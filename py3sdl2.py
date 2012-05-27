@@ -63,8 +63,8 @@ class Shader0(object):
     """ shader base class.
         
         Descendants are expected to implement __call__ method
-        that should take needed VAO objects, bind them and
-        call glDrawWhatever().
+        that should take UseProgram() and update set any uniforms
+        necessary.
         
         Currently it is considered best practice to set all uniform values
         in the __call__() method even if some of them are constant or 
@@ -73,16 +73,11 @@ class Shader0(object):
     
         Fragment shader code is expected to put the frag color into
             vec4 out frag;
-        this is hardcoded.
         
         Vertex attribute number 0 is always named 'position'.
-        
-        Shader source is to be supplied to the init() method which 
-        is to be called after a GL context is available.
-        
+                
     """
     def __init__(self, vs_fname, fs_fname, loud=False):
-        """ dumb constructor, there may be no GL context yet"""
         self.loud = loud
         self.aloc = { b'position': 0 }
         self.uloc = collections.defaultdict(lambda:-1)
@@ -126,7 +121,6 @@ class Shader0(object):
         self.program = program
 
     def __call__(self):
-        """ user-defined. """
         raise NotImplemented
     
     def _compile(self, lines, stype, filename):
@@ -148,102 +142,107 @@ class Shader0(object):
                 glGetProgramInfoLog(self.program ),
             ))
 
-    def __del__(self):
-        glDeleteProgram(self.program)
+class VAO0(object):
+    """ http://www.opengl.org/wiki/Vertex_Array_Object 
+        a VAO with a single VBO and w/o elements.
+    """
+    _primitive_type = None # GL_POINTS or whatever
 
-class GridShader(Shader0):
-    def __call__(self, grid, pszar):
-        """ sets uniforms; draws crap """
-        glUseProgram(self.program)
-        glUniform3f(self.uloc[b'pszar'], *pszar)
-        glUniform2i(self.uloc[b'grid'], *grid.size)
-        grid.bind()
-        glDrawArrays(GL_POINTS, 0, len(grid))
-
-class vaogrid(object):
-    """ http://www.opengl.org/wiki/Vertex_Array_Object """
-    def __init__(self, vattr_idx, w, h):
-        self._dt = struct.Struct("II")
+    def __init__(self):
         self._vao_name = glGenVertexArrays(1)
         self._vbo = None
-        self._count = None
-        self._vattr_idx = vattr_idx # vertex attr index
-        self.size = None
-        self.resize(w, h)
+        self._num = None
         
     def __len__(self):
-        return self._count
+        return self._num
     
-    def resize(self, w, h):
-        self.size = (w, h)
-        self._count = w*h
-        barr = bytearray(w*h*self._dt.size)
-        for i in range(0, w*h):
-            offs = i * self._dt.size
-            barr[offs:offs + self._dt.size] = self._dt.pack(i%w, i//w)
-        
-        self._data = bytes(barr)
+    def __call__(self):
+        glBindVertexArray(self._vao_name) # use it
+        glDrawArrays(self._primitive_type, 0, len(self))        
+
+    def update_vbo(self, dtype, data, num = None):
+        N = self._num = len(data) if num is None else num
+
+        dt = struct.Struct(dtype)
+        barr = bytearray(N*dt.size)
+        i = 0
+        for d in data:
+            offs = i * dt.size
+            barr[offs:offs + dt.size] = dt.pack(*d)
+            i += 1
         
         if self._vbo is None:
             glBindVertexArray(self._vao_name) # modify it
-            self._vbo = vbo.VBO(self._data, usage=GL_STATIC_DRAW)
+            self._vbo = vbo.VBO(bytes(barr), usage=GL_STATIC_DRAW)
             self._vbo.bind()
-            glEnableVertexAttribArray(self._vattr_idx) # make sure this attr is enabled
-            glVertexAttribIPointer(self._vattr_idx, 2, GL_INT, 0, self._vbo) # bind data to it
+            self.set_va_ptrs()
             glBindVertexArray(0) # guard against stray modifications
         else:
-            self._vbo.set_array(self._data)
-
-    def bind(self):
-        glBindVertexArray(self._vao_name) # use it
+            self._vbo.set_array(bytes(barr))
+    
+    def set_va_ptrs():
+        raise NotImplemented
 
     def fini(self):
-        glDeleteVertexArrays(self._vao_name)
-        self._vbo = self._vao_name = None
-
-class HudVAO(object):
-    """ a quad -> TRIANGLE_STRIP """
-    def __init__(self, vattr_idx):
-        self._dt = struct.Struct("IIII")
-        self._vao_name = glGenVertexArrays(1)
+        glDeleteVertexArrays(1, self._vao_name)
         self._vbo = None
-        self._vattr_idx = vattr_idx # vertex attr index
-    
-    def __len__(self):
-        return len(self.cps)
+
+class GridShader(Shader0):
+    def __call__(self, grid_size, pszar):
+        glUseProgram(self.program)
+        glUniform3f(self.uloc[b'pszar'], *pszar)
+        glUniform2i(self.uloc[b'grid'], *grid_size)
+
+class GridVAO(VAO0):
+    _primitive_type = GL_POINTS
+
+    def __init__(self, sz):
+        super(GridVAO, self).__init__()
+        self.update(sz)
+        
+    def update(self, sz):
+        w, h = self.size = sz
+        self.update_vbo("II", iter( (i%w, i//w) for i in range(w*h) ), w*h)
+
+    def set_va_ptrs(self):
+        glEnableVertexAttribArray(0) # make sure this attr is enabled
+        glVertexAttribIPointer(0, 2, GL_INT, 0, self._vbo) # bind data to the position
+        
+
+class Grid(object):
+    """ dumb state container atm """
+    def __init__(self, shader, sz, pszar):
+        self.shader = shader
+        self.vao = GridVAO(sz) 
+        self.pszar = pszar
+        
+    def render(self):
+        self.shader(self.vao.size, self.pszar)
+        self.vao()
+        
+    def reshape(self, sz):
+        glViewport(0, 0, sz[0], sz[1])
+        
+    def click(self, at):
+        pass
+
+class HudVAO(VAO0):
+    """ a quad -> TRIANGLE_STRIP """
+    _primitive_type = GL_TRIANGLE_STRIP
     
     def update(self, a_rect):
         """ a_rect: tuple(x, y, w, h) """
-        
-        self.cps = ( 
+        cps = ( 
             ( a_rect[0],             a_rect[1],             0, 1 ),
             ( a_rect[0],             a_rect[1] + a_rect[3], 0, 0 ),
             ( a_rect[0] + a_rect[2], a_rect[1],             1, 1 ),
             ( a_rect[0] + a_rect[2], a_rect[1] + a_rect[3], 1, 0 ))
-                
-        barr = bytearray(len(self)*self._dt.size)
-        for i in range(0, len(self)):
-            offs = i * self._dt.size
-            barr[offs:offs + self._dt.size] = self._dt.pack(*self.cps[i])
         
-        _data = bytes(barr)
-        
-        if self._vbo is None:
-            glBindVertexArray(self._vao_name) # modify it
-            self._vbo = vbo.VBO(_data, usage=GL_STATIC_DRAW)
-            self._vbo.bind()
-            glEnableVertexAttribArray(self._vattr_idx) # make sure this attr is enabled
-            glVertexAttribIPointer(self._vattr_idx, 4, GL_INT, 0, self._vbo) # bind data to it
-            glBindVertexArray(0) # guard against stray modifications
-        else:
-            self._vbo.set_array(_data)        
+        self.update_vbo("IIII", cps)
 
-    def bind(self):
-        glBindVertexArray(self._vao_name) # use it
-        
-    def fini(self):
-        glDeleteVertexArrays(self._vao_name)
-        self._vbo = self._vao_name = None
+    def set_va_ptrs(self):
+        glEnableVertexAttribArray(0) # make sure this attr is enabled
+        glVertexAttribIPointer(0, 4, GL_INT, 0, self._vbo) # bind data to it
 
 class HudShader(Shader0):
     """ draws a tinted translucent overlay at given coords. 
@@ -252,12 +251,7 @@ class HudShader(Shader0):
         all the hud shit in one pass using, maybe, a 2darray 
         texture or something. Currently it's one-by-one.
     """
-    
-    def __init__(self, *args, **kwargs):
-        super(HudShader, self).__init__(*args, **kwargs)
-        self._vao = HudVAO(0)
-
-    def __call__(self, screen_rect, hud_rect, texture_name):
+    def __call__(self, screen_rect, texture_name):
         """ *_rect : tuple(x, y, w, h)
             texture_name - off glGenTextures() """
         glUseProgram(self.program)
@@ -267,9 +261,6 @@ class HudShader(Shader0):
         glUniform2i(self.uloc[b"resolution"], *screen_rect[2:])
         glUniform4f(self.uloc[b"fg"], 1.0, 1.0, 1.0, 1.0)
         glUniform4f(self.uloc[b"bg"], 0.0, 0.0, 0.0, 0.68)
-        self._vao.update(hud_rect)
-        self._vao.bind()
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, len(self._vao))
 
 class HudPanel(object):
     def __init__(self, font, strs, longest_str = None):
@@ -318,33 +309,36 @@ class HudPanel(object):
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, self.width, self.height, 
             0, GL_RGBA, GL_UNSIGNED_BYTE, self.surface.pixels)
-            
+
         glBindTexture(GL_TEXTURE_2D, 0)
 
-    def __del__(self):
+    def fini(self):
         glDeleteTextures(self.texture_name)
         sdlsurface.free_surface(self.surface)
 
 class Hud(object):
     def __init__(self, shader, w, h):
         self.shader = shader
-        self.reshape(w, h)
+        self.reshape((w, h))
         self.panels = []
-    
+        self._vao = HudVAO()
+
     def addpanel(self, panel, alignment):
         self.panels.append((panel, alignment))
 
     def render(self):
         for p, a  in self.panels:
             p.update()
-            panel_rect = (a[0], a[1], p.width, p.height)
-            self.shader(self.screen_rect, panel_rect, p.texture_name)
+            self._vao.update((a[0], a[1], p.width, p.height))
+            self.shader(self.screen_rect, p.texture_name)
+            self._vao()
         
-    def reshape(self, w, h):
+    def reshape(self, sz):
+        w, h = sz
         self.screen_rect = (0, 0, w, h)
         
-    def click(self, x, y):
-        pass
+    def click(self, at):
+        x, y = at
 
 def glinfo():
     strs = {
@@ -414,7 +408,7 @@ def sdl_init():
     sdlvideo.gl_set_attribute(sdlvideo.SDL_GL_CONTEXT_PROFILE_MASK, sdlvideo.SDL_GL_CONTEXT_PROFILE_CORE)
 
     window = sdlvideo.create_window("glcontexest", posn[0], posn[1], size[0], size[1], 
-        sdlvideo.SDL_WINDOW_OPENGL)
+        sdlvideo.SDL_WINDOW_OPENGL | sdlvideo.SDL_WINDOW_RESIZABLE)
     context = sdlvideo.gl_create_context(window)
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE)       
     glEnable(GL_BLEND)
@@ -428,14 +422,13 @@ def sdl_fini():
     ttf.quit()
     sdl.quit()
 
-def render(grid_shader, grid, pszar, hud):
-    bgc = ( 0.23, 0.42, 0.08, 1 )
-    glClearColor(*bgc)
+def render(bg_color, stuff):
+    glClearColor(*bg_color)
     glClear(GL_COLOR_BUFFER_BIT)
-    grid_shader(grid, pszar)
-    hud.render()
+    for s in stuff:
+        s.render()
 
-def loop(window, shader, grid, pszar, hud):
+def loop(window, bg_color, stuff):
     while True:
         while True:
             event = sdlevents.poll_event(True)
@@ -448,30 +441,34 @@ def loop(window, shader, grid, pszar, hud):
                     return
             elif event.type == sdlevents.SDL_WINDOWEVENT:
                 if event.window.event == sdlvideo.SDL_WINDOWEVENT_RESIZED:
-                    hud.reshape(event.window.data1, event.window.data2)
+                    for s in stuff:
+                        s.reshape((event.window.data1, event.window.data2))
             elif event.type == sdlevents.SDL_MOUSEBUTTONDOWN:
                 if event.button.button == sdlmouse.SDL_BUTTON_LEFT and event.button.state == sdlevents.SDL_PRESSED:
-                    hud.click(event.button.x, event.button.y)
-        render(shader, grid, pszar, hud)
+                    for s in stuff:
+                        s.click((event.button.x, event.button.y))
+        render(bg_color, stuff)
         sdlvideo.gl_swap_window(window)
         time.sleep(0.1)
 
 def main():
+    psize = int(sys.argv[1]) if len(sys.argv) > 1 else 128
+    bg_color = ( 0.23, 0.42, 0.08, 1 )
+    
     window, context = sdl_init()
     glinfo()
+    
     grid_shader = GridShader("py3sdl2.vs", "py3sdl2.fs", loud = True)
-    hud = Hud(HudShader("hud.vs", "hud.fs", loud = True), window._w, window._h)
+    grid = Grid(grid_shader, sz = (2, 2), pszar = (1.0, 1.0, psize))
+    
+    hud_shader = HudShader("hud.vs", "hud.fs", loud = True)
+    hud = Hud(hud_shader, window._w, window._h)
 
     font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
-    p = HudPanel(font, [ "ekarny babai" ])
+    p = HudPanel(font, [ "Yokarny Babai" ])
     hud.addpanel(p, (100, 100))
     
-    grid = vaogrid(0, 2, 2) # posiont.attr_idx = 0 
-    psize = int(sys.argv[1]) if len(sys.argv) > 1 else 128
-    pszar = (1.0, 1.0, psize)
-    loop(window, grid_shader, grid, pszar, hud)
-    del hud
-    del grid_shader
+    loop(window, bg_color, [grid, hud])
     sdl_fini()
     return 0
 
