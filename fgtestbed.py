@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
 #
 # lxnt has created fgtestbed, a lump of python code
@@ -36,449 +36,180 @@ distribution.
 """
 from __future__ import division
 
-import sys, time, math, struct, io, ctypes, zlib, ctypes
-import collections, argparse, traceback, os, types, mmap
+import sys, time, math, struct, io, ctypes, zlib, ctypes, copy
+import argparse, traceback, os, types, mmap
 
-import pygame
+from raw import MapObject, Designation
+from py3sdl2 import * 
 
 from OpenGL.GL import *
-from OpenGL.arrays import vbo
-from OpenGL.GL.shaders import *
-from OpenGL.GLU import *
-from OpenGL.GL.ARB import shader_objects
 from OpenGL.GL.ARB.texture_rg import *
-from OpenGL.GL.ARB.framebuffer_object import *
-from glname import glname as glname
+from OpenGL.error import GLError
 
-from raw import MapObject
+import pygame2.sdl as sdl
+import pygame2.sdl.events as sdlevents
+import pygame2.sdl.mouse as sdlmouse
+import pygame2.sdl.keyboard as sdlkeyboard
+import pygame2.sdl.video as sdlvideo
+import pygame2.sdl.surface as sdlsurface
+import pygame2.sdl.pixels as sdlpixels
+import pygame2.sdl.timer as sdltimer
 
-CONTROLS = """ 
-    F1: toggle this text
-    Right mouse button drag: panning
-    Mouse wheel: up/down Z-level
-    Shift+mouse wheel: up/down 10 Z-levels
-    Ctrl+Mouse wheel: zoom in/out
-    Arrow keys, PgUp/PgDn/Home/End: scroll
-    Shift+same: faster scroll
-    < >: Up/Down z-level
-    Backspace: recenter map
-    Keypad +/-: adjust animation FPS
-    Keypad *: toggle reveal_all
-    Keypad /: toggle debug feedback mode
-    Left mouse button, Space: toggle animation
-    Esc: quit"""
+from pygame2.sdl.keycode import *
+from sdlenums import * # all of enums except key/scan codes.
 
-class Shader0(object):
-    def __init__(self, loud=False):
-        """ dumb constructor, there may be no GL context yet"""
-        self.loud = loud
-        self.uloc = collections.defaultdict(lambda:-1)
-        self.program = None
-        self.clean = False
-    
-    def update_state(self):
-        """ user-defined. """
-        raise NotImplemented
+from collections import namedtuple
+import pygame2.ttf as ttf
+CONTROLS = """\
+    F1:                         toggle this text
+    Esc:                        quit
+    Right mouse button drag:    panning
+    Mouse wheel, < >:                up/down Z-level
+    Shift+mouse wheel:          up/down 10 Z-levels
+    Ctrl+Mouse wheel:           zoom in/out
+    Arrows, PgUp/PgDn/Home/End: scroll
+    Shift+same:                 faster scroll
+    Backspace:                  recenter map
+    Keypad +/-:                 adjust animation FPS
+    Keypad *:                   toggle reveal_all
+    Keypad /:                   toggle debug feedback mode
+    Left mouse button, Space:   toggle animation"""
 
-    def reload(self, vs, fs):
-        if self.program:
-            self.fini()
-        self.init(self, vs, fs)
-    
-    def compile(self, lines, stype, filename):
-        rv = glCreateShader(stype)
-        glShaderSource(rv, lines)
-        glCompileShader(rv)
-        result = glGetShaderiv(rv, GL_COMPILE_STATUS)
-        nfo = glGetShaderInfoLog(rv)
-        print("compiling {}: result={}; nfo:\n{}".format(filename, result, nfo.strip()))
-        return rv
-    
-    def init(self, vs, fs):
-        """ to be called after there is a GL context """
-        vsp = self.compile(file(vs).readlines(), GL_VERTEX_SHADER, vs)
-        fsp = self.compile(file(fs).readlines(), GL_FRAGMENT_SHADER, fs)
-        if not (vsp and fsp):
-            raise SystemExit
+class GridShader(Shader0):
+    def __call__(self, 
+            grid_size, pszar, tileclass, 
+            tex, txsz,
+            render_origin,
+            mouse_pos, mouse_color,
+            show_hidden, debug_active, 
+            falpha, darken, frame_no):
         
-        program = glCreateProgram()
-
-        for shader in (vsp, fsp):
-            glAttachShader(program, shader)
-            glDeleteShader(shader)
-            
-        for name, loc in self.aloc.items():
-            glBindAttribLocation(program, loc, name)
-            if self.loud:
-                print("  {0}: name={1} loc={2}".format('-', name, loc))
-        glBindFragDataLocation(program, 0, 'color')
-
-        glLinkProgram(program)
-    
-        link_status = glGetProgramiv( program, GL_LINK_STATUS )
-        if link_status == GL_FALSE:
-            raise RuntimeError(
-                """Link failure (%s): %s"""%(
-                link_status,
-                glGetProgramInfoLog( program ),
-            ))
-    
-        self.uloc = collections.defaultdict(lambda:-1)
-        au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
-        for i in range(au):
-            name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
-            loc = glGetUniformLocation(program, name)
-            self.uloc[name] = loc
-            if self.loud:
-                print("  {0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc))
-        
-        self.program = program
-
-    def validate(self):
-        glValidateProgram(self.program)
-        validation = glGetProgramiv( self.program, GL_VALIDATE_STATUS )
-        if validation == GL_FALSE:
-            raise RuntimeError(
-                """Validation failure (%s): %s"""%(
-                validation,
-                glGetProgramInfoLog(self.program ),
-            ))
-
-    def fini(self):
-        glDeleteProgram(self.program)
-        self.program = None
-        self.uloc = {}
-
-    def cleanup(self):
-        for loc in self.aloc.values():
-            glDisableVertexAttribArray(loc) # is it the right place for this?
-        self.clean = False
-
-class Tile_shader(Shader0):
-    def __init__(self, renderer, loud=False):
-        super(Tile_shader, self).__init__(loud)
-        self.rr = renderer        
-        self.aloc = { 'position': 0 }
-
-    def update_state(self, falpha=1.0, darken=1.0):
         glUseProgram(self.program)
-        
-        for loc in self.aloc.values():
-            glEnableVertexAttribArray(loc) # is it the right place for this?
-                
-        glUniform1i(self.uloc['frame_no'], self.rr.frame_no)
-        glUniform1f(self.uloc["darken"], darken)
 
-        glUniform2i(self.uloc['grid'], self.rr.grid_w, self.rr.grid_h)
-        glUniform3f(self.uloc['pszar'], self.rr.Parx, self.rr.Pary, self.rr.Psz)
+        glUniform2i(self.uloc[b'grid'], *grid_size)
+        glUniform3i(self.uloc[b"origin"], *render_origin)
+        glUniform3f(self.uloc[b'pszar'], *pszar)
+        glUniform4i(self.uloc[b"txsz"], *txsz )  # tex size in tiles, tile size in texels
         
-        glUniform4i(self.uloc["txsz"], *self.rr.txsz )  # tex size in tiles, tile size in texels
-        #glUniform1i(self.uloc["dispatch_row_len"], self.rr.gameobject.hashw);
-        glUniform1i(self.uloc["show_hidden"], 1 if self.rr.show_hidden else 0);
-        glUniform1i(self.uloc['debug'], 1 if self.rr.debug_active else 0)
+        glUniform1i(self.uloc[b'frame_no'], frame_no)
+        glUniform1f(self.uloc[b"darken"], darken)        
+        glUniform1i(self.uloc[b"show_hidden"], show_hidden)
+        glUniform1i(self.uloc[b'debug'], debug_active)
         
-        glUniform2i(self.uloc["mouse_pos"], *self.rr.mouse_in_grid);
+        glUniform2i(self.uloc[b"mouse_pos"], *mouse_pos);
+        glUniform4f(self.uloc[b"mouse_color"], *mouse_color)
         
-        mc = abs ( (self.rr.tick % 1000)/500.0 - 1)
-        
-        glUniform4f(self.uloc["mouse_color"], mc, mc, mc, 1.0)
-        
-        glUniform3i(self.uloc["origin"], *self.rr.render_origin)
-        
-        glUniform1iv(self.uloc["tileclass"], 
-            len(self.rr.gameobject.tcptr), self.rr.gameobject.tcptr)
+        # ati vs nvidia :(
+        tc_uloc = self.uloc[b"tileclass"] if self.uloc[b"tileclass"] != -1 else self.uloc[b"tileclass[0]"]
+        glUniform1iv(tc_uloc, len(tileclass), tileclass)
         
         glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, self.rr.dispatch_txid)
-        glUniform1i(self.uloc["dispatch"], 0) # blitter dispatch tiu
+        glBindTexture(GL_TEXTURE_2D, tex.dispatch)
+        glUniform1i(self.uloc[b"dispatch"], 0)
         
         glActiveTexture(GL_TEXTURE1)
-        glBindTexture(GL_TEXTURE_2D_ARRAY, self.rr.blitcode_txid)
-        glUniform1i(self.uloc["blitcode"], 1) # blitter code tiu
+        glBindTexture(GL_TEXTURE_2D_ARRAY, tex.blitcode)
+        glUniform1i(self.uloc[b"blitcode"], 1)
         
         glActiveTexture(GL_TEXTURE2)
-        glBindTexture(GL_TEXTURE_2D, self.rr.font_txid)
-        glUniform1i(self.uloc["font"], 2) # tilepage tiu
+        glBindTexture(GL_TEXTURE_2D, tex.font)
+        glUniform1i(self.uloc[b"font"], 2)
             
         glActiveTexture(GL_TEXTURE3)
-        glBindTexture(GL_TEXTURE_2D_ARRAY, self.rr.screen_txid)
-        glUniform1i(self.uloc["screen"], 3) # screen tiu
-            
-        self.rr.grid_vbo.bind()
-        glVertexAttribIPointer(self.aloc["position"], 2, GL_INT, 0, self.rr.grid_vbo )
-        
-class Designation(object):
-    def __init__(self, u32):
-        self.level              =  u32 &   7
-        self.pile               = (u32 >>  3) & 1
-        self.dig                = (u32 >>  4) & 7
-        self.smooth             = (u32 >>  7) & 3
-        self.hidden             = (u32 >>  9) & 1
-        self.geolayer           = (u32 >> 10) & 15
-        self.light              = (u32 >> 14) & 1
-        self.subter             = (u32 >> 15) & 1
-        self.outside            = (u32 >> 16) & 1
-        self.biome              = (u32 >> 17) & 15
-        self.ltype              = (u32 >> 21) & 1
-        self.aquifer            = (u32 >> 22) & 1
-        self.rained             = (u32 >> 23) & 1
-        self.traffic            = (u32 >> 24) & 3
-        self.flow_forbid        = (u32 >> 26) & 1
-        self.liquid_static      = (u32 >> 27) & 1
-        self.feat_local         = (u32 >> 28) & 1
-        self.feat_global        = (u32 >> 29) & 1
-        self.stagnant           = (u32 >> 30) & 1
-        self.salt               = (u32 >> 31) & 1
-        
-    def __str__(self):
-        rv = []
-        if self.level > 0:
-            rv.append([ '', 'stagnant'][self.stagnant])
-            rv.append([ '', 'salt'][self.salt])
-            rv.append(['water', 'magma'][self.ltype])
-            rv.append('level {}'.format(self.level))
-        rv.append(['dark', 'light'][self.light])
-        rv.append(['inside', 'outside'][self.outside])
-        rv.append(['', 'subter'][self.subter])
-        rv.append(['', 'rained'][self.light])
-        rv.append(['', 'aquifer'][self.aquifer])
-        rv.append(['', 'hidden'][self.hidden])
-        
-        return ' '.join(rv)
+        glBindTexture(GL_TEXTURE_2D_ARRAY, tex.screen)
+        glUniform1i(self.uloc[b"screen"], 3)
 
-class Hud_shader(Shader0):
-    def __init__(self, hud_object, loud=False):
-        super(Hud_shader, self).__init__(loud)
-        self.hud = hud_object
-        self.aloc = { 'position': 0 }
+class RendererPanel(HudTextPanel):
+    def __init__(self, font):
+        strs = (
+            "gfps: {gfps:2.0f} afps: {anim_fps:02d} frame# {frame_no:03d}",
+            "origin: {origin.x}:{origin.y}:{origin.z} grid: {grid.w}x{grid.h} map: {map.x}x{map.y}x{map.z}",
+            "pszar: {pszar.x:.2f} {pszar.y:.2f} {pszar.z};  {psz.x}x{psz.y} px",
+            "map_viewport: {viewport.x:02d} {viewport.y:02d} {viewport.w:d} {viewport.h:d}",
+            "{debug} {showhidden}", 
+        )
+        self.active = True
+        dummy = Coord3(999,999,999)
+        longest_str = strs[1].format(origin=dummy, grid=Size2(999,999), map=dummy)
 
-    def update_state(self, w, h):        
-        glUseProgram(self.program)
+        super(RendererPanel, self).__init__(font, strs, longest_str)
     
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, self.hud.txid)
-        glUniform1i(self.uloc["hudtex"], 0)
-        
-        winw, winh = self.hud.rr.surface.get_size()
-        glUniform2i(self.uloc["resolution"], winw, winh) 
-        #glUniform2i(self.uloc["size"], w, h) 
+    def update(self, win, map_viewport, debug_active, show_hidden, **kwargs):
+        self._data = kwargs
+        self._data['viewport'] = map_viewport
+        self._data['debug'] = '[debug_active]' if debug_active else '              '
+        self._data['showhidden'] = '[show_hidden]' if show_hidden else '             '
+        self._surface_dirty = True
 
-        self.hud.vbo.bind()
-        glEnableVertexAttribArray(self.aloc["position"])
-        glVertexAttribIPointer(self.aloc["position"], 4, GL_INT, 0, self.hud.vbo )
+        # glue it to the top-right corner, observing margins.
+        self.moveto(Coord2(win.w - self.margin - self.rect.w, win.h - self.margin - self.rect.h))
 
-class Hud(object):
-    def __init__(self, renderer):
-        self.rr = renderer
-        self.bg = pygame.Color( 0x000000B0 )
-        self.fg = pygame.Color( 0xccccccff)
-        self.margin = 8
-        self.padding = 8
-        self.ema_rendertime = 16.0 # seed value; approx 60 fps
-        self.ema_alpha = 0.01
-        # tile name maxlength = 25
-        # same for material   = 23
-        # max chars in hud: 31
-        self.state_strs = (
-            "gfps: {gfps:2.0f} afps: {rr.anim_fps:02d} frame# {rr.frame_no:03d} color: #{color:08x}",
-            "origin: {origin[0]}:{origin[1]}:{origin[2]} grid: {rr.grid_w}x{rr.grid_h} map: {map.xdim}x{map.ydim}x{map.zdim}",
-            "pszar: {rr.Parx:.2f} {rr.Pary:.2f} {rr.Psz};  {rr.Pszx}x{rr.Pszy} px",
-            "rr-viewpos: {rr.viewpos[0]:02d} {rr.viewpos[1]:02d} window: {window[0]} {window[1]}",
-            "fbo: viewpos={fbo.viewpos[0]:02d} {fbo.viewpos[1]:02d} viewsize={fbo.viewsize[0]} {fbo.viewsize[1]} size={fbo.size[0]} {fbo.size[1]}",
-            "flags:  {debug} {showhidden}", 
-            )
-        self.mouse_strs = (
-            "x={tx:03d} y={ty:03d} z={z:03d} gx={mgx:03d} gy={mgy:03d}",
+    @property
+    def data(self):
+        return self._data
+
+class MousePanel(HudTextPanel):
+    def __init__(self, font):
+        # maxlen of vanilla matname is 22.
+        # maxlen of tile-type is 25
+        strs = (
+            "color: #{color:08x}",
+            "x={posn.x:03d} y={posn.y:03d} z={posn.z:03d} gx={grid.x:03d} gy={grid.y:03d}", # max 31
             "{designation}",
-            "mat:  {mat[0]} ({mat[1]})    bmat:  {bmat[0]} ({bmat[1]})",
-            "tile: {tile[0]} ({tile[1]}) ",
-            "btile: {btile[0]} ({btile[1]})",
-            "grass: {grass[0]} ({grass[1]}) amount={grass[2]:02x}", 
-            )
-            
-    def init(self):
-        self.font = pygame.font.SysFont("ubuntumono", 18, False)
-        self.ystep = self.font.get_linesize()
-        self.txid = glGenTextures(1)
+            "mat:  {mat[0]: 3d} ({mat[1]})",
+            "bmat:  {bmat[0]: 3d} ({bmat[1]})",
+            "tile: {tile[0]: 3d} ({tile[1]})",
+            "btile: {btile[0]: 3d} ({btile[1]})", # max 38
+            "grass: {grass[0]: 3d} ({grass[1]}) amount={grass[2]:02x}", # max 44
+        )
+        longest_str = "m"*44
+        
+        self.active = False
+        self._data = {}
+        super(MousePanel, self).__init__(font, strs, longest_str)
 
-        self.hud_w = 2*self.padding + self.font.size("n"*25 + "m"*25)[0]
-        self.hud_h = 2*self.padding + self.font.get_linesize() *  ( len(self.state_strs) + len(self.mouse_strs) )
-        self.hudsurf = pygame.Surface( ( self.hud_w, self.hud_h ), pygame.SRCALPHA, 32)
-
-        cheat_lines = [x.strip() for x in CONTROLS.split("\n")]
-        cs_maxline = max([self.font.size(x)[0] for x in cheat_lines])
-        cw = 2*self.padding + cs_maxline
-        ch = 2*self.padding + self.ystep * len(cheat_lines)
-        self.cheatsurf = pygame.Surface( ( cw, ch ), pygame.SRCALPHA, 32)
-        self.cheatsurf.fill(self.bg)
-
-        i=0
-        for l in cheat_lines:
-            try:
-                surf = self.font.render(l, True, self.fg)
-            except ValueError as e:
-                print(e, s, repr(data))
-            self.cheatsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )            
-            i+=1
-        self.vbo = None
-
-    def fini(self):
-        glDeleteTextures(self.txid)
-
-    def ema_fps(self):
-        val = self.rr.last_render_time
-        self.ema_rendertime = self.ema_alpha*val + (1-self.ema_alpha)*self.ema_rendertime
-        return 1000.0/self.ema_rendertime
-
-    @staticmethod
-    def restore12(v):
-        return ( v >> 20, ( v >> 8 ) & ((1<<12)-1) )        
-
-    def update(self):
-        self.rr.update_mouse()
-        tx, ty, tz =  self.rr.mouse_in_world
-        color = self.rr.getpixel(self.rr.mouse_in_gl)
-        data = {
-            'rr': self.rr,              # the renderer object
-            'fbo': self.rr.fbo,         # the fbo object
-            'map': self.rr.gameobject,  # raw.MapObject
-            'origin': self.rr.render_origin,
-            'gfps': self.ema_fps(),
-            'debug': '[debug_active]' if self.rr.debug_active else '              ',
-            'showhidden': '[show_hidden]' if self.rr.show_hidden else '             ',
+    def update(self, win, renderer_panel, renderer, fbo_mouse_pos, grid_mouse_pos, map_mouse_pos):
+        gamedata = renderer.gamedata
+        fbo = renderer.fbo
+        
+        if not gamedata.inside(*map_mouse_pos):
+            self.active = False
+            return
+    
+        color = int(fbo.readpixels(Rect(*fbo_mouse_pos, w=1, h=1))[0][0])
+    
+        self.active = True
+        self._surface_dirty = True
+        material, tile, bmat, btile, grass, designation = gamedata.gettile(map_mouse_pos)
+        self._data.update({
             'color': color,
-            'window': self.rr.surface.get_size(), 
-        }
-        self.hudsurf.fill(self.bg)
-        i = 0
-        for s in self.state_strs:
-            try:
-                surf = self.font.render(s.format(**data), True, self.fg)
-            except ValueError as e:
-                print(e, s, repr(data))
-            self.hudsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )
-            i += 1
-    
-        if tx != 100500:
-            mgx, mgy = self.rr.mouse_in_grid
-            material, tile, bmat, btile, grass, designation = self.rr.gameobject.gettile((tx,ty,tz))
-            data.update({
-                'tx': tx, 'ty': ty, 'z': tz,
-                'mgx': mgx, 'mgy': mgy,
-                'tile': tile,
-                'mat': material,
-                'btile': btile,
-                'bmat': bmat,
-                'grass': grass,
-                'designation': Designation(designation),
-            })
-            for s in self.mouse_strs:
-                try:
-                    surf = self.font.render(s.format(**data), True, self.fg)
-                except ValueError as e:
-                    print(e, s, repr(data))
-                self.hudsurf.blit(surf, (self.padding, self.padding + i * self.ystep) )
-                i += 1
-
-    
-    def draw(self):
-        self.update()
-        class rect(object):
-            def __str__(self):
-                return repr( ( (self.left, self.bottom), (self.right, self.top ),( self.w, self.h) ))
+            'posn': map_mouse_pos,
+            'grid': grid_mouse_pos,
+            'tile': tile,
+            'mat': material,
+            'btile': btile,
+            'bmat': bmat,
+            'grass': grass,
+            'designation': Designation(designation),
+        })        
         
-        w, h = self.hudsurf.get_size()
-        win_w, win_h = self.rr.surface.get_size()
-        
-        left, bottom = win_w - self.margin - w, win_h - self.margin  - h
-        self._draw_quad(self.hudsurf, ( left, bottom ) )
-        
-        if self.rr.cheat:
-            w, h = self.cheatsurf.get_size()
-            left = (win_w - w)//2
-            bottom = (win_h - h)//2
-            self._draw_quad(self.cheatsurf, ( left, bottom ) )
-        
-        self.rr.hudshader.cleanup()
+        # glue it to under the renderer panel, observing margins.
+        self.moveto(Coord2(win.w - self.margin - self.rect.w, 
+                    renderer_panel.rect.y - self.margin - self.rect.h))
 
-    def _draw_quad(self, surf, dst): # dst assumed to be (left, bottom). surface not pre-flipped.
-        x,y = dst
-        w,h = surf.get_size()
-        ddt = struct.Struct('IIII')
-        data = (ddt.pack(x,   y,   0, 1) +  # left-bottom
-                  ddt.pack(x,   y+h, 0, 0) +  # left-top
-                  ddt.pack(x+w, y+h, 1, 0) +  # right-top
-                  ddt.pack(x+w, y,   1, 1)) # right-bottom
+    @property
+    def data(self):
+        return self._data
 
-        if self.vbo is None:
-            # todo: make in STATIC_DRAW and reset only on resize
-            self.vbo = vbo.VBO(data, usage=GL_DYNAMIC_DRAW) 
-        else:
-            self.vbo.set_array(data)
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D,  self.txid)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 
-            0, GL_RGBA, GL_UNSIGNED_BYTE, pygame.image.tostring(surf, "RGBA"))
-        self.rr.hudshader.update_state(w, h)
-        glDrawArrays(GL_QUADS, 0, 4)
-        
-class Fbo(object):
-    def __init__(self, renderer):
-        self.rr = renderer
-        self.u_reshape = False
-        
-    def check(self, tgt = GL_FRAMEBUFFER):
-        x = glCheckFramebufferStatus(tgt)
-        if x != GL_FRAMEBUFFER_COMPLETE:
-            raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x)))
-        
-    def init(self):
-        self.map = glGenFramebuffers(1)
-        self.mapr = glGenRenderbuffers(1)
+class CheatPanel(HudTextPanel):
+    def __init__(self, font):
+        strs = [x.strip() for x in CONTROLS.split("\n")]
+        self.active = True
+        super(CheatPanel, self).__init__(font, strs, longest_str = None)
 
-    def fini(self):
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glDeleteRenderbuffers(1, [self.mapr])
-        glDeleteFramebuffers(1, [self.map])
-
-    def reshape(self, size, viewsize):
-        glBindFramebuffer(GL_FRAMEBUFFER, self.map)
-        glBindRenderbuffer(GL_RENDERBUFFER, self.mapr)
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, size[0], size[1])
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, self.mapr)
-        self.check()
-        self.size = size
-        self.viewsize = viewsize
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-    
-    def update(self, viewpos):
-        self.viewpos = viewpos
-    
-    def bind(self):
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self.map)
-        glViewport( 0, 0, self.size[0], self.size[1])
-    
-    def compose(self):
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, self.map)
-        
-        x0 = self.viewpos[0]
-        y0 = self.viewpos[1]
-        x1 = self.viewsize[0] + x0
-        y1 = self.viewsize[1] + y0
-
-        glBlitFramebuffer( 
-            x0, y0, x1, y1,
-            0, 0, self.viewsize[0], self.viewsize[1],
-            GL_COLOR_BUFFER_BIT, GL_LINEAR)
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glViewport(0, 0, self.viewsize[0], self.viewsize[1])
-
+    def update(self, win):
+        # center in the window
+        self.moveto(Coord2((win.w - self.rect.w)//2, (win.h - self.rect.h)//2))
 
 class Rednerer(object):
     _zdtab = [  # darkening coefficients for drawing multiple z-levels.
@@ -488,254 +219,160 @@ class Rednerer(object):
         [1.0, 0.60, 0.45, 0.30, 0.15 ],
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
 
-    def __init__(self, vs, fs, loud=[], zeddown=2):
-        self.vs, self.fs = vs, fs
-        self.fbo = Fbo(self)
-        self.hud = Hud(self)
-        self.mapshader = Tile_shader(self, loud='shaders' in loud)
-        self.hudshader = Hud_shader(self.hud, loud='shaders' in loud)
+    def __init__(self, window, vs, fs, gamedata, loud=[], zeddown=2):
+        self.window = window
+        self.gamedata = gamedata
+        self.hud = Hud('hud' in loud)
+        self.fbo = FBO()
+        self.grid = GridVAO()
+        self.grid_shader = GridShader(vs, fs, 'gl' in loud)
+        self.dumb_shader = DumbGridShader("dumb.vs", "dumb.fs", 'gl' in loud)
+        self.tex = namedtuple("Texnames", "dispatch blitcode font screen")._make(glGenTextures(4))
         
-        self.do_update_attrs = True
-        self.opengl_initialized = False
-        
-        self.snap_to_grid = False
-        self.do_reset_glcontext = False
-        self.conf_stretch_tiles = False
-        self.conf_snap_window = False
         self.loud_gl      = 'gl' in loud
         self.loud_reshape = 'reshape' in loud
-        self.crap = True
         
-        self.tilesizes = None # txco texture
-        self.grid = None # grid vaa/vbo
-        self.screen = None # frame data
-        self.surface = None
-        self.grid_w = self.grid_h = None
-        self.mouse_in_world = (0, 0, 0)
-        self.mouse_in_grid = (100500, 100500)
-        self.mouse_in_gl = (0, 0)
-        self.anim_fps = 12
         self._zeddown = zeddown
-        self.cheat = True
+        self.anim_fps = 12
+        self.cutoff_frame = gamedata.codedepth - 1
+        self.max_psz = 1024
+        
+        self.fps = EmaFilter()
+        self.last_frame_time = 16 # milliseconds
+        
         self.had_input = False
         self.show_hidden = True
         self.debug_active = False
         
-        pygame.font.init()
-        pygame.display.init()
-        pygame.display.set_caption("full-graphics testbed", "fgtestbed")
+        font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 18)
+        self.hp_renderer = RendererPanel(font) 
+        self.hp_mouse = MousePanel(font)
+        self.hp_cheat = CheatPanel(font)
+        
+        self.overdraw = 4 # number of tiles the fbo is larger than window.
+        
+        self.render_origin = gamedata.window
+        self.map_viewport = Rect(0, 0, window._w, window._h)
+        
+        gamedata.pageman.surface.upload_tex2d(self.tex.font)
+        upload_tex2d(self.tex.dispatch, GL_RG16UI,
+            gamedata.matcount, gamedata.tiletypecount, 
+            GL_RG_INTEGER , GL_UNSIGNED_SHORT, gamedata.disptr)
+        
+        upload_tex2da(self.tex.blitcode, GL_RGBA32UI,
+            gamedata.codew, gamedata.codew, gamedata.codedepth,
+            GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.codeptr )
+            
+        upload_tex2da(self.tex.screen, GL_RGBA32UI,
+               gamedata.dim.x, gamedata.dim.y, gamedata.dim.z,
+               GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapptr)            
 
-        default_res = ( 1280, 800 )
-        self.set_mode(default_res) # does opengl_init() for us
+        self.txsz = txsz = gamedata.pageman.txsz
+        print(txsz)
 
-    def set(self, gamoebject):
-        self.gameobject = gamoebject
-        self.cutoff_frame = gamoebject.codedepth - 1
-        self.recenter()
-        self.update_textures() # sets up self.txsz
-        self.viewpos = (0,0)
-        self.reshape() # sets up Psz, viewpos_ and grid.
-
-    def set_mode(self, size):
-        if self.surface is None:
-            res_change = True
+        if txsz[2] > txsz[3]:
+            self.Pszar = Coord3(
+                    x = 1.0, 
+                    y = txsz[3]/txsz[2],
+                    z = txsz[2] )
         else:
-            res_change = self.surface.get_size() != size
+            self.Pszar = Coord3(
+                    x = txsz[2]/txsz[3],
+                    y = 1.0, 
+                    z = txsz[3] )
+
+        self.winsize = Size2(window._w, window._h)
+        self.reshape(winsize = self.winsize)
+        print(self.grid, self.winsize, txsz)
+    
+    @property
+    def psz(self):
+        return Coord2(int(self.Pszar.z * self.Pszar.x), int(self.Pszar.z * self.Pszar.y))
+    
+    
+    def win2glfb(self, win):
+        """ converts window coordinates (pixels, SDL coordinate system)
+            to gl-style coordinates within the fbo """
+        win_h = self.winsize.h
+        glwin = Coord2(win.x, win_h - win.y)
+        return Coord2(glwin.x + self.map_viewport.x, glwin.y + self.map_viewport.y)
+        
+    def win2dffb(self, win):
+        """ converts window coordinates (pixels, SDL coordinate system) 
+            to fractional tile coordinates relative to render_origin 
+            (tiles, DF coordinate system) """
+        grid_h = self.grid.size.h
+        psz = self.psz
+        
+        glfb = self.win2glfb(win)
+        dffb = Coord2(glfb.x / psz.x, grid_h - glfb.y / psz.y)
+        return dffb
+
+    def dffb2win(self, dffb):
+        """ reverse of the above """
+        win_h = self.winsize.h
+        grid_h = self.grid.size.h
+        psz = self.psz
+        
+        glfb = Coord2(dffb.x*psz.x, (grid_h - dffb.y) * psz.y)
+        glwin = Coord2(glfb.x - self.map_viewport.x, glfb.y - self.map_viewport.y)
+        win = Coord2(int(glwin.x), int(win_h - glwin.y))
+        return win
+
+    def win2world(self, win):
+        """ calculate world corrdinates of the tile under the given pixel """
+        dffb = self.win2dffb(win)
+        return Coord2(self.render_origin.x + dffb.x, self.render_origin.y + dffb.y)
+
+    def reshape(self, winsize = None, zoom = None):
+        """ resize or zoom """
+        if winsize is not None: # a resize
+            pan = Coord2(( self.winsize.w - winsize.w ) // 2,
+                          (self.winsize.h - winsize.h ) // 2 )
+            self.winsize = winsize
+            self.map_viewport = self.map_viewport._replace(w = self.window._w, h = self.window._h)
+        elif zoom:
+            psz, zoompoint = zoom
+            # the zoompoint is the point in window coordinates where
+            # the zoom event took place.
+            # to keep the zoompoint stationary wrt the window,
+            # we calculate fractional tile coordinates of it pre-zoom
+            # and post-zoom.
             
-        if self.opengl_initialized and not res_change:
-            return True # nothing to do
-        
-        if self.opengl_initialized and self.do_reset_glcontext:
-            self.opengl_fini()
-        
-        flags = pygame.OPENGL|pygame.DOUBLEBUF|pygame.RESIZABLE
-        
-        pygame.display.set_mode(size, flags)
-        self.surface = pygame.display.get_surface()
-        
-        if not self.opengl_initialized:
-            self.opengl_init()
-
-        return True
-
-    def opengl_init(self):
-        if self.loud_gl:
-            self.glinfo()
-
-        glEnable(GL_ALPHA_TEST)
-        glAlphaFunc(GL_NOTEQUAL, 0)
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glDisable(GL_DEPTH_TEST)
-        glDepthMask(GL_FALSE)
-        
-        self.maxPsz = glGetInteger(GL_POINT_SIZE_MAX)
-        
-        glEnable(GL_POINT_SPRITE)
-        # glDisable(GL_POINT_SMOOTH) ignored due to above (glspec30 3.4)
-        # glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_UPPER_LEFT) default, ref above
-        glEnable(GL_PROGRAM_POINT_SIZE)       
-        
-        if 1: # various crap
-            glPointParameteriv(GL_POINT_DISTANCE_ATTENUATION, (1, 0, 0))
-            glPointParameteri(GL_POINT_SIZE_MIN, 0)
-            glPointParameteri(GL_POINT_SIZE_MAX, self.maxPsz)
-            glPointParameteri(GL_POINT_FADE_THRESHOLD_SIZE, 0)
-        
-        glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE)
-        
-        self.fbo.init()
-        self.hud.init()
-        
-        self.grid_vbo = None
-        self._txids = glGenTextures(4)
-        self.dispatch_txid, self.blitcode_txid, self.font_txid, self.screen_txid = self._txids
-        
-        self.mapshader.init(self.vs, self.fs)
-        self.hudshader.init("hud.vs", "hud.fs")
-        
-        self.opengl_initialized = True
-
-    def opengl_fini(self):
-        self.mapshader.fini()
-        self.hudshader.fini()
-        self.hud.fini()
-        self.fbo.fini()
-        glDeleteTextures(self._txids)
-        self.grid_vbo = None
-        self.maxPsz = None
-        self.Parx = self.Pary = self.Psz = self.Pszx = self.Pszy = None
-        self.dispatch_txid = self.blitcode_txid = self.font_txid = self._txids = None
-        self.opengl_initialized = False
-
-    def _upload_tex2d(self, txid, informat, tw, th, dformat, dtype, dptr):
-        glBindTexture(GL_TEXTURE_2D,  txid)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexImage2D(GL_TEXTURE_2D, 0, informat, tw, th, 0, dformat, dtype, dptr)
-
-    def _upload_tex2da(self, txid, informat, tw, th, td, dformat, dtype, dptr):
-        glBindTexture(GL_TEXTURE_2D_ARRAY,  txid)
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)       
-
-    def update_textures(self):
-        self.txsz = self.gameobject.txsz
-        
-        print("font: {}x{} {}x{} tiles, {}x{}, {}K".format(
-            self.txsz[0], self.txsz[1], self.txsz[2], self.txsz[3],
-            self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],  
-            self.txsz[0]*self.txsz[2]*self.txsz[1]*self.txsz[3]*4>>10))
-        
-        self._upload_tex2d(self.font_txid, GL_RGBA8, 
-            self.txsz[0]*self.txsz[2], self.txsz[1]*self.txsz[3],
-            GL_RGBA, GL_UNSIGNED_BYTE, self.gameobject.fontptr)
-        
-        self._upload_tex2d(self.dispatch_txid, GL_RG16UI,
-            self.gameobject.matcount, self.gameobject.tiletypecount, 
-            GL_RG_INTEGER , GL_UNSIGNED_SHORT, self.gameobject.disptr)
-        
-        self._upload_tex2da(self.blitcode_txid, GL_RGBA32UI,
-            self.gameobject.codew, self.gameobject.codew, self.gameobject.codedepth,
-            GL_RGBA_INTEGER, GL_UNSIGNED_INT, self.gameobject.codeptr )
-            
-        self._upload_tex2da(self.screen_txid, GL_RGBA32UI,
-               self.gameobject.xdim, self.gameobject.ydim, self.gameobject.zdim,
-               GL_RGBA_INTEGER, GL_UNSIGNED_INT, self.gameobject.mapptr)            
-
-        self.Psz = max(self.txsz[2:])
-        self.Pszx, self.Pszy = self.txsz[2:]
-        if self.txsz[2] > self.txsz[3]:
-            self.Parx = 1.0
-            self.Pary = float(self.txsz[3])/self.txsz[2]
+            pre_zp = self.win2dffb(zoompoint)
+            self.Pszar = self.Pszar._replace(z = psz)
         else:
-            self.Parx = float(self.txsz[2])/self.txsz[3]
-            self.Pary = 1.0
+            raise RuntimeError("reshape(None, None)")
 
-    def update_grid(self, size):
-        """ The grid is a vertex attr holding an ivec2 offset from origin,
-            which coincides with lower-left corner of the GL viewport.
-            
-            Thus this ivec2 is at the same time the integer coordinates 
-            (in tile units) where to draw the tile.
-            
-            Conversion to GL viewport coordinates is a simple affine affair. 
-            (see three.vs' main() prolog)
-            
-            Since it's a vertex attr, values' order (row/column/random-wise) 
-                               does not matter at all.
-            """
-        w, h = size
-        grid_dt = struct.Struct("II")
-        self.grid = bytearray(w*h*grid_dt.size)
-        for i in range(0, w*h):
-            offs = i * grid_dt.size
-            self.grid[offs:offs + grid_dt.size] = grid_dt.pack(i%w, i//w)
+        # code common to both zoom and resize:
+        # calculate new grid size
+        psz = self.psz
+        newgrid = Size2( self.map_viewport.w // psz.x + self.overdraw, 
+                         self.map_viewport.h // psz.y + self.overdraw)
+        print("reshape({}, {}): newgrid = {} (map_vp={} Pszar={} psz={})".format(winsize, zoom, newgrid, self.map_viewport, self.Pszar, self.psz))
+        # resize both the grid and the fbo
+        self.grid.resize(newgrid)
+        self.fbo.resize(Size2(newgrid.w*psz.x, newgrid.h*psz.y))
 
-        self.grid_w, self.grid_h, self.grid_tile_count = w, h, w*h
-        
-        if self.grid_vbo is None:
-            self.grid_vbo = vbo.VBO(str(self.grid), usage=GL_STATIC_DRAW)
-        else:
-            self.grid_vbo.set_array(str(self.grid))
+        if zoom:
+            # now convert post_zp back to window coordinates
+            # pan amount would be the difference between zoompoint and this.
+            zoompoint_after_zoom = self.dffb2win(pre_zp)
+            pan = Coord2(zoompoint_after_zoom.x - zoompoint.x, 
+                         zoompoint_after_zoom.y - zoompoint.y)
 
-    def reshape(self, winsize = None, zoompoint = None):
-        assert self.Parx is not None
-        delta_w = delta_h = 0
-        if winsize: # if we have to reset mode, likely on resize
-            oldsize = self.surface.get_size()
-            self.set_mode(winsize)
-            delta_w = oldsize[0] - winsize[0]
-            delta_h = oldsize[1] - winsize[1]
-            
-        window = self.surface.get_size()
-        
-        orig_pszxy = (self.Pszx, self.Pszy)
-        orig_grid_h = self.grid_h
-        
-        self.Pszx = int(self.Psz * self.Parx)
-        self.Pszy = int(self.Psz * self.Pary)
-        
-        newgrid = ( window[0] // self.Pszx + 4, window[1] // self.Pszy + 4)
-        if self.grid_w is not None:
-            delta_gw = newgrid[0] - self.grid_w
-            delta_gh = newgrid[1] - self.grid_h
-        else:
-            delta_gw = delta_gh = 0
-        
-        self.update_grid(newgrid)
-        self.fbo.reshape((newgrid[0]*self.Pszx, newgrid[1]*self.Pszy), window)
-
-        if delta_w != 0 or delta_h != 0: # aha, a resize.
-            # center of map viewport should be kept stationary wrt whole display
-            self.pan((-delta_w // 2, -delta_h // 2))
-
-        elif zoompoint:
-            # the zoompoint should be kept stationary wrt whole display
-            # zoom out: delta_psz is negative, render_origin decreases
-            
-            delta_pszx, delta_pszy =  orig_pszxy[0] - self.Pszx, orig_pszxy[1] - self.Pszy
-            mtx, mty = zoompoint[0] // orig_pszxy[0], zoompoint[1] // orig_pszxy[1]
-            mty = orig_grid_h - mty
-            delta_vp =  mtx * delta_pszx, mty * delta_pszy
-            self.pan(delta_vp)
-            self.update_mouse()
-        else: 
-            # if not zoom and not resize?
-            pass
+        # try to keep the map from panning
+        self.pan(pan)
 
     def pan(self, rel):
-        vpx, vpy = self.viewpos
-        xpad, ypad = self.Pszx, self.Pszy
-        x, y, unused = self.render_origin
+        vpx, vpy = self.map_viewport.x, self.map_viewport.y
+        xpad = self.psz.x*self.overdraw
+        ypad = self.psz.y*self.overdraw
+        
+        x, y = self.render_origin.x, self.render_origin.y
 
-        vpx -= rel[0]
-        vpy += rel[1]        
+        vpx -= rel.x
+        vpy += rel.y        
         
         if vpx > 2 * xpad:
             delta = vpx - 2 * xpad 
@@ -757,126 +394,93 @@ class Rednerer(object):
             y -= delta // ypad + 1
             vpy = 2*ypad - abs(delta) % ypad
 
-        self.viewpos = [ vpx, vpy ]
-        self.render_origin[:2] = x, y
-
-    def glinfo(self):
-        strs = {
-            GL_VENDOR: "vendor",
-            GL_RENDERER: "renderer",
-            GL_VERSION: "version",
-            GL_SHADING_LANGUAGE_VERSION: "GLSL version",
-        }
-        ints = [
-            (    7, GL_MAX_VERTEX_ATTRIBS, "GL_MAX_VERTEX_ATTRIBS" ), # number of vec4 attribs available
-            (    9, GL_MAX_VERTEX_UNIFORM_COMPONENTS, "GL_MAX_VERTEX_UNIFORM_COMPONENTS" ), # single-component values
-            (    8, GL_MAX_FRAGMENT_UNIFORM_COMPONENTS, "GL_MAX_FRAGMENT_UNIFORM_COMPONENTS" ), # same as above
-            (    1, GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, "GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS" ), # samplers in vert shader
-            (    2, GL_MAX_TEXTURE_IMAGE_UNITS, "GL_MAX_TEXTURE_IMAGE_UNITS" ),  # samplers in frag shader
-            (    3, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS" ), # samplers in vert shader
-            (   12, GL_MAX_VARYING_FLOATS, "GL_MAX_VARYING_FLOATS" ), # 4 varying_floats = 1 texture_coord?
-            (    3, GL_MAX_TEXTURE_COORDS, "GL_MAX_TEXTURE_COORDS" ), # 1 texture_coord = 4 varying_floats?
-            (   -4, GL_POINT_SIZE_MIN, "GL_POINT_SIZE_MIN" ),
-            (   32, GL_POINT_SIZE_MAX, "GL_POINT_SIZE_MAX" ), # no idea of our requirements
-            ( 2048, GL_MAX_RECTANGLE_TEXTURE_SIZE, "GL_MAX_RECTANGLE_TEXTURE_SIZE" ),
-        ]
-        exts = glGetString(GL_EXTENSIONS)
-        for e,s in strs.items():
-            print("{0}: {1}".format(s, glGetString(e)))
-        for t in ints:
-            p = glGetInteger(t[1])
-            if (p<t[0]) or ((t[0]<0) and (p+t[0] >0)):
-                w = "** "
-            else:
-                w = ""
-            #print("{3}{0}: {1} needed:{2}".format(t[2], p, abs(t[0]), w))
-            print("{0}: {1}".format(t[2], p, abs(t[0]), w))
+        self.map_viewport = self.map_viewport._replace(x=vpx, y=vpy)
+        self.render_origin = self.render_origin._replace(x=x, y=y)
 
     def zoom(self, zcmd, zpos = None):
-        if zcmd == 'zoom_in' and self.Psz > 1:
-            self.Psz -= 1
-        elif zcmd == 'zoom_out' and self.Psz < self.maxPsz:
-            self.Psz += 1
+        if zcmd == 'zoom_in' and self.Pszar.z > 1:
+            psz = self.Pszar.z - 1
+        elif zcmd == 'zoom_out' and self.Pszar.z < self.max_psz:
+            psz = self.Pszar.z + 1
         elif zcmd == 'zoom_reset':
-            self.Psz = max(self.txsz[2], self.txsz[3])
-        self.reshape(zoompoint = zpos)
+            psz = max(self.txsz[2], self.txsz[3])
+        if zpos is None:
+            zpos = Coord2( self.window._w // 2, self.window._h // 2 )
+        self.reshape(zoom = (psz, zpos))
 
-    def update_mouse(self):
-        mx, my = pygame.mouse.get_pos()
-        my = self.surface.get_height() -  my
-        self.mouse_in_gl = (mx, my) # coordinates in the viewport
-        fbx, fby = mx + self.viewpos[0], my + self.viewpos[1] # in the FBO
-        mtx, mty = fbx // self.Pszx, fby // self.Pszy # in grid
-        # in fact not in grid, but in the frame buffer. 
-        # to get grid coords, one shall fetch viewpos from the fbo, divide
-        # it by Pszxy and maybe fudge it with pan data or something.
+    def _render_one_grid(self, render_origin, mouse_pos, mouse_color, darken, frame_no):
+        #self.grid_shader(
+        self.dumb_shader(
+            grid_size = self.grid.size, 
+            pszar = self.Pszar, 
+            tileclass = self.gamedata.tileclass,
+            tex = self.tex,
+            txsz = self.txsz,
+            render_origin = render_origin,
+            mouse_pos = mouse_pos, 
+            mouse_color = mouse_color,
+            show_hidden = 1 if self.show_hidden else 0, 
+            debug_active = 1 if self.debug_active else 0, 
+            falpha = 1.0, 
+            darken = darken,
+            frame_no = frame_no)
+        try:
+            self.grid()
+        except:
+            gldump()
+            raise()
 
-        mwx, mwy, mwz = ( mtx + self.render_origin[0], 
-                          self.gameobject.ydim - (mty + self.render_origin[1]), # hmm. WTF is DF's coord system anyway?
-                          self.render_origin[2] )
-
-        if self.gameobject.inside(mwx, mwy, mwz):
-            self.mouse_in_grid = (mtx, mty)
-            self.mouse_in_world = [ mwx, mwy, mwz ]
-        else:
-            self.mouse_in_grid = ( 100500, 100500 )
-            self.mouse_in_world = [ 100500, 100500, mwz ]
-        
-        
-    def getpixel(self, posn):
-        return  int(glReadPixels(posn[0], posn[1], 1, 1, GL_RGBA, 
-                    GL_UNSIGNED_INT_8_8_8_8)[0][0])
-
-    def getdebug(self):
-        self.update_mouse()
-        # kay, now find where the hell this tile starts
-        # ... in gl vieport cs
-        
-        
-        
     def render(self, frame_no):
-        bgc = ( 0.0, 0.0, 0.0, 1 )
-        t = pygame.time.get_ticks()
-        self.frame_no = frame_no
+        bgc = GLColor( 0.0, 0.5, 0.0, 1 )
+        tick = sdltimer.get_ticks()
+        
+        win_mouse_pos = Coord2._make(sdlmouse.get_mouse_state()[1:])
+        fbo_mouse_pos = self.win2glfb(win_mouse_pos)
+        grid_mouse_pos_f = self.win2dffb(win_mouse_pos)
+        grid_mouse_pos = Coord2._make(map(int, grid_mouse_pos_f))
+        map_mouse_pos = Coord3(self.render_origin.x + grid_mouse_pos.x, 
+            self.render_origin.y + grid_mouse_pos.y, self.render_origin.z)
+        
+        mc = abs ( (tick % 1000)/500.0 - 1)
+        mouse_color = ( mc, mc, mc, 1.0)
+        
+        self.fbo.bind(clear = bgc)
 
-        self.fbo.update(self.viewpos)
-        self.fbo.bind()
-        glClearColor(*bgc)
-        glClear(GL_COLOR_BUFFER_BIT)
-
-        zed = self.render_origin[2]
+        zed = self.render_origin.z
         zd = self._zdtab[self._zeddown]
         for i in range(1-len(zd), 1): # draw starting from -zeddown zlevels and up
             # draw the map.
             if i + zed < 0:
                 continue
-            self.render_origin[2] = i + zed
-            self.mapshader.update_state(falpha = 1.0, darken = zd[-i])
-            glDrawArrays(GL_POINTS, 0, self.grid_tile_count)
+            render_origin = self.render_origin._replace(z = i + zed)
+            darken = zd[-i]
+            
+            self._render_one_grid(render_origin, grid_mouse_pos, mouse_color, darken, frame_no)
 
-        self.mapshader.cleanup()
-        self.crap = False
-        self.fbo.compose() # blits drawn map into the default FBO.
-        
-        self.hud.draw()
-        pygame.display.flip()
-        return  pygame.time.get_ticks() - t
+        #self.fbo.blit(self.map_viewport)
+        self.fbo.blit(Rect(0,0,self.window._w, self.window._h))
+        panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat ]
+
+        self.hp_renderer.update(self.winsize, self.map_viewport,
+            gfps = self.fps.value(self.last_render_time), anim_fps = self.anim_fps, frame_no = frame_no,
+            origin = self.render_origin, grid = self.grid.size, map = self.gamedata.dim,
+            pszar = self.Pszar, psz = self.psz, 
+            debug_active = self.debug_active, show_hidden = self.show_hidden)
+            
+        self.hp_mouse.update(self.winsize, self.hp_renderer, self, fbo_mouse_pos, grid_mouse_pos, map_mouse_pos)
+        self.hp_cheat.update(self.winsize)
+        self.hud.reshape(self.winsize)
+        self.hud.render(panels)
+        sdl_flip(self.window)
+        return sdltimer.get_ticks() - tick
         
     def zpan(self, delta):
-        self.render_origin[2]  += delta
-        if self.render_origin[2]  < 0:
-            self.render_origin[2] = 0
-        elif self.render_origin[2] > self.gameobject.zdim - 1:
-            self.render_origin[2] = self.gameobject.zdim - 1
-        self.mouse_in_world[2] = self.render_origin[2]
-            
-    def recenter(self):
-        self.render_origin = [ self.gameobject.xdim//2, 
-                               self.gameobject.ydim//2,
-                               self.gameobject.zdim - 23 ]
-        if self.render_origin[2] < 0:
-            self.render_origin[2] = 0
-        self.mouse_in_world = self.render_origin
+        z = self.render_origin.z + delta
+        if z  < 0:
+            z = 0
+        elif z > self.gamedata.dim.z - 1:
+            z = self.gamedata.dim.z - 1
+        self.render_origin = self.render_origin._replace(z=z)
             
     def loop(self, anim_fps = 12, choke = 0):
         self.anim_fps = anim_fps
@@ -892,19 +496,24 @@ class Rednerer(object):
         finished = False
         panning = False
         
-        scrolldict = {  pygame.K_LEFT: ( -1, 0),
-                        pygame.K_RIGHT: ( 1, 0),
-                        pygame.K_UP: ( 0, -1),
-                        pygame.K_DOWN: ( 0, 1),
-                        pygame.K_HOME: ( -1, -1),
-                        pygame.K_PAGEUP: ( 1, -1),
-                        pygame.K_END: ( -1, 1),
-                        pygame.K_PAGEDOWN: ( 1, 1), }
+        scrolldict = {  SDLK_LEFT: ( -1, 0),
+                        SDLK_RIGHT: ( 1, 0),
+                        SDLK_UP: ( 0, -1),
+                        SDLK_DOWN: ( 0, 1),
+                        SDLK_HOME: ( -1, -1),
+                        SDLK_PAGEUP: ( 1, -1),
+                        SDLK_END: ( -1, 1),
+                        SDLK_PAGEDOWN: ( 1, 1), }
+        
+        def had_input():
+            if not self.had_input:
+                self.had_input = True
+                self.hp_cheat.active = False
         
         while not finished:
-            now = pygame.time.get_ticks()
+            now = sdltimer.get_ticks()
             self.last_render_time = now - last_render_ts
-            last_render_ts = self.tick = now
+            last_render_ts = now
 
             if not paused:
                 if now - last_animflip_ts > anim_period:
@@ -912,37 +521,41 @@ class Rednerer(object):
                     last_animflip_ts = now
                     if frame_no > self.cutoff_frame:
                         frame_no = 0
-                        
             
             render_time = self.render(frame_no)
             
-            while  True: # eat events
-                for ev in pygame.event.get():
-                    if ev.type == pygame.KEYDOWN:
-                        if ev.key == pygame.K_SPACE:
+            while not finished: # hang around in case fps is user-limited
+                while True:  # eat events
+                    ev = sdlevents.poll_event(True)
+                    if ev is None:
+                        break
+                    elif ev.type == SDL_KEYDOWN:
+                        kcode = ev.key.keysym.sym
+                        if kcode == SDLK_SPACE:
                             paused = not paused
-                        elif ev.key == pygame.K_F1:
-                            self.cheat = not self.cheat
-                        elif ev.key == pygame.K_ESCAPE:
-                            if self.cheat:
-                                self.cheat = False
-                            else:
+                        elif kcode == SDLK_F1:
+                            self.hp_cheat.active = not self.hp_cheat.active
+                        elif kcode == SDLK_ESCAPE:
+                            if self.had_input:
                                 finished = True
-                        elif ev.key == pygame.K_KP_MULTIPLY:
+                                break
+                            else:
+                                self.hp_cheat.active = False
+                        elif kcode == SDLK_KP_MULTIPLY:
                             self.show_hidden = False if self.show_hidden else True
-                        elif ev.key == pygame.K_KP_DIVIDE:
+                        elif kcode == SDLK_KP_DIVIDE:
                             self.debug_active = False if self.debug_active else True
-                        elif ev.key == pygame.K_PERIOD and ev.mod & 3:
+                        elif kcode == SDLK_PERIOD and ev.mod & KMOD_SHIFT:
                             self.zpan(-1)
-                        elif ev.key == pygame.K_COMMA  and ev.mod & 3:
+                        elif kcode == SDLK_COMMA  and ev.mod & KMOD_SHIFT:
                             self.zpan(1)
-                        elif ev.key in scrolldict:
+                        elif kcode in scrolldict:
                             boost = 10 if ev.mod & 3 else 1
-                            self.render_origin[0] += scrolldict[ev.key][0] * boost
-                            self.render_origin[1] += scrolldict[ev.key][1] * boost
-                        elif ev.key == pygame.K_BACKSPACE:
-                            self.recenter()
-                        elif ev.key == pygame.K_KP_PLUS:
+                            self.pan(Coord2(scrolldict[kcode][0] * boost * self.psz.x, 
+                                scrolldict[kcode][1] * boost * self.psz.y))
+                        elif kcode == SDLK_BACKSPACE:
+                            self.render_origin = self.gamedata.window
+                        elif kcode == SDLK_KP_PLUS:
                             if self.anim_fps > 1:
                                 self.anim_fps += 1
                             elif self.anim_fps > 0.5:
@@ -950,63 +563,54 @@ class Rednerer(object):
                             else:
                                 self.anim_fps *= 2
                             anim_period = 1000.0 / self.anim_fps
-                        elif ev.key == pygame.K_KP_MINUS:
+                        elif kcode == SDLK_KP_MINUS:
                             if self.anim_fps > 1:
                                 self.anim_fps -= 1
                             else:
                                 self.anim_fps /= 2
                             anim_period = 1000.0 / self.anim_fps
-                        elif ev.key == pygame.K_F2:
-                            self.crap = True
-                        else:
-                            print(repr(ev.key), repr(ev))
-                        if not self.had_input:
-                            self.had_input = True
-                            self.cheat = False
+                        had_input()
 
-                    elif ev.type == pygame.QUIT:
+                    elif ev.type == SDL_QUIT:
                         finished = True
-                    elif ev.type ==  pygame.VIDEORESIZE:
-                        self.reshape((ev.w, ev.h))
-                    elif ev.type == pygame.MOUSEBUTTONDOWN:
-                        if not self.had_input:
-                            self.had_input = True
-                            self.cheat = False
-                        
-                        if ev.button == 4: # wheel forward
-                            if pygame.key.get_mods() & pygame.KMOD_CTRL:
-                                self.zoom("zoom_out", ev.pos)
-                            elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                                self.zpan(-10)
-                            else:
-                                self.zpan(-1)
-                        elif ev.button == 5: # wheel back
-                            if pygame.key.get_mods() & pygame.KMOD_CTRL:
-                                self.zoom("zoom_in", ev.pos)
-                            elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                                self.zpan(10)
-                            else:
-                                self.zpan(1)
-                        elif ev.button == 3: # RMB
+                        break
+                    elif ev.type ==  SDL_WINDOWEVENT:
+                        if ev.window.event == sdlvideo.SDL_WINDOWEVENT_RESIZED:
+                            self.reshape(Size2(ev.window.data1, ev.window.data2))
+                    elif ev.type == SDL_MOUSEBUTTONDOWN:
+                        had_input()
+                        if ev.button.button == SDL_BUTTON_RIGHT: # RMB
                             panning = True
-                        elif ev.button == 1:
+                        elif ev.button.button == SDL_BUTTON_LEFT:
                             paused = not paused
-                    elif ev.type == pygame.MOUSEBUTTONUP:
-                        if ev.button == 3:
+                    elif ev.type == SDL_MOUSEBUTTONUP:
+                        if ev.button.button == SDL_BUTTON_RIGHT:
                             panning = False
-                    elif ev.type == pygame.MOUSEMOTION:
+                    elif ev.type == SDL_MOUSEMOTION:
                         if panning:
-                            self.pan(ev.rel)
-                        
-                        self.update_mouse()
-                            
-                elapsed_ticks = pygame.time.get_ticks() - last_render_ts
+                            self.pan(Coord2(ev.motion.xrel, ev.motion.yrel))
+                    elif ev.type == SDL_MOUSEWHEEL:
+                        had_input()
+                        kmodstate = sdlkeyboard.get_mod_state()
+                        amount = -ev.wheel.y
+                        mpos = Coord2._make(sdlmouse.get_mouse_state()[1:])
+                        if kmodstate & KMOD_CTRL:
+                            if amount > 0:
+                                self.zoom("zoom_out", mpos)
+                            else:
+                                self.zoom("zoom_in", mpos)
+                        elif kmodstate & KMOD_SHIFT:
+                            self.zpan(10 * amount)
+                        else:
+                            self.zpan(1 * amount)
+
+                elapsed_ticks = sdltimer.get_ticks() - last_render_ts
                 if elapsed_ticks > render_choke:
                     break
-                pygame.time.wait(8)
-
+                sdltimer.delay(8)
     def fini(self):
-        self.opengl_fini()
+        # somehow kill entire gl context
+        pass
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', 
@@ -1021,20 +625,19 @@ def main():
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws-stdpage'])
-    ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
+    ap.add_argument('-loud', nargs='*', help="spit lots of useless info, values: gl, reshape, parser, ...", default=[])
     ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
     pa = ap.parse_args()
     
-    loud = ()
-    if pa.loud:
-        loud = ("gl", "reshape", "shaders", "parser")
+    window, context = sdl_init()
+    if "gl" in pa.loud:
+        glinfo()
 
-    rednr = Rednerer(vs=pa.vs, fs=pa.fs, loud = loud, zeddown = pa.zeddown)
-    mo = MapObject(pa.dfprefix, pa.rawsdir, loud = loud, apidir = '')
+    mo = MapObject(pa.dfprefix, pa.rawsdir, loud = pa.loud, apidir = '')
     mo.invert_tc = pa.inverty    
     mo.use_dump(pa.dump)
-    rednr.set(mo)
+    rednr = Rednerer(window, pa.vs, pa.fs, mo, pa.loud, pa.zeddown)
     if pa.zoom:
         rednr.Psz = pa.zoom
         rednr.reshape(zoompoint = (0,0))
