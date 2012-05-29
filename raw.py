@@ -1616,7 +1616,7 @@ class MapObject(object):
                 offset = self.tiles_offset, access = mmap.ACCESS_READ)
         except ValueError:
             print("fsize: {} tiles {},{} effects: {}".format(fsize, 
-                self.tiles_offset, self.tiles_size, self.effects_offset ))
+                self.tiles_offset, self.tiles_size, self.flows_offset ))
             raise
 
         print("mapdata: {}x{}x{} {}M".format(self.dim.x, self.dim.y, self.dim.z, self.tiles_size >>20))
