@@ -10,5 +10,5 @@ out vec4 frag;
 
 void main() {
     vec4 fpix = texture(hudtex,  coord);
-    frag = mix(fpix * fg, bg, 1.0 - fpix.a);
+    frag = mix(fpix * fg, bg, 1 - fpix.a);
 }
