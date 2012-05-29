@@ -219,14 +219,13 @@ class Rednerer(object):
         [1.0, 0.60, 0.45, 0.30, 0.15 ],
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
 
-    def __init__(self, window, vs, fs, gamedata, loud=[], zeddown=2):
+    def __init__(self, window, shaderset, gamedata, loud=[], zeddown=2):
         self.window = window
         self.gamedata = gamedata
-        self.hud = Hud('hud' in loud)
+        self.hud = Hud()
         self.fbo = FBO()
         self.grid = GridVAO()
-        self.grid_shader = GridShader(vs, fs, 'gl' in loud)
-        self.dumb_shader = DumbGridShader("dumb.vs", "dumb.fs", 'gl' in loud)
+        self.grid_shader = GridShader(shaderset, 'gl' in loud)
         self.tex = namedtuple("Texnames", "dispatch blitcode font screen")._make(glGenTextures(4))
         
         self.loud_gl      = 'gl' in loud
@@ -409,8 +408,7 @@ class Rednerer(object):
         self.reshape(zoom = (psz, zpos))
 
     def _render_one_grid(self, render_origin, mouse_pos, mouse_color, darken, frame_no):
-        #self.grid_shader(
-        self.dumb_shader(
+        self.grid_shader(
             grid_size = self.grid.size, 
             pszar = self.Pszar, 
             tileclass = self.gamedata.tileclass,
@@ -614,14 +612,13 @@ class Rednerer(object):
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', 
-        epilog =  "Controls:\n" + '\n'.join(CONTROLS.split('\n')[2:]) )
+        epilog =  "Controls:\n" + CONTROLS)
     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
     ap.add_argument('-zoom', metavar='px', type=int, default=None, help="set zoom at start")
     ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
-    ap.add_argument('-vs', metavar='vertex shader', default='three.vs')
-    ap.add_argument('-fs',  metavar='fragment shader', default='three.fs')
+    ap.add_argument('-ss', metavar='sname', help='shader set name', default='three')
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws-stdpage'])
@@ -637,7 +634,7 @@ def main():
     mo = MapObject(pa.dfprefix, pa.rawsdir, loud = pa.loud, apidir = '')
     mo.invert_tc = pa.inverty    
     mo.use_dump(pa.dump)
-    rednr = Rednerer(window, pa.vs, pa.fs, mo, pa.loud, pa.zeddown)
+    rednr = Rednerer(window, pa.ss, mo, pa.loud, pa.zeddown)
     if pa.zoom:
         rednr.Psz = pa.zoom
         rednr.reshape(zoompoint = (0,0))

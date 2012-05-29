@@ -28,7 +28,7 @@ distribution.
 
 """
 
-import os, sys, collections, struct, time
+import os, os.path, sys, collections, struct, time
 from collections import namedtuple
 sys.path.append('/home/lxnt/00DFGL/sdlhg/prefix/lib/python3.2/site-packages/')
 
@@ -118,13 +118,16 @@ class Shader0(object):
         Vertex attribute number 0 is always named 'position'.
                 
     """
-    def __init__(self, vs_fname, fs_fname, loud=False):
+    def __init__(self, sname=None, loud=False, sdir = 'shaders'):
         self.loud = loud
         self.aloc = { b'position': 0 }
         self.uloc = collections.defaultdict(lambda:-1)
-
-        vsp = self._compile(open(vs_fname, encoding='utf-8').readlines(), GL_VERTEX_SHADER, vs_fname)
-        fsp = self._compile(open(fs_fname, encoding='utf-8').readlines(), GL_FRAGMENT_SHADER, fs_fname)
+        if sname is None:
+            sname = self.sname
+        vsfn = os.path.join(sdir, sname) + '.vs'
+        fsfn = os.path.join(sdir, sname) + '.fs'
+        vsp = self._compile(open(vsfn, encoding='utf-8').readlines(), GL_VERTEX_SHADER, vsfn)
+        fsp = self._compile(open(fsfn, encoding='utf-8').readlines(), GL_FRAGMENT_SHADER, fsfn)
         if not (vsp and fsp):
             raise SystemExit
         
@@ -230,6 +233,7 @@ class VAO0(object):
         self._vbo = None
 
 class DumbGridShader(Shader0):
+    sname = "dumb"
     def __call__(self, grid_size, pszar, **kwargs):
         glUseProgram(self.program)
         glUniform3f(self.uloc[b'pszar'], *pszar)
@@ -256,8 +260,8 @@ class GridVAO(VAO0):
 
 class Grid(object):
     """ dumb state container atm """
-    def __init__(self, shader, size, pszar):
-        self.shader = shader
+    def __init__(self, size, pszar, loud):
+        self.shader = DumbGridShader(loud=loud)
         self.vao = GridVAO(size) 
         self.pszar = pszar
         
@@ -297,6 +301,7 @@ class HudVAO(VAO0):
         glVertexAttribIPointer(0, 4, GL_INT, 0, self._vbo) # bind data to it
 
 class HudShader(Shader0):
+    sname = "hud"
     def __call__(self, panel, winsize):
         glUseProgram(self.program)
         glActiveTexture(GL_TEXTURE0)
@@ -378,9 +383,8 @@ class HudTextPanel(object):
 
 class Hud(object):
     """ draws tinted translucent overlays with some text. """    
-
-    def __init__(self, loud = True):
-        self.shader = HudShader("hud.vs", "hud.fs")
+    def __init__(self):
+        self.shader = HudShader()
         self.panels = []
         self._vao = HudVAO()
 
@@ -718,13 +722,11 @@ def main():
     
     window, context = sdl_init()
     glinfo()
-    
-    grid_shader = DumbGridShader("py3sdl2.vs", "py3sdl2.fs", loud = True)
+        
     grid_w = int(window._w // (pszar_x*psize))
     grid_h = int(window._h // (pszar_y*psize))
     print("grid {}x{} psize {}x{}".format(grid_w, grid_h, pszar_x*psize, pszar_y*psize))
-    grid = Grid(grid_shader, size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
-    
+    grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize), loud = ['gl'])
     hud = Hud()
 
     font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
