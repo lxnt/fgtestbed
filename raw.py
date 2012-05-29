@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
 """
 https://github.com/lxnt/fgtestbed
@@ -24,12 +24,13 @@ must not be misrepresented as being the original software.
 distribution.
 
 """
-from __future__ import division
 
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
+from collections import namedtuple
 
-import pygame.image
+from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3
+import pygame2.image
 
 from tokensets import *
 
@@ -88,7 +89,7 @@ class DfapiEnum(object):
         p.StartElementHandler = self.start_element
         p.EndElementHandler = self.end_element
         p.CharacterDataHandler = self.char_data
-        p.Parse(file(fle).read())
+        p.Parse(open(fle).read())
         i = 0
         for e in self.enums:
             if e is not None:
@@ -118,9 +119,9 @@ class Pageman(object):
         self.mapping = {}
         self.pages = {}
         self.album_w = self.album_h = album_w
-        self.surf = pygame.Surface( ( album_w, album_w ), pygame.SRCALPHA, 32)
+        self.surf = rgba_surface(album_w, album_w)
         self.current_i = self.current_j = 0
-        self.max_cdim = [0,0]
+        self.max_cdim = [0, 0]
         
         self.i_span = self.album_w // 32 # shit
         
@@ -130,7 +131,7 @@ class Pageman(object):
             stdts = CelPage(None, ['std'])
             stdts.pdim = (16, 16)
             stdts.file = std_tileset
-            stdts.surf = pygame.image.load(std_tileset)
+            stdts.surf = rgba_surface(pygame2.image.load(std_tileset.encode('utf-8')))
             w,h = stdts.surf.get_size()
             stdts.cdim = (w//16, h//16)
             self.eatpage(stdts)
@@ -146,8 +147,7 @@ class Pageman(object):
                 self.mapping[(page.name.upper(), i, j)] = (self.current_i, self.current_j)
                 dx, dy = self.current_i*self.max_cdim[0], self.current_j*self.max_cdim[1]
                 sx, sy = i*page.cdim[0], j*page.cdim[1]
-                cell = pygame.Rect(sx, sy, page.cdim[0], page.cdim[1])
-                self.surf.blit(page.surf, (dx, dy), cell)
+                self.surf.blit(page.surf, (dx, dy), (sx, sy, page.cdim[0], page.cdim[1]))
                 self.current_i += 1
                 if self.current_i == self.i_span:
                     self.current_i = 0
@@ -163,7 +163,7 @@ class Pageman(object):
                 f.write("{}:{}:{} -> {}:{} \n".format(
                         k[0], k[1], k[2], self.mapping[k][0], self.mapping[k][1]))
         self.shrink()
-        pygame.image.save(self.surf, fname + '.png')
+        #pygame2.image.save(self.surf, fname + '.png')
 
     def shrink(self):
         min_h = self.max_cdim[1]*(self.current_j + 1)
@@ -176,8 +176,7 @@ class Pageman(object):
         
     def reallocate(self, plus_h):
         self.album_h  += plus_h
-        surf = pygame.Surface( ( self.album_w, self.album_h  ), pygame.SRCALPHA, 32)
-        self.surf.set_alpha(None)
+        surf = rgba_surface(self.album_w, self.album_h)
         surf.blit(self.surf, (0, 0))
         self.surf = surf
 
@@ -206,9 +205,15 @@ class Pageman(object):
         return (wt, ht, cw, ch)
     
     @property
-    def data(self):
-        "returns bytes for the resulting texture"
-        return pygame.image.tostring(self.surf, 'RGBA')
+    def surface(self):
+        return self.surf
+        
+    def __str__(self):
+        if self.max_cdim[0] == 0:
+            return "Pageman(not initialized)"
+        wt, ht, cw, ch = self.txsz
+        return "Pageman(): {}x{} {}x{} tiles, {}x{}, {}K".format(
+            wt, ht, cw, ch, wt*cw, ht*ch, wt*cw*ht*ch>>8)
 
 class BasicFrame(object):
     def __init__(self, blit, blend):
@@ -234,11 +239,6 @@ class BasicFrame(object):
     def __repr__(self):
         return self.__str__()
 
-class _context(object):
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-   
 def Inflate(tilename, material, keyframes, ctx):
     """ Converts keyframes into seqs of basicframes. """
     
@@ -360,9 +360,17 @@ class RawsParser0(object):
     loud = False
     
     def parse_file(self, fna, handler):
+        data = None
+        for enc in ('utf8', 'cp1252'):
+            try:
+                data = open(fna, encoding=enc).read()
+                break
+            except UnicodeDecodeError:
+                continue
+        if data is None:
+            raise RuntimeError("File '{}' is neither utf8 nor cp1252".format(fna))
         lnum = 0
-        for l in file(fna):
-            l = l.strip()
+        for l in map(lambda x: x.strip(), data.split('\n')):
             lnum += 1
             tokens = l.split(']')[:-1]
             for token in tokens:
@@ -1523,6 +1531,8 @@ class CreaGraphicsSet(Token):
             self.cgraphics[token.race] = token
             return True
 
+
+
 class MapObject(object):
     def __init__(self, dfprefix,  fgraws=[], apidir='', cutoff = 0, loud=[]):
         self.dispatch_dt = struct.Struct("HH") # s t GL_RG16UI - 32 bits, all used.
@@ -1574,24 +1584,22 @@ class MapObject(object):
                 print(ms)
 
         fontpath, colormap = InitParser(dfprefix).get()
-        self._pageman = Pageman(fontpath, pages = fgdef.celpages) 
+        self.pageman = Pageman(fontpath, pages = fgdef.celpages) 
             # + cgset.celpages) when creatures become supported
-        self.txsz = self._pageman.txsz
-        self.fontptr = self._pageman.data
 
-        ctx = _context( 
-            pageman = self._pageman,
+        ctx = namedtuple("ctx", "pageman colors effects")(
+            pageman = self.pageman,
             colors = colormap,
             effects = fgdef.celeffects)
         
         self._objcode = TSCompile(materialsets, fgdef.tilesets, ctx)
             
-        self.tcptr = TCCompile(self.tileresolve, fgdef.tileclasses, fgdef.tcflags)
+        self.tileclass = TCCompile(self.tileresolve, fgdef.tileclasses, fgdef.tcflags)
 
         if 'objcode' in self.loud:
             print(self._objcode)
         if 'pageman' in self.loud:
-            print(self._pageman)
+            print(self.pageman)
 
     def _map_dump(self, dumpfname):
         if self._mmap_fd:
@@ -1611,31 +1619,31 @@ class MapObject(object):
                 self.tiles_offset, self.tiles_size, self.effects_offset ))
             raise
 
-        print("mapdata: {}x{}x{} {}M".format(self.xdim, self.ydim, self.zdim, self.tiles_size >>20))
+        print("mapdata: {}x{}x{} {}M".format(self.dim.x, self.dim.y, self.dim.z, self.tiles_size >>20))
         
 
     def _parse_dump(self, dumpfname):
         self.mat_ksk = {}
         self.mat_ids = {}
         HEADER_SIZE = 264
-        dumpf = file(dumpfname)
+        dumpf = open(dumpfname)
         self.max_mat_id = -1
         # read header
         l = dumpf.readline()
         if not l.startswith("origin:"):
             raise TypeError("Wrong trousers " + l )
-        x, y, z = l[7:].strip().split(':')
-        self.xorigin, self.yorigin, self.zorigin = map(int, [x, y, z])
-        self.xorigin *= 16
-        self.yorigin *= 16
+        self.origin = Coord3._make(map(int, l[7:].strip().split(':')))
         
         l = dumpf.readline()
         if not l.startswith("extent:"):
             raise TypeError("Wrong trousers " + l )
-        x, y, z = l[7:].strip().split(':')
-        self.xdim, self.ydim, self.zdim = map(int, [x, y, z])
-        self.xdim *= 16
-        self.ydim *= 16
+        x, y, z = list(map(int, l[7:].strip().split(':')))
+        self.dim = Coord3(x*16, y*16, z)
+        
+        l = dumpf.readline()
+        if not l.startswith("window:"):
+            raise TypeError("Wrong trousers " + l )
+        self.window = Coord3._make(map(int, l[7:].strip().split(':')))
         
         l = dumpf.readline()
         if not l.startswith("tiles:"):
@@ -1645,12 +1653,12 @@ class MapObject(object):
         l = dumpf.readline()
         if not l.startswith("flows:"):
             raise TypeError("Wrong trousers " + l )
-        self.effects_offset = int(l[8:])
+        self.flows_offset = int(l[6:])
         
         # read and combine all of plaintext
         lines = dumpf.read(self.tiles_offset - dumpf.tell()).split("\n")
         
-        dumpf.seek(self.effects_offset)
+        dumpf.seek(self.flows_offset)
         lines += dumpf.read().split("\n")
         
         # parse plaintext
@@ -1720,7 +1728,7 @@ class MapObject(object):
         # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
         dispatch = bytearray(self.dispw * self.disph * self.dispatch_dt.size)
         blitcode = bytearray(self.codew * self.codeh * self.codedepth * self.blitcode_dt.size)
-        for i in xrange(self.dispw * self.disph * self.dispatch_dt.size):
+        for i in range(self.dispw * self.disph * self.dispatch_dt.size):
             dispatch[i] = 23
         
         # blitmodes:
@@ -1793,7 +1801,7 @@ class MapObject(object):
 
     @staticmethod
     def _bytearray_void_p(ba):
-        return str(ba)
+        return bytes(ba)
         return ctypes.pythonapi.PyByteArray_AsString(id(ba))
 
     @property
@@ -1807,7 +1815,7 @@ class MapObject(object):
 
     def gettile(self, posn):
         x, y, z = posn
-        offs = self.data_dt.size*(self.xdim*self.ydim*z + y*self.xdim + x)
+        offs = self.data_dt.size*(self.dim.x*self.dim.y*z + y*self.dim.x + x)
         stoti, bmabui, grass, designation = self.data_dt.unpack(self._tiles_mmap[offs:offs+self.data_dt.size])
         tile_id  = stoti & 0xffff
         mat_id   = stoti >> 16
@@ -1829,9 +1837,9 @@ class MapObject(object):
                   designation )
     
     def inside(self, x, y, z):
-        return (  (x < self.xdim) and (x >= 0 ) 
-                and  ( y < self.ydim) and (y >= 0)
-                and (z < self.zdim) and (z>= 0))
+        return (  (x < self.dim.x) and (x >= 0 ) 
+                and  ( y < self.dim.y) and (y >= 0)
+                and (z < self.dim.z) and (z>= 0))
 
     def lint(self):
         """ verifies that (most of) map tiles in the dump are drawable """
@@ -1864,16 +1872,16 @@ class MapObject(object):
 
         dispatch = dreader("HH", self.matcount, self.tiletypecount, 1, self.dispatch, self.invert_tc) #ST
         blitcode = dreader("IIII",  self.codedepth, self.codew, self.codew, self.blitcode, self.invert_tc) #CstMdBgFg
-        mapdump = dreader("IIII", self.xdim, self.ydim, self.zdim, self._tiles_mmap) # 'stoti bmabui grass designation'.
-        cent = self.xdim*self.ydim*self.zdim/100
+        mapdump = dreader("IIII", self.dim.x, self.dim.y, self.dim.z, self._tiles_mmap) # 'stoti bmabui grass designation'.
+        cent = self.dim.x*self.dim.y*self.dim.z/100
         num = 0
         oks = {}
         fails = {}
         try:
-            for _z in xrange(self.zdim):
-                z = (self.zdim - 1) - _z # go from top to bottom
-                for y in xrange(self.ydim):
-                    for x in xrange(self.xdim):
+            for _z in xrange(self.dim.z):
+                z = (self.dim.z - 1) - _z # go from top to bottom
+                for y in xrange(self.dim.y):
+                    for x in xrange(self.dim.x):
                         if num % (5*cent) == 0:
                             print("{: 2d}%".format(int(num/cent)))
                             if num/cent > 23:
@@ -1904,6 +1912,44 @@ class MapObject(object):
         for eka in fails.keys():
             print("{} {} {} {}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]]))
             
+class Designation(object):
+    def __init__(self, u32):
+        self.level              =  u32 &   7
+        self.pile               = (u32 >>  3) & 1
+        self.dig                = (u32 >>  4) & 7
+        self.smooth             = (u32 >>  7) & 3
+        self.hidden             = (u32 >>  9) & 1
+        self.geolayer           = (u32 >> 10) & 15
+        self.light              = (u32 >> 14) & 1
+        self.subter             = (u32 >> 15) & 1
+        self.outside            = (u32 >> 16) & 1
+        self.biome              = (u32 >> 17) & 15
+        self.ltype              = (u32 >> 21) & 1
+        self.aquifer            = (u32 >> 22) & 1
+        self.rained             = (u32 >> 23) & 1
+        self.traffic            = (u32 >> 24) & 3
+        self.flow_forbid        = (u32 >> 26) & 1
+        self.liquid_static      = (u32 >> 27) & 1
+        self.feat_local         = (u32 >> 28) & 1
+        self.feat_global        = (u32 >> 29) & 1
+        self.stagnant           = (u32 >> 30) & 1
+        self.salt               = (u32 >> 31) & 1
+        
+    def __str__(self):
+        rv = []
+        if self.level > 0:
+            rv.append([ '', 'stagnant'][self.stagnant])
+            rv.append([ '', 'salt'][self.salt])
+            rv.append(['water', 'magma'][self.ltype])
+            rv.append('level {}'.format(self.level))
+        rv.append(['dark', 'light'][self.light])
+        rv.append(['inside', 'outside'][self.outside])
+        rv.append(['', 'subter'][self.subter])
+        rv.append(['', 'rained'][self.light])
+        rv.append(['', 'aquifer'][self.aquifer])
+        rv.append(['', 'hidden'][self.hidden])
+        
+        return ' '.join(rv)
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
@@ -1924,7 +1970,7 @@ def main():
     disdump = file(pa.disdump, 'w') if pa.disdump else None
     bcdump =  file(pa.bcdump, 'w') if pa.bcdump else None
     
-    pygame.display.init()
+    sdl_offscreen_init()
     
     mo = MapObject(     
         dfprefix = pa.dfprefix,
