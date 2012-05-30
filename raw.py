@@ -29,7 +29,7 @@ import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
 from collections import namedtuple
 
-from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3
+from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, bar2voidp
 import pygame2.image
 
 from tokensets import *
@@ -1793,21 +1793,17 @@ class MapObject(object):
 
     @property
     def codeptr(self):
-        return self._bytearray_void_p(self.blitcode)
+        return bar2voidp(self.blitcode)
 
     @property
     def disptr(self):
-        return self._bytearray_void_p(self.dispatch)
-
-    @staticmethod
-    def _bytearray_void_p(ba):
-        return bytes(ba)
-        return ctypes.pythonapi.PyByteArray_AsString(id(ba))
+        return bar2voidp(self.dispatch)
 
     @property
     def mapptr(self):
-        """ will crash on python debug build """
         PyObject_HEAD = [ ('ob_refcnt', ctypes.c_size_t), ('ob_type', ctypes.c_void_p) ]
+        PyObject_HEAD_debug = PyObject_HEAD + [
+            ('_ob_next', ctypes.c_void_p), ('_ob_prev', ctypes.c_void_p), ]
         class mmap_mmap(ctypes.Structure):
             _fields_ = PyObject_HEAD + [ ('data', ctypes.c_void_p), ('size', ctypes.c_size_t) ]
         guts = mmap_mmap.from_address(id(self._tiles_mmap))

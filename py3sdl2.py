@@ -72,7 +72,7 @@ def bar2voidp(bar):
     return ctypes.c_void_p(ctypes.pythonapi.PyByteArray_AsString(id(bar)))
 
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
-rgba_surface 
+rgba_surface bar2voidp
 glinfo upload_tex2d upload_tex2da gldump
 Shader0 VAO0
 HudTextPanel Hud
