@@ -37,7 +37,7 @@ distribution.
 from __future__ import division
 
 import sys, time, math, struct, io, ctypes, zlib, ctypes, copy
-import argparse, traceback, os, types, mmap
+import argparse, traceback, os, types, mmap, logging
 
 from raw import MapObject, Designation
 from py3sdl2 import * 
@@ -126,6 +126,7 @@ class RendererPanel(HudTextPanel):
             "origin: {origin.x}:{origin.y}:{origin.z} grid: {grid.w}x{grid.h} map: {map.x}x{map.y}x{map.z}",
             "pszar: {pszar.x:.2f} {pszar.y:.2f} {pszar.z};  {psz.x}x{psz.y} px",
             "map_viewport: {viewport.x:02d} {viewport.y:02d} {viewport.w:d} {viewport.h:d}",
+            "fbo_size={fbosize.w:d}:{fbosize.h:d} win_size={winsize.w:d}:{winsize.h:d}",
             "{debug} {showhidden}", 
         )
         self.active = True
@@ -154,7 +155,11 @@ class MousePanel(HudTextPanel):
         # maxlen of tile-type is 25
         strs = (
             "color: #{color:08x}",
-            "x={posn.x:03d} y={posn.y:03d} z={posn.z:03d} gx={grid.x:03d} gy={grid.y:03d}", # max 31
+            "win_mp={win_mp.x:d}:{win_mp.y:d}",
+            "fbo_mp: {fbo_mp.x:d}:{fbo_mp.y:d}",
+            "grid_mp: {grid.x:03d}:{grid.y:03d}",
+            "dffb_mp: {dffb.x:.2f}:{dffb.y:.2f}",
+            "map_mp: {posn.x:03d}:{posn.y:03d}:{posn.z:03d}",
             "{designation}",
             "mat:  {mat[0]: 3d} ({mat[1]})",
             "bmat:  {bmat[0]: 3d} ({bmat[1]})",
@@ -168,7 +173,8 @@ class MousePanel(HudTextPanel):
         self._data = {}
         super(MousePanel, self).__init__(font, strs, longest_str)
 
-    def update(self, win, renderer_panel, renderer, fbo_mouse_pos, grid_mouse_pos, map_mouse_pos):
+    def update(self, win, renderer_panel, renderer, win_mouse_pos, 
+                fbo_mouse_pos, grid_mouse_pos,grid_mouse_pos_f, map_mouse_pos):
         gamedata = renderer.gamedata
         fbo = renderer.fbo
         
@@ -185,6 +191,9 @@ class MousePanel(HudTextPanel):
             'color': color,
             'posn': map_mouse_pos,
             'grid': grid_mouse_pos,
+            'dffb': grid_mouse_pos_f,
+            'fbo_mp': fbo_mouse_pos,
+            'win_mp': win_mouse_pos,
             'tile': tile,
             'mat': material,
             'btile': btile,
@@ -212,6 +221,12 @@ class CheatPanel(HudTextPanel):
         self.moveto(Coord2((win.w - self.rect.w)//2, (win.h - self.rect.h)//2))
 
 class Rednerer(object):
+    _overdraw = 3 # a constant, can't be less than 3 and better be even
+    # due to the panning algorithm, and no sense in making it more than 3 either
+    # With 3 there's always a neighbouring tile drawn to any visible one.
+    # Since grid is sized based on viewport size modulo tile size, this
+    # guarantees that all visible tiles are drawn.
+    
     _zdtab = [  # darkening coefficients for drawing multiple z-levels.
         [1.0],
         [1.0, 0.50 ],
@@ -234,6 +249,7 @@ class Rednerer(object):
         self._zeddown = zeddown
         self.anim_fps = 12
         self.cutoff_frame = gamedata.codedepth - 1
+        self.min_psz = 3
         self.max_psz = 1024
         
         self.fps = EmaFilter()
@@ -247,8 +263,6 @@ class Rednerer(object):
         self.hp_renderer = RendererPanel(font) 
         self.hp_mouse = MousePanel(font)
         self.hp_cheat = CheatPanel(font)
-        
-        self.overdraw = 4 # number of tiles the fbo is larger than window.
         
         self.render_origin = gamedata.window
         self.map_viewport = Rect(0, 0, window._w, window._h)
@@ -300,9 +314,9 @@ class Rednerer(object):
         """ converts window coordinates (pixels, SDL coordinate system) 
             to fractional tile coordinates relative to render_origin 
             (tiles, DF coordinate system) """
-        grid_h = self.grid.size.h
         psz = self.psz
-        
+        grid_h = self.grid.size.h
+       
         glfb = self.win2glfb(win)
         dffb = Coord2(glfb.x / psz.x, grid_h - glfb.y / psz.y)
         return dffb
@@ -313,7 +327,7 @@ class Rednerer(object):
         grid_h = self.grid.size.h
         psz = self.psz
         
-        glfb = Coord2(dffb.x*psz.x, (grid_h - dffb.y) * psz.y)
+        glfb = Coord2(dffb.x * psz.x, (grid_h - dffb.y) * psz.y)
         glwin = Coord2(glfb.x - self.map_viewport.x, glfb.y - self.map_viewport.y)
         win = Coord2(int(glwin.x), int(win_h - glwin.y))
         return win
@@ -346,12 +360,13 @@ class Rednerer(object):
         # code common to both zoom and resize:
         # calculate new grid size
         psz = self.psz
-        newgrid = Size2( self.map_viewport.w // psz.x + self.overdraw, 
-                         self.map_viewport.h // psz.y + self.overdraw)
-        print("reshape({}, {}): newgrid = {} (map_vp={} Pszar={} psz={})".format(winsize, zoom, newgrid, self.map_viewport, self.Pszar, self.psz))
+        gridsz = Size2(self.map_viewport.w // psz.x + self._overdraw * 2, 
+                       self.map_viewport.h // psz.y + self._overdraw * 2)
+        print("reshape({}, {}): newgrid={} (map_vp={} Pszar={} psz={})".format(
+                winsize, zoom, gridsz, self.map_viewport, self.Pszar, self.psz))
         # resize both the grid and the fbo
-        self.grid.resize(newgrid)
-        self.fbo.resize(Size2(newgrid.w*psz.x, newgrid.h*psz.y))
+        self.grid.resize(gridsz)
+        self.fbo.resize(Size2(gridsz.w*psz.x, gridsz.h*psz.y))
 
         if zoom:
             # now convert post_zp back to window coordinates
@@ -364,37 +379,48 @@ class Rednerer(object):
         self.pan(pan)
 
     def pan(self, rel):
-        vpx, vpy = self.map_viewport.x, self.map_viewport.y
-        xpad = self.psz.x*self.overdraw
-        ypad = self.psz.y*self.overdraw
-        
+        """ keeps map viewport position somewhere
+            in the inner third of the overdraw, which is the tile
+            with grid coordinates (1,1) for an overdraw of 3 """
+            
+        plog = logging.getLogger('fgt.pan').warn
+
+        xpad = self.psz.x*self._overdraw//3
+        ypad = self.psz.y*self._overdraw//3
         x, y = self.render_origin.x, self.render_origin.y
 
-        vpx -= rel.x
-        vpy += rel.y        
+        plog("pan mvp={} rel={}".format(self.map_viewport, rel))
+        vpx = self.map_viewport.x - rel.x # viewport shift
+        vpy = self.map_viewport.y + rel.y # in opengl window CS
         
         if vpx > 2 * xpad:
-            delta = vpx - 2 * xpad 
-            x += delta // xpad + 1
-            vpx = delta % xpad + xpad
-            
+            delta = (vpx - 2 * xpad) // self.psz.x + 1 # overshoot in tiles
+            plog("vpx>2xpad {}>{} delta={}".format(vpx, 2*xpad, delta))
+            x += delta # move origin thus many tiles
+            vpx -= delta * self.psz.x # compensate
         elif vpx < xpad:
-            delta = xpad - vpx
-            x -= delta // xpad + 1
-            vpx = 2*xpad - abs(delta) % xpad
-    
+            delta = (xpad - vpx) // self.psz.x + 1
+            plog("vpx<xpad {}<{} delta={}".format(vpx, xpad, delta))
+            x -= delta
+            vpx += delta * self.psz.x
+
+        # here the delta sign is inverted when moving render origin
+        # because df grid coordinate system's y axis direction is 
+        # opposite to GL window one.
         if vpy > 2 * ypad:
-            delta = vpy - 2*ypad
-            y += delta // ypad + 1
-            vpy = delta % ypad + ypad
-
-        elif vpy <  ypad:
-            delta = ypad - vpy
-            y -= delta // ypad + 1
-            vpy = 2*ypad - abs(delta) % ypad
-
+            delta = (vpy - 2 * ypad) // self.psz.y + 1
+            plog("vpy>2ypad {}>{} delta={}".format(vpy, 2*ypad, delta))
+            y -= delta
+            vpy -= delta * self.psz.y
+        elif vpy < ypad:
+            delta = (ypad - vpy) // self.psz.y + 1
+            plog("vpy<ypad {}<{} delta={}".format(vpy, ypad, delta))
+            y += delta
+            vpy += delta * self.psz.y
+            
         self.map_viewport = self.map_viewport._replace(x=vpx, y=vpy)
         self.render_origin = self.render_origin._replace(x=x, y=y)
+        plog("pan result mvp={} ro={}".format(self.map_viewport, self.render_origin))
 
     def zoom(self, zcmd, zpos = None):
         if zcmd == 'zoom_in' and self.Pszar.z > 1:
@@ -405,7 +431,8 @@ class Rednerer(object):
             psz = max(self.txsz[2], self.txsz[3])
         if zpos is None:
             zpos = Coord2( self.window._w // 2, self.window._h // 2 )
-        self.reshape(zoom = (psz, zpos))
+        if psz >= self.min_psz and psz <= self.max_psz:
+            self.reshape(zoom = (psz, zpos))
 
     def _render_one_grid(self, render_origin, mouse_pos, mouse_color, darken, frame_no):
         self.grid_shader(
@@ -435,7 +462,10 @@ class Rednerer(object):
         win_mouse_pos = Coord2._make(sdlmouse.get_mouse_state()[1:])
         fbo_mouse_pos = self.win2glfb(win_mouse_pos)
         grid_mouse_pos_f = self.win2dffb(win_mouse_pos)
-        grid_mouse_pos = Coord2._make(map(int, grid_mouse_pos_f))
+        # TODO: describe the +1 fudge factor.
+        # It has to do with glfb - grid conversion which depends somehow
+        # on glfb.y/psz.y being floor()-ed or ceil()-ed. 
+        grid_mouse_pos = Coord2(int(grid_mouse_pos_f.x),int(grid_mouse_pos_f.y) + 1)
         map_mouse_pos = Coord3(self.render_origin.x + grid_mouse_pos.x, 
             self.render_origin.y + grid_mouse_pos.y, self.render_origin.z)
         
@@ -455,17 +485,18 @@ class Rednerer(object):
             
             self._render_one_grid(render_origin, grid_mouse_pos, mouse_color, darken, frame_no)
 
-        #self.fbo.blit(self.map_viewport)
-        self.fbo.blit(Rect(0,0,self.window._w, self.window._h))
+        self.fbo.blit(self.map_viewport)
         panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat ]
 
         self.hp_renderer.update(self.winsize, self.map_viewport,
             gfps = self.fps.value(self.last_render_time), anim_fps = self.anim_fps, frame_no = frame_no,
             origin = self.render_origin, grid = self.grid.size, map = self.gamedata.dim,
             pszar = self.Pszar, psz = self.psz, 
+            winsize = self.winsize, fbosize = self.fbo.size,
             debug_active = self.debug_active, show_hidden = self.show_hidden)
             
-        self.hp_mouse.update(self.winsize, self.hp_renderer, self, fbo_mouse_pos, grid_mouse_pos, map_mouse_pos)
+        self.hp_mouse.update(self.winsize, self.hp_renderer, self, 
+            win_mouse_pos, fbo_mouse_pos, grid_mouse_pos, grid_mouse_pos_f, map_mouse_pos)
         self.hp_cheat.update(self.winsize)
         self.hud.reshape(self.winsize)
         self.hud.render(panels)
