@@ -484,7 +484,6 @@ class Rednerer(object):
                 continue
             render_origin = self.render_origin._replace(z = i + zed)
             darken = zd[-i]
-            
             self._render_one_grid(render_origin, grid_mouse_pos, mouse_color, darken, frame_no)
 
         self.fbo.blit(self.map_viewport)
