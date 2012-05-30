@@ -20,16 +20,12 @@ void borderglow(inout vec4 color, in vec4 border_color) {
 
 void main() {
     vec2 pc = gl_PointCoord/pszar.xy;
-    if ((pc.x > 1.0) || (pc.y > 1.0))
+    if ((pc.x > 1.0) || (pc.y > 1.0) || (stuff.x == -1))
         discard;
     
-    int mouse   = stuff.z;
-
+    int mouse = stuff.z;
     vec4 color = vec4(gl_PointCoord, 0, 1);
-    
     if (mouse > 0)
 	borderglow(color, mouse_color);
-	
-	
     frag = color;
 }

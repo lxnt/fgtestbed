@@ -76,7 +76,7 @@ CONTROLS = """\
     Left mouse button, Space:   toggle animation"""
 
 class GridShader(Shader0):
-    def __call__(self, 
+    def __call__(self, map_size,
             grid_size, pszar, tileclass, 
             tex, txsz,
             render_origin,
@@ -86,7 +86,8 @@ class GridShader(Shader0):
         
         glUseProgram(self.program)
 
-        glUniform2i(self.uloc[b'grid'], *grid_size)
+        glUniform3i(self.uloc[b'mapsize'], *map_size)
+        glUniform2i(self.uloc[b'gridsize'], *grid_size)
         glUniform3i(self.uloc[b"origin"], *render_origin)
         glUniform3f(self.uloc[b'pszar'], *pszar)
         glUniform4i(self.uloc[b"txsz"], *txsz )  # tex size in tiles, tile size in texels
@@ -436,6 +437,7 @@ class Rednerer(object):
 
     def _render_one_grid(self, render_origin, mouse_pos, mouse_color, darken, frame_no):
         self.grid_shader(
+            map_size = self.gamedata.dim,
             grid_size = self.grid.size, 
             pszar = self.Pszar, 
             tileclass = self.gamedata.tileclass,
