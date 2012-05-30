@@ -28,7 +28,7 @@ distribution.
 
 """
 
-import os, os.path, sys, collections, struct, time
+import os, os.path, sys, collections, struct, time, ctypes, logging
 from collections import namedtuple
 sys.path.append('/home/lxnt/00DFGL/sdlhg/prefix/lib/python3.2/site-packages/')
 
@@ -52,9 +52,8 @@ import pygame2.image as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
-
+#OpenGL.FULL_LOGGING = True
 from OpenGL.GL import *
-from OpenGL.arrays import vbo
 from OpenGL.GL.shaders import *
 from OpenGL.GLU import *
 from OpenGL.GL.ARB import shader_objects
@@ -66,6 +65,11 @@ from OpenGL.error import GLError
 
 from glname import glname as glname
 from sdlenums import *
+
+ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
+
+def bar2voidp(bar):
+    return ctypes.c_void_p(ctypes.pythonapi.PyByteArray_AsString(id(bar)))
 
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
 rgba_surface 
@@ -82,7 +86,7 @@ Rect = namedtuple('Rect', 'x y w h')
 Size2 = namedtuple('Size2', 'w h')
 Size3 = namedtuple('Size3', 'w h d')
 GLColor = namedtuple('GLColor', 'r g b a')
-
+VertexAttr = namedtuple('VertexAttr', 'index size type stride offset')
 def upload_tex2d(txid, informat, tw, th, dformat, dtype, dptr):
     glBindTexture(GL_TEXTURE_2D, txid)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -99,7 +103,7 @@ def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr):
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)   
-
+    
 class Shader0(object):
     """ shader base class.
         
@@ -191,42 +195,54 @@ class VAO0(object):
         a VAO with a single VBO and w/o elements.
     """
     _primitive_type = None # GL_POINTS or whatever
-
+    _data_type = None # struct.Struct(something)
+    _attrs = None
+    
     def __init__(self):
+        glcalltrace("{}.{}()".format(self.__class__.__name__, '__init__'))
         self._vao_name = glGenVertexArrays(1)
-        self._vbo = None
-        self._num = None
-        
+        self._vbo_name = glGenBuffers(1)
+        self._count = 0
+        self._data = bytearray(32)
+    
+    def _create(self):
+        glcalltrace("{}.{}()".format(self.__class__.__name__, '_create'))
+        glBindVertexArray(self._vao_name)
+        glBindBuffer(GL_ARRAY_BUFFER, self._vbo_name)
+        for a in self._attrs:
+            glEnableVertexAttribArray(a.index)
+            glVertexAttribIPointer(a.index, a.size, a.type, 
+                a.stride, ctypes.c_void_p(a.offset))
+    
     def __len__(self):
-        return self._num
+        return self._count
     
     def __call__(self):
-        glBindVertexArray(self._vao_name) # use it
-        glDrawArrays(self._primitive_type, 0, len(self))        
+        glcalltrace("{}.{}()".format(self.__class__.__name__, '__call__'))
+        glBindVertexArray(self._vao_name)
+        glDrawArrays(self._primitive_type, 0, self._count)
 
-    def update_vbo(self, dtype, data, num = None):
-        N = self._num = len(data) if num is None else num
-
-        dt = struct.Struct(dtype)
-        barr = bytearray(N*dt.size)
+    def update(self, attrs, count = None):
+        glcalltrace("{}.{}()".format(self.__class__.__name__, 'update'))
+        count = len(attrs) if count is None else count
+        grew = count > self._count
+        self._count = count
+        data_size = count * self._data_type.size
+        if data_size > len(self._data):
+            self._data.extend(0 for i in range(data_size - len(self._data)))
         i = 0
-        for d in data:
-            offs = i * dt.size
-            barr[offs:offs + dt.size] = dt.pack(*d)
+        for d in attrs:
+            offs = i * self._data_type.size
+            self._data[offs:offs + self._data_type.size] = self._data_type.pack(*d)
             i += 1
 
-        if self._vbo is None:
-            glBindVertexArray(self._vao_name) # modify it
-            self._vbo = vbo.VBO(bytes(barr), usage=GL_STATIC_DRAW)
-            self._vbo.bind()
-            self.set_va_ptrs()
-            glBindVertexArray(0) # guard against stray modifications
+        data_ptr = bar2voidp(self._data)
+        glBindBuffer(GL_ARRAY_BUFFER, self._vbo_name)
+        if grew:
+            glBufferData(GL_ARRAY_BUFFER, data_size, data_ptr, GL_DYNAMIC_DRAW)
+            self._create()
         else:
-            self._vbo.set_array(bytes(barr))
-            self._vbo.copy_data()
-    
-    def set_va_ptrs():
-        raise NotImplemented
+            glBufferSubData(GL_ARRAY_BUFFER, 0, data_size, data_ptr)
 
     def fini(self):
         glDeleteVertexArrays(1, self._vao_name)
@@ -241,28 +257,22 @@ class DumbGridShader(Shader0):
 
 class GridVAO(VAO0):
     _primitive_type = GL_POINTS
+    _data_type = struct.Struct('II')
+    _attrs = (VertexAttr( 0, 2, GL_INT, 0, 0 ),)
 
-    def __init__(self, size = None):
-        super(GridVAO, self).__init__()
-        if size is not None:
-            self.resize(size)
-        
     def resize(self, size):
         w, h = self.size = size
-        self.update_vbo("II", iter( (i%w, i//w) for i in range(w*h) ), w*h)
+        self.update(iter( (i%w, i//w) for i in range(w*h) ), w*h)
 
-    def set_va_ptrs(self):
-        glEnableVertexAttribArray(0) # make sure this attr is enabled
-        glVertexAttribIPointer(0, 2, GL_INT, 0, self._vbo) # bind data to the position
-        
     def __str__(self):
-        return "GridVAO(size={} num={})".format(self.size, self._num)
+        return "GridVAO(size={} num={})".format(self.size, self._count)
 
 class Grid(object):
     """ dumb state container atm """
     def __init__(self, size, pszar, loud):
         self.shader = DumbGridShader(loud=loud)
-        self.vao = GridVAO(size) 
+        self.vao = GridVAO()
+        self.vao.resize(size)
         self.pszar = pszar
         
     def render(self):
@@ -285,20 +295,16 @@ class Grid(object):
 class HudVAO(VAO0):
     """ a quad -> TRIANGLE_STRIP """
     _primitive_type = GL_TRIANGLE_STRIP
-    
-    def update(self, panel):
-        rect = panel.rect
-        cps = ( # hmm. texture coords are inverted? 
+    _data_type = struct.Struct("IIII")
+    _attrs = (VertexAttr( 0, 4, GL_INT, 0, 0 ),)    
+
+    def set(self, rect):
+        self.update(( # hmm. texture coords are inverted? 
             ( rect.x,          rect.y,          0, 1 ), # bottom left
             ( rect.x + rect.w, rect.y,          1, 1 ), # bottom right
             ( rect.x,          rect.y + rect.h, 0, 0 ), # top left
             ( rect.x + rect.w, rect.y + rect.h, 1, 0 )) # top right
-        
-        self.update_vbo("IIII", cps)
-
-    def set_va_ptrs(self):
-        glEnableVertexAttribArray(0) # make sure this attr is enabled
-        glVertexAttribIPointer(0, 4, GL_INT, 0, self._vbo) # bind data to it
+        )
 
 class HudShader(Shader0):
     sname = "hud"
@@ -334,7 +340,7 @@ class HudTextPanel(object):
         self.surface = rgba_surface(width, height)
         self._surface_dirty = True
         self.active = True
-        self.rect = Rect(0,0,width,height)
+        self.rect = Rect(0, 0, width, height)
 
     def __str__(self):
         return "{}({})".format(self.__class__.__name__, self.rect)
@@ -391,7 +397,7 @@ class Hud(object):
     def render(self, panels):
         for p in panels:
             if p.active:
-                self._vao.update(p)
+                self._vao.set(p.rect)
                 self.shader(p, self.winsize)
                 self._vao()
         
@@ -529,6 +535,9 @@ def glinfo():
                 raise
             print("{0}: {1}".format(t[2], "invalid enumerant"))
 
+def glcalltrace(s):
+    s = "{0} {1} {0}".format("*" * 16, s)
+    logging.getLogger('OpenGL.calltrace' ).info(s)
 def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     sdl.init(sdl.SDL_INIT_VIDEO)
     posn = (sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY, sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY)
@@ -700,25 +709,32 @@ def loop(window, bg_color, fbo_color, grid, hud, panels):
                 if event.button.button == sdlmouse.SDL_BUTTON_LEFT and event.button.state == sdlevents.SDL_PRESSED:
                     for s in stuff:
                         s.click((event.button.x, event.button.y))
+        glcalltrace("frame")
         glClearColor(*bg_color)
         glClear(GL_COLOR_BUFFER_BIT)
         
+        glcalltrace("fbo.bind()")
         fbo.bind(fbo_color)
+        
+        glcalltrace("grid.render()")
         grid.render()
+        
+        glcalltrace("fbo.blit()")
         fbo.blit(Rect(0,0,window._w, window._h))
         
+        glcalltrace("hud.render()")
         hud.render(panels)
+
         sdl_flip(window)
-        gldump()
-        
-        time.sleep(0.1)
+        #gldump()
+        time.sleep(0.5)
 
 def main():
     psize = int(sys.argv[1]) if len(sys.argv) > 1 else 128
     pszar_x = 0.8
     pszar_y = 1.0
-    bg_color = ( 0.23, 0.42, 0.08, 1 )
-    fbo_color = ( 0.42, 0.08, 0.23, 1 )
+    bg_color = ( 0,1,0,1 )
+    fbo_color = ( 1,0,0,1 )
     
     window, context = sdl_init()
     glinfo()
@@ -730,12 +746,13 @@ def main():
     hud = Hud()
 
     font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
-    p0 = HudTextPanel(font, [ "Yokarny Babai" ])
-    p0.moveto(Coord2(100, 400))
-    p1 = HudTextPanel(font, [ "Skoromorkovka" ])
-    p1.moveto(Coord2(400, 100))
+    panels = []
+    panels.append(HudTextPanel(font, [ "Yokarny Babai" ]))
+    panels[0].moveto(Coord2(100, 400))
+    panels.append(HudTextPanel(font, [ "Skoromorkovka" ]))
+    panels[1].moveto(Coord2(400, 100))
     hud.reshape(Size2(window._w, window._h))
-    loop(window, bg_color, fbo_color, grid, hud, [p0, p1])
+    loop(window, bg_color, fbo_color, grid, hud, panels)
     sdl_fini()
     return 0
 
