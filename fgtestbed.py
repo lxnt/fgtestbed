@@ -77,7 +77,7 @@ CONTROLS = """\
 
 class GridShader(Shader0):
     def __call__(self, map_size,
-            grid_size, pszar, tileclass, 
+            grid_size, pszar, tileflags, 
             tex, txsz,
             render_origin,
             mouse_pos, mouse_color,
@@ -102,7 +102,7 @@ class GridShader(Shader0):
         
         # ati vs nvidia :(
         tc_uloc = self.uloc[b"tileclass"] if self.uloc[b"tileclass"] != -1 else self.uloc[b"tileclass[0]"]
-        glUniform1iv(tc_uloc, len(tileclass), tileclass)
+        glUniform1iv(tc_uloc, tileflags.w, tileflags.ptr)
         
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, tex.dispatch)
@@ -187,7 +187,7 @@ class MousePanel(HudTextPanel):
     
         self.active = True
         self._surface_dirty = True
-        material, tile, bmat, btile, grass, designation = gamedata.gettile(map_mouse_pos)
+        material, tile, bmat, btile, grass, designation, flags = gamedata.gettile(map_mouse_pos)
         self._data.update({
             'color': color,
             'posn': map_mouse_pos,
@@ -270,16 +270,16 @@ class Rednerer(object):
         
         gamedata.pageman.surface.upload_tex2d(self.tex.font)
         upload_tex2d(self.tex.dispatch, GL_RG16UI,
-            gamedata.matcount, gamedata.tiletypecount, 
-            GL_RG_INTEGER , GL_UNSIGNED_SHORT, gamedata.disptr)
+            gamedata.dispatch.w, gamedata.dispatch.h, 
+            GL_RG_INTEGER, GL_UNSIGNED_SHORT, gamedata.dispatch.ptr)
         
         upload_tex2da(self.tex.blitcode, GL_RGBA32UI,
-            gamedata.codew, gamedata.codew, gamedata.codedepth,
-            GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.codeptr )
+            gamedata.blitcode.w, gamedata.blitcode.h, gamedata.blitcode.d,
+            GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.blitcode.ptr )
             
         upload_tex2da(self.tex.screen, GL_RGBA32UI,
-               gamedata.dim.x, gamedata.dim.y, gamedata.dim.z,
-               GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapptr)            
+               gamedata.mapdata.w, gamedata.mapdata.h, gamedata.mapdata.d,
+               GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapdata.ptr)            
 
         self.txsz = txsz = gamedata.pageman.txsz
         print(txsz)
@@ -298,6 +298,7 @@ class Rednerer(object):
         self.winsize = Size2(window._w, window._h)
         self.reshape(winsize = self.winsize)
         print(self.grid, self.winsize, txsz)
+        gldump()
     
     @property
     def psz(self):
@@ -440,7 +441,7 @@ class Rednerer(object):
             map_size = self.gamedata.dim,
             grid_size = self.grid.size, 
             pszar = self.Pszar, 
-            tileclass = self.gamedata.tileclass,
+            tileflags = self.gamedata.tileflags,
             tex = self.tex,
             txsz = self.txsz,
             render_origin = render_origin,

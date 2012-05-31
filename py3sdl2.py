@@ -28,7 +28,7 @@ distribution.
 
 """
 
-import os, os.path, sys, collections, struct, time, ctypes, logging
+import os, os.path, sys, collections, struct, time, ctypes, logging, mmap
 from collections import namedtuple
 sys.path.append('/home/lxnt/00DFGL/sdlhg/prefix/lib/python3.2/site-packages/')
 
