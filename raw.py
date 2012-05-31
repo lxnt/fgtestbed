@@ -28,13 +28,26 @@ distribution.
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
 import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
 from collections import namedtuple
+import lxml.etree
 
-from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, bar2voidp
+from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, CArray
 import pygame2.image
 
 from tokensets import *
 
-DEFAULT_GRASS_COLOR = (2, 0, 1) # light-green
+# tileflags:
+TCF_GRASS = 1
+TCF_FAKEFLOOR = 2
+TCF_TRUEFLOOR = 4
+TCF_VOID = 8
+TCF_UNKNOWN = 16
+TCF_PLANT = 32
+
+# blitmodes:
+BM_NONE = 0
+BM_ASIS = 1
+BM_CLASSIC = 2
+BM_FGONLY = 3
 
 class ParseError(Exception):
     pass
@@ -111,6 +124,110 @@ class DfapiEnum(object):
                 return "-no-data-"
         else:
             return self.emap[key.upper()]
+
+
+def flag_tiles(dfapipath):
+    """
+    Okay. Tileclasses/flags.
+    What do we need:
+     - is_grass flag : to select grass mat
+     - needs_fakefloor flag: to know we've got to fake a floor for this tile
+     - is_floor flag : for faking floors by looking at neighbours; for floor melding
+     - is_openspace : for drawing open space as open, see
+     
+     most of this can be inferred from the df.tile-types.xml contents.
+     
+    """
+
+    class enum_t(object):
+        def __init__(self, e, typedict):
+            self._names = {}
+            self._values = {}
+            self.name = e.get('type-name')
+            #print("\n\n{}\n\n".format(self.name))
+            attrtypes = { 'name': None, 'value': None }
+            for ea in lxml.etree.XPath('enum-attr')(e):
+                attrtypes[ea.get('name')] = ( typedict[ea.get('type-name', None)], ea.get('default-value') )
+            
+            nt = namedtuple(self.name, attrtypes.keys())
+            
+            i = 0
+            for ei in lxml.etree.XPath('enum-item')(e):
+                try:
+                    i = int(ei.get('value'))
+                except:
+                    pass
+                attvals = dict.fromkeys(attrtypes, None)
+                attvals['name'] = ei.get('name')
+                attvals['value'] = i
+                for ia in lxml.etree.XPath('item-attr')(ei):
+                    aname = ia.get('name')
+                    atype = attrtypes[aname][0]
+                    avalue = ia.get('value')
+                    #print(aname, atype, avalue, atype(avalue))
+                    attvals[aname] = atype(avalue)
+                for aname, avalue in attvals.items():
+                    if aname != 'name' and avalue is None:
+                        atype = attrtypes[aname][0]
+                        adefval = attrtypes[aname][1]
+                        attvals[aname] = atype(adefval)
+                #print(repr(attvals), nt(**attvals), "\n")
+                self._names[attvals['name']] = self._values[attvals['value']] = nt(**attvals)
+                i += 1
+            
+            typedict[self.name] = lambda x: self[x]
+            
+        def __getitem__(self, val):
+            if isinstance(val, int):
+                return self._values[val]
+            elif isinstance(val, str):
+                return self._names[val]
+            else:
+                raise TypeError("can't lookup with {}".repr(val))
+
+    def parse_tiletypes(fname):
+        parser = lxml.etree.XMLParser(remove_blank_text = True)
+        root = lxml.etree.parse(fname, parser).getroot()
+        for e in root.iter():
+            if isinstance(e, lxml.etree._Comment):
+                e.getparent().remove(e)
+            else:
+                e.tail = e.text = None
+
+        typedict = { 
+            None: lambda s: s,
+            'bool': lambda s: True if s == 'true' else False 
+        }
+        for e in lxml.etree.XPath('enum-type')(root):
+            rv = enum_t(e, typedict)
+
+        return rv
+        
+    def flag_a_tile(tt):
+        flags = 0
+        if tt.name is None:
+            return TCF_UNKNOWN
+        
+        if tt.name.startswith('Grass'):
+            flags = flags | TCF_GRASS
+        if tt.shape.name in ('TREE', 'SHRUB', 'SAPLING'):
+            flags = flags | TCF_PLANT
+        if (tt.material.name in ('DRIFTWOOD', 'CAMPFIRE', 'FIRE') or
+           tt.shape.name in ('TREE', 'SHRUB', 'SAPLING', 'PEBBLES', 'BOULDER', 'STAIR_UP')):
+               flags = flags | TCF_FAKEFLOOR 
+        if ( tt.name.endswith(('FloorSmooth', 'Floor1', 'Floor2', 'Floor3', 'Floor4', 'Floor')) and
+            tt.name not in ('ConstructedFloor', 'GlowingFloor')):
+                flags = flags | TCF_TRUEFLOOR
+        if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name == 'Void'):
+            flags = flags | TCF_VOID
+        return flags
+
+    e = parse_tiletypes(os.path.join(dfapipath, 'xml','df.tile-types.xml'))
+
+    rv = CArray(None, "I", len(e._values))
+    for ei in e._values.values():
+        rv.set((flag_a_tile(ei),), ei.value)
+    return rv
 
 class Pageman(object):
     """ requires pygame.image to function. 
@@ -1146,63 +1263,6 @@ class TileSet(Token):
     def __repr__(self):
         return self.__str__()
 
-class TileClass(Token):
-    tokens = ('TILECLASS', )
-    parses = ('TILE', )
-    
-    def __init__(self, name, tail):
-        self.name = tail[0]
-        try:
-            self.value = int(tail[1])
-        except ValueError:
-            self.value = int(tail[1], 16)
-        self.tiles = {}
-        
-    def parse(self, name, tail):
-        if name == 'TILE':
-            self.tiles[tail[0]] = tail[1:]
-            return True
-
-    def __str__(self):
-        ts = ''
-        return "TILECLASS({}({}): {})".format(self.name, self.value, ' '.join(self.tiles.keys()))
-
-    def __repr__(self):
-        return self.__str__()
-
-class TcFlag(Token):
-    tokens = ('TCFLAG', )
-    def __init__(self, name, tail):
-        self.name = tail[0]
-        try:
-            self.value = int(tail[1])
-        except ValueError:
-            self.value = int(tail[1], 16)
-
-def TCCompile(tires, classes, flags):
-    # rv format: list of ( uint16_t flags, uint16_t klassid )
-    _tmp = [ (0, 0) ] * len(tires)
-    rv = [ 0 ]  * len(tires)
-    for klass in classes:
-        klassid = klass.value
-        for tilename, tileflags in klass.tiles.items():
-            tileid = tires[tilename]
-            f = 0
-            for flag in tileflags:
-                f |= ( 1 << flags[flag].value )
-            _tmp[tileid] = (f, klassid)
-            rv[tileid] = f << 8 | klassid
-
-    return rv
-    """ use for texture-lookup/uniform BO
-    rs = b''
-    i = 0
-    for f, k in _tmp:
-        rs += struct.pack("<HH", f, k)
-        if loud:
-            print("{}: {} {}".format(tires[i], f, k))
-            i += 1
-    return rs """
 def TSCompile(materialsets, tilesets, ctx):
         """ output:
             map: { material: { tiletype: [ basicframe, basicframe, ... ], ... }, ... }
@@ -1390,8 +1450,6 @@ class FullGraphics(Token):
         'EFFECT': CelEffect,
         'CEL_PAGE': CelPage,
         'TILE_PAGE': CelPage,
-        'TILECLASS': TileClass,
-        'TCFLAG': TcFlag,
         'MATERIAL':MaterialSet,
         'BUILDING': Building,
     }
@@ -1418,8 +1476,6 @@ class FullGraphics(Token):
             self.materialsets.append(token)
         elif isinstance(token, Building):
             self.buildings[token.name] = token
-        elif isinstance(token, TileClass):
-            self.tileclasses.append(token)
         elif isinstance(token, TcFlag):
             self.tcflags[token.name] = token
         elif isinstance(token, FullGraphics):
@@ -1544,18 +1600,18 @@ class MapObject(object):
         
         self.tileresolve = DfapiEnum(apidir, 'tiletype')
         self.building_t = DfapiEnum(apidir, 'building_type')
+        self.tileflags = flag_tiles(apidir)
         
         self._parse_raws(dfprefix, fgraws)
 
-    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None, invert_tc = False):
-        self.invert_tc = invert_tc
+    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None):
         self._parse_dump(dumpfname)
-        self._assemble_blitcode(self._objcode, irdump, invert_tc)
+        self._assemble_blitcode(self._objcode, irdump)
         if disdump:
-            disdump.write(self.dispatch)
+            self.dispatch.dump(disdump)
         if bcdump:
-            bcdump.write(self.blitcode)
-        self._map_dump(dumpfname)
+            self.blitcode.dump(bcdump)
+        self._mmap_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
         stdraws = os.path.join(dfprefix, 'raw')
@@ -1594,14 +1650,12 @@ class MapObject(object):
         
         self._objcode = TSCompile(materialsets, fgdef.tilesets, ctx)
             
-        self.tileclass = TCCompile(self.tileresolve, fgdef.tileclasses, fgdef.tcflags)
-
         if 'objcode' in self.loud:
             print(self._objcode)
         if 'pageman' in self.loud:
             print(self.pageman)
-
-    def _map_dump(self, dumpfname):
+    
+    def _mmap_dump(self, dumpfname):
         if self._mmap_fd:
             self._tiles_mmap.close()
             os.close(self._mmap_fd)
@@ -1618,9 +1672,8 @@ class MapObject(object):
             print("fsize: {} tiles {},{} effects: {}".format(fsize, 
                 self.tiles_offset, self.tiles_size, self.flows_offset ))
             raise
-
+        self.mapdata = CArray(self._tiles_mmap, 'IIII', self.dim.x, self.dim.y, self.dim.z)
         print("mapdata: {}x{}x{} {}M".format(self.dim.x, self.dim.y, self.dim.z, self.tiles_size >>20))
-        
 
     def _parse_dump(self, dumpfname):
         self.mat_ksk = {}
@@ -1698,7 +1751,7 @@ class MapObject(object):
                 self.mat_ksk[id] = (name, klass, subklass)
                 self.mat_ids[(name, klass)] = id
 
-    def _assemble_blitcode(self, objcode, irdump=None, invert_tc = False):       
+    def _assemble_blitcode(self, objcode, irdump=None):       
         # maxframes:for how many frames to extend cel's final framesequence
         # (if cel don't have that much frames on its own)
         # cutoff: cut all animations after this frame (this is done in _assemble_blitcode)
@@ -1724,18 +1777,12 @@ class MapObject(object):
             self.codedepth * self.codew * self.codeh, 
             self.codedepth * self.codew * self.codeh * self.blitcode_dt.size )
             
-        print(rep + "tc inverted" if invert_tc else rep + "tc straight")
+        print(rep)
         # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
-        dispatch = bytearray(self.dispw * self.disph * self.dispatch_dt.size)
-        blitcode = bytearray(self.codew * self.codeh * self.codedepth * self.blitcode_dt.size)
-        for i in range(self.dispw * self.disph * self.dispatch_dt.size):
-            dispatch[i] = 23
-        
-        # blitmodes:
-        BM_NONE = 0
-        BM_ASIS = 1
-        BM_CLASSIC = 2
-        BM_FGONLY = 3 
+        dispatch = CArray(None, "HH", self.dispw, self.disph)
+        dispatch.memset(255)
+        blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth)
+        blitcode.fill((0, 5, 0, 0))
         
         tc = 1 # reserve 0,0 blitinsn as implicit nop
         for mat_name, tileset in objcode.map.items():
@@ -1751,35 +1798,22 @@ class MapObject(object):
                 except KeyError:
                     raise CompileError("unk tname {} in mat {}".format(tilename, mat_name))
                     
-                x = int (tc % self.codew)
-                y = int (tc // self.codew)
-                y_inverted = (self.codeh - 1) - y
+                cx = int (tc % self.codew)
+                cy = int (tc // self.codew)
 
                 hx = mat_id
                 hy = tile_id
-                hy_inverted = (self.disph - 1) - hy
-                
-                if self.invert_tc:
-                    dp_offs = (hx + hy_inverted * self.dispw) * self.dispatch_dt.size
-                    bc_plane_offs = (x + y_inverted * self.codew) * self.blitcode_dt.size
-                else:
-                    dp_offs = (hx + hy * self.dispw) * self.dispatch_dt.size
-                    bc_plane_offs = (x + y * self.codew) * self.blitcode_dt.size
-                
-                bc_plane_size =  self.codew * self.codeh * self.blitcode_dt.size
-                
+
                 # write dispatch record: (mat, tile) -> blitcode
-                dispatch[dp_offs:dp_offs + self.dispatch_dt.size] = self.dispatch_dt.pack(x, y)
+                dispatch.set((cx, cy), hx, hy)
 
                 frame_no = 0
                 for frame in frameseq:
                     cst = (frame.blit[0] << 16) | frame.blit[1] if frame.mode != BM_NONE else 0
                     fg = frame.fg if frame.mode in ( BM_CLASSIC, BM_FGONLY ) else 0
                     bg = frame.bg if frame.mode == BM_CLASSIC else 0
-                        
-                    bc_offs = bc_plane_offs + frame_no * bc_plane_size;
                     
-                    blitcode[bc_offs:bc_offs + self.blitcode_dt.size] = self.blitcode_dt.pack(cst, frame.mode, fg, bg)
+                    blitcode.set((cst, frame.mode, fg, bg), cx, cy, frame_no)
                         
                     if irdump:
                         irdump.write("{:03d}:{:03d} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
@@ -1790,24 +1824,6 @@ class MapObject(object):
                 #  FIXME: add fill-out down to self.codedepth here
 
         self.dispatch, self.blitcode = dispatch, blitcode
-
-    @property
-    def codeptr(self):
-        return bar2voidp(self.blitcode)
-
-    @property
-    def disptr(self):
-        return bar2voidp(self.dispatch)
-
-    @property
-    def mapptr(self):
-        PyObject_HEAD = [ ('ob_refcnt', ctypes.c_size_t), ('ob_type', ctypes.c_void_p) ]
-        PyObject_HEAD_debug = PyObject_HEAD + [
-            ('_ob_next', ctypes.c_void_p), ('_ob_prev', ctypes.c_void_p), ]
-        class mmap_mmap(ctypes.Structure):
-            _fields_ = PyObject_HEAD + [ ('data', ctypes.c_void_p), ('size', ctypes.c_size_t) ]
-        guts = mmap_mmap.from_address(id(self._tiles_mmap))
-        return ctypes.c_void_p(guts.data) # WTF??
 
     def gettile(self, posn):
         x, y, z = posn
@@ -1820,6 +1836,7 @@ class MapObject(object):
         grass_id = grass & 0xffff
         grass_amount = ( grass >> 16 ) & 0xff
 
+        flags = self.tileflags.get(tile_id)[0]
         tilename = self.tileresolve[tile_id]
         btilename = self.tileresolve[btile_id]
 
@@ -1830,7 +1847,7 @@ class MapObject(object):
         return ( (mat_id, matname),   (tile_id, tilename),
                  (bmat_id, bmatname), (btile_id, btilename),
                  (grass_id, grassname, grass_amount), 
-                  designation )
+                  designation, flags )
     
     def inside(self, x, y, z):
         return (  (x < self.dim.x) and (x >= 0 ) 
@@ -1839,75 +1856,77 @@ class MapObject(object):
 
     def lint(self):
         """ verifies that (most of) map tiles in the dump are drawable """
-        class dreader(object):
-            def __init__(self, fmt, w, h, d, data, yinvert = False):
-                self.yinvert = yinvert
-                self.w = w
-                self.h = h 
-                self.d = d
-                self.data = data
-                self.struct = struct.Struct(fmt)
-                if len(data) > self.struct.size*w*h*d:
-                    print("warn, extra data: {} > {}".format(len(data), self.struct.size*w*h*d))
-                elif len(data) < self.struct.size*w*h*d:
-                    raise LintError("insufficient data: {} < {}".format(len(data), self.struct.size*w*h*d))
+        rep = open('lint.out', 'w')
 
-            def get(self, x, y, z,):
-                sss = self.struct.size
-                if self.yinvert:
-                    y = (self.h - 1) -y
-                offs = sss*(x + y*self.w + z*self.w*self.h)
-                try:
-                    return self.struct.unpack(str(self.data[offs:offs+sss]))
-                except struct.error:
-                    print("sz={} offs={} xyz=({},{},{}) whd=({},{},{})".format(sss, offs, x, y, z, self.w, self.h))
-                    raise
-
-        print("Lint: tilecount={} matcount={} codew={} invert_tc={}".format(self.tiletypecount, 
-            self.matcount, self.codew, self.invert_tc))
-
-        dispatch = dreader("HH", self.matcount, self.tiletypecount, 1, self.dispatch, self.invert_tc) #ST
-        blitcode = dreader("IIII",  self.codedepth, self.codew, self.codew, self.blitcode, self.invert_tc) #CstMdBgFg
-        mapdump = dreader("IIII", self.dim.x, self.dim.y, self.dim.z, self._tiles_mmap) # 'stoti bmabui grass designation'.
-        cent = self.dim.x*self.dim.y*self.dim.z/100
+        print("Lint: tilecount={} matcount={} codew={}".format(self.tiletypecount, self.matcount, self.codew))
+        cent = self.dim.x*self.dim.y*self.dim.z // 100
         num = 0
         oks = {}
         fails = {}
         try:
-            for _z in xrange(self.dim.z):
+            for _z in range(self.dim.z):
                 z = (self.dim.z - 1) - _z # go from top to bottom
-                for y in xrange(self.dim.y):
-                    for x in xrange(self.dim.x):
-                        if num % (5*cent) == 0:
-                            print("{: 2d}%".format(int(num/cent)))
-                            if num/cent > 23:
-                                raise StopIteration
+                print("{:3.2f}%".format(num/cent))
+                for y in range(self.dim.y):
+                    for x in range(self.dim.x):
                         num += 1
-                        st_tm, b_tm, grass, des = mapdump.get(x,y,z)
-                        st_mat = st_tm >> 16
-                        st_tile = st_tm & 0xffff
+                        fl_tm, up_tm, grass, des = self.mapdata.get(x,y,z)
+                        fl_mat = fl_tm >> 16
+                        fl_tile = fl_tm & 0xffff
+                        up_mat = up_tm >> 16
+                        up_tile = up_tm & 0xffff
                         gr_mat = grass & 0xffff
                         
-                        if (self.tcptr[st_tile] & 0xff == 3): # grass
-                            st_mat = gr_mat
+                        flags = self.tileflags.get(fl_tile)[0]
                         
-                        addr_s, addr_t = dispatch.get(st_mat, st_tile, 0)
-                        if (addr_s ==0) and (addr_t == 0):
-                            fails[(st_mat, st_tile)] = "00 addr"
-                        else:
-                            try:
-                                oks[(st_mat, st_tile)][0] += 1
-                            except KeyError:
-                                oks[(st_mat, st_tile)] = [1, (addr_s, addr_t)]
+                        if (flags & TCF_TRUEFLOOR) and (flags & TCF_FAKEFLOOR):
+                            fails[(fl_mat, fl_tile)] = "mode=floor true+fake"
+                            continue
+                            
+                        if flags & TCF_GRASS:
+                            fl_mat = gr_mat
+                        
+                        if flags & TCF_PLANT:
+                            fl_mat = up_mat
+                        
+                        if (flags & TCF_VOID):
+                            fl_mat = 0
+
+                        addr_s, addr_t = self.dispatch.get(fl_mat, fl_tile)
+                        
+                        flags = addr_s >> 12
+                        addr_s = addr_s & 0xFFF0
+                        addr_t = addr_t & 0xFFF0
+                        
+                        if (addr_s > self.codew) or (addr_t > self.codeh):
+                            fails[(fl_mat, fl_tile)] = "bogus addr"
+                            continue
+                        elif (addr_s < 0) or (addr_t < 0):
+                            fails[(fl_mat, fl_tile)] = "negative addr"
+                            continue
+                        
+                        cst, mode, bg, fg = self.blitcode.get(addr_s, addr_t, 0)
+                        
+                        if mode == 5:
+                            fails[(fl_mat, fl_tile)] = "mode=codedbad"
+                            continue
+                        elif mode not in (0, 1, 2, 3, 4):
+                            fails[(fl_mat, fl_tile)] = "mode={}".format(mode)
+                            continue
+                            
+                        try:
+                            oks[(fl_mat, fl_tile)][0] += 1
+                        except KeyError:
+                            oks[(fl_mat, fl_tile)] = [1, (addr_s, addr_t)]
         except StopIteration:
             pass
-        print("{} tiles; fails={} oks={}\nOKs:".format(num,  len(fails), len(oks)))
+        rep.write("{} tiles; fails={} oks={}\nOKs:\n".format(num,  len(fails), len(oks)))
         for eka, val in oks.items():
-            print("{} {} {} {} {}:{}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1]))
-        print("FAILs:")
-        for eka in fails.keys():
-            print("{} {} {} {}".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]]))
-            
+            rep.write("{} {} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1]))
+        rep.write("\nFAILs:\n")
+        for eka, val in fails.items():
+            rep.write("{} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None), self.tileresolve[eka[1]], val))
+
 class Designation(object):
     def __init__(self, u32):
         self.level              =  u32 &   7
@@ -1957,14 +1976,13 @@ def main():
     ap.add_argument('dump', metavar="dump-file", help="map dump file name")
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
     ap.add_argument('-lint', action='store_true', help="cross-check compiler output", default=False)
-    ap.add_argument('-inverty', action='store_true', help="invert y-coord in blitcode and dispatch textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()
 
-    irdump = file(pa.irdump, 'w') if pa.irdump else None
-    disdump = file(pa.disdump, 'w') if pa.disdump else None
-    bcdump =  file(pa.bcdump, 'w') if pa.bcdump else None
+    irdump = open(pa.irdump, 'w') if pa.irdump else None
+    disdump = open(pa.disdump, 'wb') if pa.disdump else None
+    bcdump =  open(pa.bcdump, 'wb') if pa.bcdump else None
     
     sdl_offscreen_init()
     
@@ -1973,7 +1991,7 @@ def main():
         fgraws = pa.rawsdir,
         apidir = '',
         loud = pa.loud )
-    mo.invert_tc = pa.inverty
+
     mo.use_dump(pa.dump, irdump, disdump, bcdump)
         
     if pa.lint:
