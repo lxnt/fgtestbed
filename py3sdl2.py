@@ -71,8 +71,59 @@ ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
 def bar2voidp(bar):
     return ctypes.c_void_p(ctypes.pythonapi.PyByteArray_AsString(id(bar)))
 
+def mmap2voidp(_mmap):
+    PyObject_HEAD = [ ('ob_refcnt', ctypes.c_size_t), ('ob_type', ctypes.c_void_p) ]
+    PyObject_HEAD_debug = PyObject_HEAD + [
+        ('_ob_next', ctypes.c_void_p), ('_ob_prev', ctypes.c_void_p), ]
+    class mmap_mmap(ctypes.Structure):
+        _fields_ = PyObject_HEAD + [ ('data', ctypes.c_void_p), ('size', ctypes.c_size_t) ]
+    guts = mmap_mmap.from_address(id(_mmap))
+    return ctypes.c_void_p(guts.data) # WTF??
+
+class CArray(object):
+    def __init__(self, data, fmt, w, h=1, d=1):
+        self.dt = struct.Struct(fmt)
+        self.w = w
+        self.h = h 
+        self.d = d
+        if data is None:
+            self.data = bytearray(w*h*d*self.dt.size)
+        else:
+            self.data = data
+            if len(data) > self.dt.size*w*h*d:
+                print("warn, extra data: {} > {}".format(len(data), self.dt.size*w*h*d))
+            elif len(data) < self.dt.size*w*h*d:
+                raise LintError("insufficient data: {} < {}".format(len(data), self.dt.size*w*h*d))
+
+    def memset(self, c=0):
+        ctypes.memset(self.ptr, c, self.w*self.h*self.d*self.dt.size)
+
+    def fill(self, value):
+        for i in range(self.w*self.h*self.d):
+            self.dt.pack_into(self.data, self.dt.size*i, *value)
+
+    def get(self, x, y=0, z=0):
+        offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
+        return self.dt.unpack_from(self.data, offs)
+            
+    def set(self, value, x, y=0, z=0):
+        offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
+        self.dt.pack_into(self.data, offs, *value)
+
+    @property
+    def ptr(self):
+        if isinstance(self.data, bytearray):
+            return bar2voidp(self.data)
+        elif isinstance(self.data, mmap.mmap):
+            return mmap2voidp(self.data)
+        else:
+            raise TypeError("no ptr for {}".format(type(self.data)))
+    
+    def dump(self, flike):
+        flike.write(self.data)
+
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
-rgba_surface bar2voidp
+rgba_surface bar2voidp mmap2voidp CArray
 glinfo upload_tex2d upload_tex2da gldump
 Shader0 VAO0
 HudTextPanel Hud
