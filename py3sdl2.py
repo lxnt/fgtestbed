@@ -52,7 +52,8 @@ import pygame2.image as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
-#OpenGL.FULL_LOGGING = True
+OpenGL.FULL_LOGGING = True
+
 from OpenGL.GL import *
 from OpenGL.GL.shaders import *
 from OpenGL.GLU import *
@@ -67,6 +68,7 @@ from glname import glname as glname
 from sdlenums import *
 
 ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
+ctypes.pythonapi.PyByteArray_FromStringAndSize.restype = ctypes.py_object
 
 def bar2voidp(bar):
     return ctypes.c_void_p(ctypes.pythonapi.PyByteArray_AsString(id(bar)))
@@ -81,11 +83,12 @@ def mmap2voidp(_mmap):
     return ctypes.c_void_p(guts.data) # WTF??
 
 class CArray(object):
-    def __init__(self, data, fmt, w, h=1, d=1):
+    def __init__(self, data, fmt, w, h=1, d=1, inverty = False):
         self.dt = struct.Struct(fmt)
         self.w = w
         self.h = h 
         self.d = d
+        self.inverty = False # for the GL textures and such
         if data is None:
             self.data = bytearray(w*h*d*self.dt.size)
         else:
@@ -103,10 +106,14 @@ class CArray(object):
             self.dt.pack_into(self.data, self.dt.size*i, *value)
 
     def get(self, x, y=0, z=0):
+        if self.inverty:
+            y = self.h - y - 1        
         offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
         return self.dt.unpack_from(self.data, offs)
             
     def set(self, value, x, y=0, z=0):
+        if self.inverty:
+            y = self.h - y - 1
         offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
         self.dt.pack_into(self.data, offs, *value)
 
@@ -124,7 +131,7 @@ class CArray(object):
 
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
 rgba_surface bar2voidp mmap2voidp CArray
-glinfo upload_tex2d upload_tex2da gldump
+glinfo upload_tex2d upload_tex2da gldump glcalltrace
 Shader0 VAO0
 HudTextPanel Hud
 GridVAO DumbGridShader
@@ -228,7 +235,7 @@ class Shader0(object):
         glCompileShader(rv)
         result = glGetShaderiv(rv, GL_COMPILE_STATUS)
         nfo = glGetShaderInfoLog(rv)
-        print("compiling {}: result={}; nfo:\n{}".format(filename, result, nfo.strip()))
+        print("compiling {}: result={}; nfo:\n{}".format(filename, result, nfo.decode('utf-8').strip()))
         return rv
     
     def validate(self):
@@ -369,7 +376,7 @@ class HudShader(Shader0):
         glUniform4f(self.uloc[b"bg"], *panel.bg)
 
 class HudTextPanel(object):
-    def __init__(self, font, strs, longest_str = None):
+    def __init__(self, font, strs, longest_str = None, active = True):
         self.fg = GLColor(1, 1, 1, 1)
         self.bg = GLColor(0, 0, 0, 0.68)
         self._texture_name = glGenTextures(1)
@@ -390,7 +397,7 @@ class HudTextPanel(object):
         height = 2*self.padding + self.ystep * len(strs)
         self.surface = rgba_surface(width, height)
         self._surface_dirty = True
-        self.active = True
+        self.active = active
         self.rect = Rect(0, 0, width, height)
 
     def __str__(self):
@@ -411,7 +418,7 @@ class HudTextPanel(object):
 
     def _render_text(self):
         """ renders bw blended text. tinting is done in the shader. """
-        self.surface.fill((0,0,0,0xff))
+        self.surface.fill((0,0,0,0))
         i = 0
         dump = False
         for s in self.strings:
@@ -419,18 +426,14 @@ class HudTextPanel(object):
                 if isinstance(self.data, dict):
                     s = s.format(**self.data)
                 strsurf = ttf.render_blended(self.font, s, SDL_Color())
-#                print(s, strsurf._w, strsurf._h)
-                if dump:
-                    rgba_surface(strsurf).dump("a/strsurf")
-                    self.surface.dump("a/before-blit")
+                # since we render with white, we can set the pixelformat
+                # to anything that starts with 'A' and has the same bpp and amask,
+                # thus avoiding extra blit cost
+                # or we can just render_shaded and use that as the alpha channel.
                 
                 self.surface.blit(strsurf, (self.padding, self.padding + i * self.ystep))
                 sdlsurface.free_surface(strsurf)
-                
-                if dump:
-                    self.surface.dump("a/after-blit")
             i += 1
-
         self.surface.upload_tex2d(self._texture_name)
         self._surface_dirty = False
 
@@ -468,10 +471,13 @@ class FBO(object):
     def __init__(self, size = None):
         self.fb_name = glGenFramebuffers(1)
         self.rb_name = glGenRenderbuffers(1)
+        self.size = None
         if size is not None:
             self.resize(size)
         
     def resize(self, size):
+        if self.size == size:
+            return
         self.size = size
         glBindFramebuffer(GL_FRAMEBUFFER, self.fb_name)
         glBindRenderbuffer(GL_RENDERBUFFER, self.rb_name)
@@ -493,6 +499,13 @@ class FBO(object):
     def readpixels(self, rect):
         glBindFramebuffer(GL_READ_FRAMEBUFFER, self.fb_name)
         return glReadPixels(*rect, format=GL_RGBA, type=GL_UNSIGNED_INT_8_8_8_8)
+    
+    def dump(self, filename, srcrect = None):
+        if srcrect is None:
+            srcrect = Rect(0,0,self.size.w, self.size.h)
+        pixels = self.readpixels(srcrect)
+        surf = rgba_surface(srcrect.w, srcrect.h, pixels)
+        surf.write_bmp(filename)
     
     def blit(self, srcrect):
         """ blits visible part onto the window. 
@@ -572,6 +585,7 @@ def glinfo():
         
     for e,s in strs.items():
         print("{0}: {1}".format(s, glGetString(e)))
+        gldump()
         
     for t in ints:
         try:
@@ -590,33 +604,48 @@ def glcalltrace(s):
     s = "{0} {1} {0}".format("*" * 16, s)
     logging.getLogger('OpenGL.calltrace' ).info(s)
 def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
-    sdl.init(sdl.SDL_INIT_VIDEO)
+    sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
     posn = (sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY, sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY)
     posn = (0, 0)
     
-    sdlvideo.gl_set_attribute(SDL_GL_RED_SIZE, 8)
-    sdlvideo.gl_set_attribute(SDL_GL_GREEN_SIZE, 8)
-    sdlvideo.gl_set_attribute(SDL_GL_BLUE_SIZE, 8)
-    sdlvideo.gl_set_attribute(SDL_GL_ALPHA_SIZE, 8)
-    #sdlvideo.gl_set_attribute(SDL_GL_BUFFER_SIZE, 32)
-    #sdlvideo.gl_set_attribute(SDL_GL_DEPTH_SIZE, 0)
-    #sdlvideo.gl_set_attribute(SDL_GL_STENCIL_SIZE, 0)
-    
-    sdlvideo.gl_set_attribute(SDL_GL_DOUBLEBUFFER, 1)
-    sdlvideo.gl_set_attribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)
-    sdlvideo.gl_set_attribute(SDL_GL_CONTEXT_MINOR_VERSION, 0)
+    gl_attrs = (
+        (SDL_GL_RED_SIZE, "SDL_GL_RED_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE),
+        (SDL_GL_GREEN_SIZE, "SDL_GL_GREEN_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE),
+        (SDL_GL_BLUE_SIZE, "SDL_GL_BLUE_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE),
+        (SDL_GL_ALPHA_SIZE, "SDL_GL_ALPHA_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE),
+        (SDL_GL_DEPTH_SIZE, "SDL_GL_DEPTH_SIZE", 0, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE),
+        (SDL_GL_STENCIL_SIZE, "SDL_GL_STENCIL_SIZE", 0, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE),
+        (SDL_GL_DOUBLEBUFFER, "SDL_GL_DOUBLEBUFFER", 1, None),
+        (SDL_GL_CONTEXT_MAJOR_VERSION, "SDL_GL_CONTEXT_MAJOR_VERSION", 3, None),
+        (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 0, None),
+        (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG, None),
+        (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", SDL_GL_CONTEXT_PROFILE_CORE, None),
+    )
 
-    sdlvideo.gl_set_attribute(SDL_GL_CONTEXT_FLAGS, 
-        SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG)
-    sdlvideo.gl_set_attribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)
+    for attr, name, val, unused in gl_attrs:
+        print("request", name, val)
+        sdlvideo.gl_set_attribute(attr, val)
 
     window = sdlvideo.create_window(title, posn[0], posn[1], size[0], size[1], 
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)
     if icon:
         sdlvideo.set_window_icon(window, icon)
     context = sdlvideo.gl_create_context(window)
+    gldump("just after context")
+    for attr, name, val, glenum in gl_attrs:
+        if glenum is None:
+            got = sdlvideo.gl_get_attribute(attr)
+        else:
+            continue # GL_FRAMEBUFFER_ATTACHMENT_*_SIZE fail for some reason
+            got = glGetInteger(glenum)
+            gldump()
+        print("{} requested {} got {}".format(name, val, got))
     
-    gldump(ignore=True) # SDL's SDL_GL_ExtesionSupported vs forward-compatible context
+    #gldump(ignore=True) # SDL's SDL_GL_ExtensionSupported vs forward-compatible context
+    gldump("before")
+    for e in "GL_NV_texgen_reflection GL_NV_texture_byrrier".split():
+        print(e, sdlvideo.gl_extension_supported(e))
+    gldump("aftarr")
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE)
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -627,6 +656,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     return window, context
 
 def gldump(s=None, ignore=False):
+    glcalltrace("gldump(s={} ignore={})".format(s, ignore))
     if s:
         print("gldump({})".format(s))
     count = 256
@@ -649,9 +679,7 @@ def gldump(s=None, ignore=False):
             glname.get(ids[n], ids[n]),
             glname.get(severities[n], severities[n]),
             msg)
-        offs += lengths[n]
-
-    
+        offs += lengths[n]  
     
 def sdl_offscreen_init():
     """ just init sdl core and the SDL_image lib (raw.py standalone run)"""
@@ -659,41 +687,76 @@ def sdl_offscreen_init():
     image.init()
 
 class rgba_surface(object):
-    """ a plain RGBA32 surface w/o any blending on blits """
-    def __init__(self, w = None, h = None):
-        if isinstance(w, SDL_Surface):
-            assert h is None
-            self._surf = w
-            self.do_free = False
-        else:
-            assert isinstance(w, int) and isinstance(h, int)
-            self._surf = sdlsurface.create_rgb_surface(w, h,
-                *sdlpixels.pixelformat_enum_to_masks(sdlpixels.SDL_PIXELFORMAT_RGBA8888))
-            self.do_free = True
-        # SDLBUG. Somehow, ARGB->RGBA blit gets treated as RGBA->RGBA
-        # if blend_mode is none.
-        #sdlsurface.set_surface_blend_mode(self._surf, sdlvideo.SDL_BLENDMODE_NONE)
+    """ a plain RGBA32 surface w/o any blending on blits 
+        pixel ordering depends on endianness. lil': ABGR, big: RGBA
+        
+        when subclassing to change pixel format, note that glpixels'
+        expected format changes too.
+    """
+    _sdl_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
+    _gl_fmt = GL_RGBA
     
+    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None):
+        self.do_free = True
+        if isinstance(filename, str):
+            self._surf = image.load(filename.encode('utf-8'))
+        elif isinstance(filename, bytes):
+            self._surf = image.load(filename)
+        elif isinstance(w, int) and isinstance(h, int):
+            masks = list(sdlpixels.pixelformat_enum_to_masks(self._sdl_fmt))
+            bpp = masks.pop(0)
+            if glpixels is None:
+                self._surf = sdlsurface.create_rgb_surface(w, h, bpp, *masks)
+            else: # glpixels == ABGR8888, OpenGL coordinates
+                self._surf = sdlsurface.create_rgb_surface_from(ctypes.byref(glpixels), self._sdl_fmt, 
+                    w, h, bpp, w*4, *masks)
+                self._hflip()
+        elif isinstance(surface, SDL_Surface):
+            self.do_free = False
+            self._surf = surface
+        else:
+            raise TypeError("rgba_surface({} {} {} {} {})".format(type(w), 
+                    type(h), type(glpixels), type(surface), type(filename)))
+            
+        sdlsurface.set_surface_blend_mode(self._surf, sdlvideo.SDL_BLENDMODE_NONE)
+
+    def __str__(self):
+        return "rgba_surface(size={}x{}, {}, do_free={})".format(self._surf._w, 
+                self._surf._h, sdlpixels.get_pixelformat_name(self._surf.format.format), self.do_free)
+
+    def _hflip(self):
+        pitch = self._surf._pitch
+        pixels = ctypes.cast(self._surf._pixels, ctypes.c_void_p).value
+        h = self._surf._h
+        tmp_ba = bytearray(pitch*h)
+        tmp = bar2voidp(tmp_ba).value
+        sdlsurface.lock_surface(self._surf)
+        ctypes.memmove(tmp, pixels, pitch*h)
+        for y in range(self._surf._h):
+            src = tmp + pitch * ( h - y - 1)
+            dst = pixels + pitch * y
+            ctypes.memmove(dst, src, pitch)
+        sdlsurface.unlock_surface(self._surf)
+
+    def write_bmp(self, filename):
+        sdlsurface.save_bmp(self._surf, filename)
+
     def blit(self, src, dstrect, srcrect = None):
         """ ala pygame """
         if isinstance(src, SDL_Surface):
-            src = rgba_surface(src)
-            
+            src = rgba_surface(surface=src)           
         if len(dstrect) == 2:
             dstrect = SDL_Rect(dstrect[0], dstrect[1], src.w, src.h)
         else:
             dstrect = SDL_Rect(*dstrect)
-            
         if srcrect is not None:
             srcrect = SDL_Rect(*srcrect)
-        #print("blit from {} to {}".format(sdlpixels.get_pixelformat_name(src._surf.format.format), 
-        #    sdlpixels.get_pixelformat_name(self._surf.format.format)))
         sdlsurface.blit_surface(src._surf, srcrect, self._surf, dstrect)
 
     def upload_tex2d(self, texture_name):
         assert self.pitch == 4 * self.w # muahahaha
         upload_tex2d(texture_name, GL_RGBA8, self.w, self.h,
-                GL_RGBA, GL_UNSIGNED_BYTE, self.pixels)
+                self._gl_fmt, GL_UNSIGNED_BYTE, self.pixels)
 
     def fill(self, color):
         """ expects RGBA8888 4-tuple """
@@ -729,7 +792,7 @@ class rgba_surface(object):
             
     def dump(self, fname):
         open(fname, "wb").write(ctypes.string_at(self.pixels, self.pitch*self.h))
-
+        
 def sdl_flip(window):
     sdlvideo.gl_swap_window(window)
 

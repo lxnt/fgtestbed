@@ -30,8 +30,10 @@ import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
 from collections import namedtuple
 import lxml.etree
 
-from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, CArray
-import pygame2.image
+from fractions import gcd
+lcm = lambda a, b: abs(a * b) // gcd(a, b)
+
+from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, CArray, Size2, Rect
 
 from tokensets import *
 
@@ -48,6 +50,7 @@ BM_NONE = 0
 BM_ASIS = 1
 BM_CLASSIC = 2
 BM_FGONLY = 3
+BM_CODEDBAD = 255
 
 class ParseError(Exception):
     pass
@@ -230,72 +233,66 @@ def flag_tiles(dfapipath):
     return rv
 
 class Pageman(object):
-    """ requires pygame.image to function. 
-        just blits tiles in order of celpage submission to album_w/max_cdim[0] columns """
-    def __init__(self, std_tileset, album_w = 2048, pages = []):
+    """ blits tiles in order of celpage submission to album.w//max(cdim.w) columns """
+    def __init__(self, album_w = 2048, pages = []):
         self.mapping = {}
         self.pages = {}
-        self.album_w = self.album_h = album_w
-        self.surf = rgba_surface(album_w, album_w)
         self.current_i = self.current_j = 0
-        self.max_cdim = [0, 0]
+        self.max_cdim = Size2(0,0)
         
-        self.i_span = self.album_w // 32 # shit
-        
+        w_lcm = 1
+        count = 0
         for page in pages:
-            self.eatpage(page)
-        if 'STD' not in self.pages:
-            stdts = CelPage(None, ['std'])
-            stdts.pdim = (16, 16)
-            stdts.file = std_tileset
-            stdts.surf = rgba_surface(pygame2.image.load(std_tileset.encode('utf-8')))
-            w,h = stdts.surf.get_size()
-            stdts.cdim = (w//16, h//16)
-            self.eatpage(stdts)
-
-    def eatpage(self, page):
-        if page.cdim[0] > self.max_cdim[0]:
-            self.max_cdim[0] = page.cdim[0]
-        if page.cdim[1] > self.max_cdim[1]:
-            self.max_cdim[1] = page.cdim[1]
-        page.load()
-        for j in range(page.pdim[1]):
-            for i in range(page.pdim[0]):
-                self.mapping[(page.name.upper(), i, j)] = (self.current_i, self.current_j)
-                dx, dy = self.current_i*self.max_cdim[0], self.current_j*self.max_cdim[1]
-                sx, sy = i*page.cdim[0], j*page.cdim[1]
-                self.surf.blit(page.surf, (dx, dy), (sx, sy, page.cdim[0], page.cdim[1]))
-                self.current_i += 1
-                if self.current_i == self.i_span:
-                    self.current_i = 0
-                    self.current_j += 1
-                    if self.current_j * self.max_cdim[1] > self.album_h:
-                        self.reallocate(1024)
-        self.pages[page.name.upper()] = page
+            w_lcm = lcm(w_lcm, page.cdim.w)
+            count += page.pdim.w * page.pdim.h
+            
+        fidx_side = int(math.ceil(math.sqrt(count)))
+        self.findex = CArray(None, "HHHH", fidx_side*fidx_side)
         
-    def dump(self, fname):
+        pages.sort(key = lambda p: p.cdim.h, reverse = True)
+        
+        album_w -= album_w%w_lcm # no space gets wasted when a row is full of cels of uniform size
+        
+        cx = 0 # stuff in cels, filling up partially occupied rows 
+        cy = 0 # with cels of lesser height.
+        row_h = pages[0].cdim.h # current row height.
+        index = 0
+        
+        album = rgba_surface(album_w, album_w//8)
+        for page in pages:
+            self.pages[page.name.upper()] = page
+            for j in range(page.pdim.h):
+                for i in range(page.pdim.w):
+                    src = Rect(i*page.pdim.w, j*page.pdim.h, page.cdim.w, page.cdim.h)
+                    if cx >= album_w:
+                        cx = 0
+                        cy += row_h
+                        row_h = page.cdim.h 
+                        if cy + row_h > album.h: # grow it
+                            a = rgba_surface(album.w, album.h*2)
+                            a.blit(album, Rect(0, 0, a.w, album.h), Rect(0, 0, a.w, album.h))
+                            album = a
+                    dst = Rect(cx, cy, page.cdim.w, page.cdim.h)
+                    album.blit(page.surface, dst, src)
+                    self.mapping[(page.name.upper(), i, j)] = index
+                    self.findex.set((cx, cy, page.cdim.w, page.cdim.h), i)
+                    index += 1
+                    cx += page.cdim.w
+        # cut off unused tail
+        a = rgba_surface(album.w, cy + row_h)
+        a.blit(album, Rect(0, 0, a.w, album.h), Rect(0, 0, a.w, cy + row_h))
+        self.surface = a
+        self.count = index
+        
+    def dump(self, dumpdir):
         sk = sorted(self.mapping.keys())
-        with file(fname + '.mapping', 'w') as f:
+        with open(os.path.join(dumpdir, 'album.mapping', 'w')) as f:
+            f.write(str(self.surface) + "\n")
+            f.write(repr(self.uniform) + "\n")
             for k in sk:
                 f.write("{}:{}:{} -> {}:{} \n".format(
                         k[0], k[1], k[2], self.mapping[k][0], self.mapping[k][1]))
-        self.shrink()
-        #pygame2.image.save(self.surf, fname + '.png')
-
-    def shrink(self):
-        min_h = self.max_cdim[1]*(self.current_j + 1)
-        old_h = self.album_h
-        if min_h < self.album_h:
-            self.reallocate(min_h - self.album_h)
-        
-    def __str__(self):
-        return 'pageman({})'.format(' '.join(map(str, self.pages.values())))
-        
-    def reallocate(self, plus_h):
-        self.album_h  += plus_h
-        surf = rgba_surface(self.album_w, self.album_h)
-        surf.blit(self.surf, (0, 0))
-        self.surf = surf
+        self.surface.write_bmp(os.path.join(dumpdir, 'album.bmp'))
 
     def __call__(self, pagename, ref): # pagename comes in uppercased
         page = self.pages[pagename]
@@ -313,24 +310,12 @@ class Pageman(object):
             s, t = int(ref[0]), int(ref[1])
         return self.mapping[(pagename, s, t)]  
 
-    @property
-    def txsz(self):
-        "returns txsz tuple"
-        self.shrink()
-        cw, ch = self.max_cdim
-        wt, ht = self.album_w//cw, self.album_h//ch
-        return (wt, ht, cw, ch)
-    
-    @property
-    def surface(self):
-        return self.surf
-        
     def __str__(self):
-        if self.max_cdim[0] == 0:
-            return "Pageman(not initialized)"
-        wt, ht, cw, ch = self.txsz
-        return "Pageman(): {}x{} {}x{} tiles, {}x{}, {}K".format(
-            wt, ht, cw, ch, wt*cw, ht*ch, wt*cw*ht*ch>>8)
+        if len(self.pages) == 0:
+            return "Pageman(empty)"
+        return "Pageman(): {} pages {} tiles, font {}K; findex {}K; surface: {}".format(
+            len(self.pages), self.count, self.surface.w*self.surface.h>>8, 
+                len(self.findex.data)>>10, str(self.surface))
 
 class BasicFrame(object):
     def __init__(self, blit, blend):
@@ -343,11 +328,11 @@ class BasicFrame(object):
         if self.mode == 0:
             return "mode=discard"
         elif self.mode == 1:
-            return "mode=as is   blit={:>2d}:{:<2d}".format(self.blit[0], self.blit[1])
+            return "mode=as is   blit={}".format(self.blit)
         elif self.mode == 2:
-            return "mode=classic blit={:>2d}:{:<2d} fg={:08x} bg={:08x}".format(self.blit[0], self.blit[1], self.fg, self.bg)
+            return "mode=classic blit={} fg={:08x} bg={:08x}".format(self.blit, self.fg, self.bg)
         elif self.mode == 3:
-            return "mode=fg-only blit={:>2d}:{:<2d} fg={:08x}".format(self.blit[0], self.blit[1], self.fg)
+            return "mode=fg-only blit={} fg={:08x}".format(self.blit, self.fg)
         elif self.mode == 4:
             return "mode=???"
         elif self.mode == 6:
@@ -457,12 +442,6 @@ class ObjectCode(object):
         
     @property
     def maxframe(self):
-        def gcd(a, b):
-            if a > b: a, b = b, a
-            while a > 0: a, b = (b % a), a
-            return b
-        lcm = lambda a, b: a * b / gcd(a, b) #todo: think over round vs floor
-        
         seen = set([1])
         maxframes = 1
         for tilesframes in self.map.values():
@@ -1062,11 +1041,11 @@ class CelPage(Token):
         self.cdim = None
         self.pdim = None
         self.defs = {}
-        self.surf = None
+        self._surf = None
 
     def __str__(self):
-        return '{}:{}:{}x{}:{}x{}'.format(self.name, self.file, 
-            self.pdim[0], self.pdim[1], self.cdim[0], self.cdim[1])
+        return '{}:{} pdim={} cdim={} surf={}'.format(self.name, self.file, 
+            self.pdim, self.cdim, self._surf)
 
     def __repr__(self):
         return self.__str__()            
@@ -1075,29 +1054,40 @@ class CelPage(Token):
         if name == 'FILE':
             self.file = tail[0]
         elif name in ('CEL_DIM', 'TILE_DIM'):
-            self.cdim = (int(tail[0]), int(tail[1]))
+            self.cdim = Size2(int(tail[0]), int(tail[1]))
         elif name == 'PAGE_DIM':
-            self.pdim = (int(tail[0]), int(tail[1]))
+            self.pdim = Size2(int(tail[0]), int(tail[1]))
         elif name == 'DEF':
             if len(tail) == 3:
                 self.defs[tail[0]] = (int(tail[1]), int(tail[2]))
             elif len(tail) == 2:
                 idx = int(tail[1])
-                s = idx % self.pdim[1]
-                t = idx // self.pdim[0]
+                s = idx % self.pdim.w
+                t = idx // self.pdim.w
                 self.defs[tail[0]] = ( s, t )
             else:
                 raise ValueError("Incomprehensible DEF")
-                
-    def load(self):
-        if not self.surf:
-            self.surf = pygame.image.load(self.file)
-            # do not use per-pixel alpha when assembling the album
-            self.surf.set_alpha(None)
-        w,h = self.surf.get_size()
-        if w != self.cdim[0]*self.pdim[0] or h != self.cdim[1]*self.pdim[1]:
-            raise ValueError("size mismatch on {}: dim={}x{} pdim={}x{} cdim={}x{}".format(
-                self.file, w, h, self.pdim[0], self.pdim[1], self.cdim[0], self.cdim[1]))
+
+    def _check_dim(self, surf):
+        if surf.w != self.cdim.w*self.pdim.w or surf.h != self.cdim.h*self.pdim.h:
+            raise ValueError("size mismatch on {}: surf={}x{} pdim={} cdim={}".format(
+                self.file, surf.w, surf.h, self.pdim, self.cdim))
+
+    @property
+    def surface(self):
+        if not self._surf:
+            self._surf = rgba_surface(self.file)
+            self._check_dim(self._surf)
+        return self._surf
+
+class StdCelPage(CelPage):
+    name = 'STD'
+    def __init__(self, filename):
+        self.pdim = Size2(16, 16)
+        self.file = filename
+        self._surf = rgba_surface(filename=filename)
+        self.cdim = Size2(self._surf.w//16, self._surf.h//16)
+        self._check_dim(self._surf)
 
 class CelEffect(Token):
     tokens = ('EFFECT', )
@@ -1604,13 +1594,19 @@ class MapObject(object):
         
         self._parse_raws(dfprefix, fgraws)
 
-    def use_dump(self, dumpfname, irdump=None, disdump=None, bcdump=None):
+    def use_dump(self, dumpfname, dump_dir=None):
+        if dump_dir:
+            self.pageman.surface.write_bmp(os.path.join(dump_dir, 'album.bmp'))
+            irdump = open(os.path.join(dump_dir, 'intrep.dump'), 'w')
+        else:
+            irdump = None
+
         self._parse_dump(dumpfname)
         self._assemble_blitcode(self._objcode, irdump)
-        if disdump:
-            self.dispatch.dump(disdump)
-        if bcdump:
-            self.blitcode.dump(bcdump)
+        if dump_dir:
+            self.dispatch.dump(open(os.path.join(dump_dir, 'dispatch.dump'), 'wb'))
+            self.blitcode.dump(open(os.path.join(dump_dir, 'blitcode.dump'), 'wb'))
+
         self._mmap_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
@@ -1633,15 +1629,17 @@ class MapObject(object):
         stdparser.eat(stdraws)
         materialsets = stdparser.get()
 
-        print("stdparser done.")
+        print("TSParser done.")
 
         if 'materialset' in self.loud:
             for ms in materialsets:
                 print(ms)
 
         fontpath, colormap = InitParser(dfprefix).get()
-        self.pageman = Pageman(fontpath, pages = fgdef.celpages) 
-            # + cgset.celpages) when creatures become supported
+        fgdef.celpages.append(StdCelPage(fontpath))
+        self.pageman = Pageman(pages = fgdef.celpages) # + cgset.celpages) when creatures become supported
+        #print("Pageman done.")
+        print(self.pageman)
 
         ctx = namedtuple("ctx", "pageman colors effects")(
             pageman = self.pageman,
@@ -1649,11 +1647,8 @@ class MapObject(object):
             effects = fgdef.celeffects)
         
         self._objcode = TSCompile(materialsets, fgdef.tilesets, ctx)
-            
-        if 'objcode' in self.loud:
-            print(self._objcode)
-        if 'pageman' in self.loud:
-            print(self.pageman)
+        
+        print("TSCompile done.")
     
     def _mmap_dump(self, dumpfname):
         if self._mmap_fd:
@@ -1751,7 +1746,13 @@ class MapObject(object):
                 self.mat_ksk[id] = (name, klass, subklass)
                 self.mat_ids[(name, klass)] = id
 
-    def _assemble_blitcode(self, objcode, irdump=None):       
+    def _assemble_blitcode(self, objcode, irdump=None):
+        if irdump is None:
+            class irdummy(object):
+                def write(*args, **kwargs):
+                    pass
+            irdump = irdummy
+        
         # maxframes:for how many frames to extend cel's final framesequence
         # (if cel don't have that much frames on its own)
         # cutoff: cut all animations after this frame (this is done in _assemble_blitcode)
@@ -1770,21 +1771,19 @@ class MapObject(object):
         self.dispw = self.matcount = self.max_mat_id
         self.disph = self.tiletypecount = len(self.tileresolve)
         
-        rep = "objcode: {1} mats, {0} defined tiles, codedepth={2}\n".format(tcount, len(objcode.map.keys()), self.codedepth)
-        rep += "dispatch: {}x{}, {} bytes\n".format(self.dispw, self.disph, self.dispw*self.disph*self.dispatch_dt.size)
+        rep = "objcode: {1} mats, {0} defined tiles\n".format(len(objcode.map.keys()), tcount)
+        rep += "dispatch: {}x{}, {} bytes\n".format(self.dispw, self.disph, self.dispw * self.disph * self.dispatch_dt.size)
         nf = self.codedepth * self.codew * self.codeh
-        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codeh, self.cutoff+1, 
-            self.codedepth * self.codew * self.codeh, 
-            self.codedepth * self.codew * self.codeh * self.blitcode_dt.size )
+        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codeh, self.codedepth, nf, nf * self.blitcode_dt.size)
             
         print(rep)
-        # dispatch is tiles columns by mats rows. dt.size always is a multiple 4 bytes 
-        dispatch = CArray(None, "HH", self.dispw, self.disph)
-        dispatch.memset(255)
-        blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth)
-        blitcode.fill((0, 5, 0, 0))
+        # dispatch is tiles columns by mats rows. dt.size always is a multiple of 4 bytes 
+        dispatch = CArray(None, "HH", self.dispw, self.disph, inverty = True)
+        dispatch.memset(128)
+        blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth, inverty = True)
+        blitcode.memset(BM_CODEDBAD)
         
-        tc = 1 # reserve 0,0 blitinsn as implicit nop
+        tc = 1 # reserve 0,0 blitinsn as an implicit nop
         for mat_name, tileset in objcode.map.items():
             try:
                 mat_id = self.mat_ids[mat_name]
@@ -1801,22 +1800,19 @@ class MapObject(object):
                 cx = int (tc % self.codew)
                 cy = int (tc // self.codew)
 
-                hx = mat_id
-                hy = tile_id
-
                 # write dispatch record: (mat, tile) -> blitcode
-                dispatch.set((cx, cy), hx, hy)
+                dispatch.set((cx, cy), mat_id, tile_id)
 
                 frame_no = 0
                 for frame in frameseq:
-                    cst = (frame.blit[0] << 16) | frame.blit[1] if frame.mode != BM_NONE else 0
+                    bm = 0 if frame.mode == BM_NONE else ( frame.blit << 8 ) & frame.mode
+                    unused = 0
                     fg = frame.fg if frame.mode in ( BM_CLASSIC, BM_FGONLY ) else 0
                     bg = frame.bg if frame.mode == BM_CLASSIC else 0
                     
-                    blitcode.set((cst, frame.mode, fg, bg), cx, cy, frame_no)
+                    blitcode.set((bm, unused, fg, bg), cx, cy, frame_no)
                         
-                    if irdump:
-                        irdump.write("{:03d}:{:03d} {}:{} {} {} {}\n".format(mat_id, tile_id, x, y, mat_name, tilename, frame))
+                    irdump.write("dis@{:03d}:{:03d} code@{}:{} {} {} {}\n".format(mat_id, tile_id, cx, cy, mat_name, tilename, frame))
                     frame_no += 1
                     if frame_no > self.codedepth - 1: # cutoff
                         break
@@ -1854,22 +1850,26 @@ class MapObject(object):
                 and  ( y < self.dim.y) and (y >= 0)
                 and (z < self.dim.z) and (z>= 0))
 
-    def lint(self):
+    def lint(self, zstart):
         """ verifies that (most of) map tiles in the dump are drawable """
+        if zstart < 0:
+            zstart = self.dim.z - 1
+        else:
+            assert zstart < self.dim.z
         rep = open('lint.out', 'w')
-
-        print("Lint: tilecount={} matcount={} codew={}".format(self.tiletypecount, self.matcount, self.codew))
-        cent = self.dim.x*self.dim.y*self.dim.z // 100
-        num = 0
+        print("Lint: tilecount={} matcount={} code={}x{}".format(self.tiletypecount, self.matcount, self.codew, self.codeh))
         oks = {}
         fails = {}
+        count = 0
+        empty = True
         try:
-            for _z in range(self.dim.z):
-                z = (self.dim.z - 1) - _z # go from top to bottom
-                print("{:3.2f}%".format(num/cent))
+            for _z in range(zstart):
+                z = zstart - _z - 1 # go from top to bottom
+                empty = True
                 for y in range(self.dim.y):
                     for x in range(self.dim.x):
-                        num += 1
+                        count += 1
+                        
                         fl_tm, up_tm, grass, des = self.mapdata.get(x,y,z)
                         fl_mat = fl_tm >> 16
                         fl_tile = fl_tm & 0xffff
@@ -1891,38 +1891,48 @@ class MapObject(object):
                         
                         if (flags & TCF_VOID):
                             fl_mat = 0
+                        else:
+                            empty = False
+                        
+                        if (fl_mat, fl_tile) in oks:
+                            continue
 
                         addr_s, addr_t = self.dispatch.get(fl_mat, fl_tile)
                         
-                        flags = addr_s >> 12
-                        addr_s = addr_s & 0xFFF0
-                        addr_t = addr_t & 0xFFF0
-                        
                         if (addr_s > self.codew) or (addr_t > self.codeh):
-                            fails[(fl_mat, fl_tile)] = "bogus addr"
-                            continue
-                        elif (addr_s < 0) or (addr_t < 0):
-                            fails[(fl_mat, fl_tile)] = "negative addr"
+                            fails[(fl_mat, fl_tile)] = "bogus addr (tile*mat not defined?)"
                             continue
                         
-                        cst, mode, bg, fg = self.blitcode.get(addr_s, addr_t, 0)
-                        
-                        if mode == 5:
+                        fibm, unused, bg, fg = self.blitcode.get(addr_s, addr_t, 0)
+                        mode = fibm & 0xff
+                        index = fibm >> 8
+                        if mode == BM_CODEDBAD:
                             fails[(fl_mat, fl_tile)] = "mode=codedbad"
                             continue
-                        elif mode not in (0, 1, 2, 3, 4):
+                        elif mode not in (BM_NONE, BM_ASIS, BM_CLASSIC, BM_FGONLY):
                             fails[(fl_mat, fl_tile)] = "mode={}".format(mode)
                             continue
-                            
-                        try:
-                            oks[(fl_mat, fl_tile)][0] += 1
-                        except KeyError:
-                            oks[(fl_mat, fl_tile)] = [1, (addr_s, addr_t)]
-        except StopIteration:
+                        
+                        if mode != BM_NONE:
+                            if index >= len(self.pageman.findex.data):
+                                fails[(fl_mat, fl_tile)] = "font index out of bounds: {}".format(index)
+                                continue
+                            cx, cy, cw, ch = self.pageman.findex.get(index)
+                            if (cw == 0) or (ch == 0):
+                                fails[(fl_mat, fl_tile)] = "cw,ch={},{}".format(cw, ch)
+                                continue
+                            if (cx > self.pageman.surface.w - ch) or (cy > self.pageman.surface.h - cw):
+                                fails[(fl_mat, fl_tile)] = "cx,cy={},{}".format(cx, cy)
+                                continue
+                        
+                        oks[(fl_mat, fl_tile)] = 23
+
+                if empty:
+                    print("{: 3d} -empty-z-level-".format(z))
+                else:
+                    print("{: 3d} ok={} fail={}".format(z, len(oks), len(fails)))
+        except KeyboardInterrupt:
             pass
-        rep.write("{} tiles; fails={} oks={}\nOKs:\n".format(num,  len(fails), len(oks)))
-        for eka, val in oks.items():
-            rep.write("{} {} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None),self.tileresolve[eka[1]], val[0], val[1]))
         rep.write("\nFAILs:\n")
         for eka, val in fails.items():
             rep.write("{} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None), self.tileresolve[eka[1]], val))
@@ -1968,21 +1978,18 @@ class Designation(object):
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
-    ap.add_argument('-irdump', metavar='fname', help="dump intermediate representation here")
-    ap.add_argument('-aldump', metavar='fname', help="dump texture album here, creates fname.png and fname.mapping")
-    ap.add_argument('-disdump', metavar='fname', help="dump dispatch table binary representation here")
-    ap.add_argument('-bcdump', metavar='fname', help="dump blitcode binary here")
+    ap.add_argument('-dump-dir', metavar='dir-name', help="dump intermediate representation, dispatch, blitcode and the texture album here")
     ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
     ap.add_argument('dump', metavar="dump-file", help="map dump file name")
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
-    ap.add_argument('-lint', action='store_true', help="cross-check compiler output", default=False)
-    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")        
+    ap.add_argument('-lint', nargs='?', metavar='zstart', type=int, const=-1,
+            help="cross-check compiler output, starting at z-level zstart; results written to 'lint.out'")
+    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()
 
-    irdump = open(pa.irdump, 'w') if pa.irdump else None
-    disdump = open(pa.disdump, 'wb') if pa.disdump else None
-    bcdump =  open(pa.bcdump, 'wb') if pa.bcdump else None
+    if pa.dump_dir is not None and not os.path.isdir(pa.dump_dir):
+        os.mkdir(pa.dump_dir)
     
     sdl_offscreen_init()
     
@@ -1992,10 +1999,10 @@ def main():
         apidir = '',
         loud = pa.loud )
 
-    mo.use_dump(pa.dump, irdump, disdump, bcdump)
-        
-    if pa.lint:
-        mo.lint()
+    mo.use_dump(pa.dump, pa.dump_dir)
+
+    if pa.lint is not None:
+        mo.lint(pa.lint)
 
 if __name__ == '__main__':
     main()
