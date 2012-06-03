@@ -64,7 +64,7 @@ CONTROLS = """\
     F1:                         toggle this text
     Esc:                        quit
     Right mouse button drag:    panning
-    Mouse wheel, < >:                up/down Z-level
+    Mouse wheel, < >:           up/down Z-level
     Shift+mouse wheel:          up/down 10 Z-levels
     Ctrl+Mouse wheel:           zoom in/out
     Arrows, PgUp/PgDn/Home/End: scroll
@@ -78,7 +78,7 @@ CONTROLS = """\
 class GridShader(Shader0):
     def __call__(self, map_size,
             grid_size, pszar, tileflags, 
-            tex, txsz,
+            tex, 
             render_origin,
             mouse_pos, mouse_color,
             show_hidden, debug_active, 
@@ -90,12 +90,11 @@ class GridShader(Shader0):
         glUniform2i(self.uloc[b'gridsize'], *grid_size)
         glUniform3i(self.uloc[b"origin"], *render_origin)
         glUniform3f(self.uloc[b'pszar'], *pszar)
-        glUniform4i(self.uloc[b"txsz"], *txsz )  # tex size in tiles, tile size in texels
         
         glUniform1i(self.uloc[b'frame_no'], frame_no)
         glUniform1f(self.uloc[b"darken"], darken)        
         glUniform1i(self.uloc[b"show_hidden"], show_hidden)
-        glUniform1i(self.uloc[b'debug'], debug_active)
+        glUniform1i(self.uloc[b'debug_active'], debug_active)
         
         glUniform2i(self.uloc[b"mouse_pos"], *mouse_pos);
         glUniform4f(self.uloc[b"mouse_color"], *mouse_color)
@@ -115,10 +114,14 @@ class GridShader(Shader0):
         glActiveTexture(GL_TEXTURE2)
         glBindTexture(GL_TEXTURE_2D, tex.font)
         glUniform1i(self.uloc[b"font"], 2)
-            
+        
         glActiveTexture(GL_TEXTURE3)
+        glBindTexture(GL_TEXTURE_2D, tex.findex)
+        glUniform1i(self.uloc[b"findex"], 3)
+            
+        glActiveTexture(GL_TEXTURE4)
         glBindTexture(GL_TEXTURE_2D_ARRAY, tex.screen)
-        glUniform1i(self.uloc[b"screen"], 3)
+        glUniform1i(self.uloc[b"screen"], 4)
 
 class RendererPanel(HudTextPanel):
     def __init__(self, font):
@@ -128,7 +131,7 @@ class RendererPanel(HudTextPanel):
             "pszar: {pszar.x:.2f} {pszar.y:.2f} {pszar.z};  {psz.x}x{psz.y} px",
             "map_viewport: {viewport.x:02d} {viewport.y:02d} {viewport.w:d} {viewport.h:d}",
             "fbo_size={fbosize.w:d}:{fbosize.h:d} win_size={winsize.w:d}:{winsize.h:d}",
-            "{debug} {showhidden}", 
+            "{showhidden}", 
         )
         self.active = True
         dummy = Coord3(999,999,999)
@@ -136,10 +139,9 @@ class RendererPanel(HudTextPanel):
 
         super(RendererPanel, self).__init__(font, strs, longest_str)
     
-    def update(self, win, map_viewport, debug_active, show_hidden, **kwargs):
+    def update(self, win, map_viewport, show_hidden, **kwargs):
         self._data = kwargs
         self._data['viewport'] = map_viewport
-        self._data['debug'] = '[debug_active]' if debug_active else '              '
         self._data['showhidden'] = '[show_hidden]' if show_hidden else '             '
         self._surface_dirty = True
 
@@ -155,12 +157,13 @@ class MousePanel(HudTextPanel):
         # maxlen of vanilla matname is 22.
         # maxlen of tile-type is 25
         strs = (
-            "color: #{color:08x}",
             "win_mp={win_mp.x:d}:{win_mp.y:d}",
             "fbo_mp: {fbo_mp.x:d}:{fbo_mp.y:d}",
             "grid_mp: {grid.x:03d}:{grid.y:03d}",
             "dffb_mp: {dffb.x:.2f}:{dffb.y:.2f}",
             "map_mp: {posn.x:03d}:{posn.y:03d}:{posn.z:03d}",
+            "   ",
+            "color: #{color:08x} {colordec}",
             "{designation}",
             "mat:  {mat[0]: 3d} ({mat[1]})",
             "bmat:  {bmat[0]: 3d} ({bmat[1]})",
@@ -170,9 +173,8 @@ class MousePanel(HudTextPanel):
         )
         longest_str = "m"*44
         
-        self.active = False
         self._data = {}
-        super(MousePanel, self).__init__(font, strs, longest_str)
+        super(MousePanel, self).__init__(font, strs, longest_str, active = False)
 
     def update(self, win, renderer_panel, renderer, win_mouse_pos, 
                 fbo_mouse_pos, grid_mouse_pos,grid_mouse_pos_f, map_mouse_pos):
@@ -190,6 +192,7 @@ class MousePanel(HudTextPanel):
         material, tile, bmat, btile, grass, designation, flags = gamedata.gettile(map_mouse_pos)
         self._data.update({
             'color': color,
+            'colordec': color>>8,
             'posn': map_mouse_pos,
             'grid': grid_mouse_pos,
             'dffb': grid_mouse_pos_f,
@@ -221,6 +224,49 @@ class CheatPanel(HudTextPanel):
         # center in the window
         self.moveto(Coord2((win.w - self.rect.w)//2, (win.h - self.rect.h)//2))
 
+class DebugPanel(HudTextPanel):
+    def __init__(self, font):
+        strs = (
+            "{trect}",
+            "{d[0][0]: 8d} {d[0][1]: 8d} {d[0][2]: 8d} {d[0][3]: 8d}",
+            "{d[1][0]: 8d} {d[1][1]: 8d} {d[1][2]: 8d} {d[1][3]: 8d}",
+            "{d[2][0]: 8d} {d[2][1]: 8d} {d[2][2]: 8d} {d[2][3]: 8d}",
+            "{d[3][0]: 8d} {d[3][1]: 8d} {d[3][2]: 8d} {d[3][3]: 8d}",
+        )
+        super(DebugPanel, self).__init__(font, strs, longest_str = "8"*(4*8+3), active = False)
+    
+    def update(self, win, pixels, psz, trect):
+        d = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
+        xstep = psz.x//4
+        ystep = psz.y//4
+        for j in range(4):
+            y0 = j * ystep
+            for i in range(4):
+                x0 = i * xstep
+                values = {}
+                for dy in range(ystep):
+                    for dx in range(xstep):
+                        value = pixels[y0+dy][x0+dx] >> 8
+                        try:
+                            values[value] += 1
+                        except KeyError:
+                            values[value] = 1
+                votes = 0
+                for k, v in values.items():
+                    if v > votes:
+                        votes = v
+                        d[3-j][i] = k
+
+        self._data = dict(d = d, trect = repr(trect))
+        self._surface_dirty = True
+
+        # glue it to the bottom-right corner, observing margins.
+        self.moveto(Coord2(win.w - self.margin - self.rect.w, self.margin))
+
+    @property
+    def data(self):
+        return self._data    
+
 class Rednerer(object):
     _overdraw = 3 # a constant, can't be less than 3 and better be even
     # due to the panning algorithm, and no sense in making it more than 3 either
@@ -240,9 +286,10 @@ class Rednerer(object):
         self.gamedata = gamedata
         self.hud = Hud()
         self.fbo = FBO()
+        self.debug_fbo = FBO()
         self.grid = GridVAO()
         self.grid_shader = GridShader(shaderset, 'gl' in loud)
-        self.tex = namedtuple("Texnames", "dispatch blitcode font screen")._make(glGenTextures(4))
+        self.tex = namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
         
         self.loud_gl      = 'gl' in loud
         self.loud_reshape = 'reshape' in loud
@@ -258,30 +305,40 @@ class Rednerer(object):
         
         self.had_input = False
         self.show_hidden = True
-        self.debug_active = False
         
         font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 18)
         self.hp_renderer = RendererPanel(font) 
         self.hp_mouse = MousePanel(font)
         self.hp_cheat = CheatPanel(font)
+        self.hp_debug = DebugPanel(font)
         
         self.render_origin = gamedata.window
         self.map_viewport = Rect(0, 0, window._w, window._h)
         
+        glcalltrace("upload font")
         gamedata.pageman.surface.upload_tex2d(self.tex.font)
+        
+        glcalltrace("upload findex")
+        upload_tex2d(self.tex.findex, GL_RGBA16UI,
+            gamedata.pageman.findex.w, gamedata.pageman.findex.h,
+            GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, gamedata.pageman.findex.ptr )
+            
+        glcalltrace("upload dispatch")
         upload_tex2d(self.tex.dispatch, GL_RG16UI,
             gamedata.dispatch.w, gamedata.dispatch.h, 
             GL_RG_INTEGER, GL_UNSIGNED_SHORT, gamedata.dispatch.ptr)
         
+        glcalltrace("upload blitcode")
         upload_tex2da(self.tex.blitcode, GL_RGBA32UI,
             gamedata.blitcode.w, gamedata.blitcode.h, gamedata.blitcode.d,
             GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.blitcode.ptr )
             
+        glcalltrace("upload screen")
         upload_tex2da(self.tex.screen, GL_RGBA32UI,
                gamedata.mapdata.w, gamedata.mapdata.h, gamedata.mapdata.d,
                GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapdata.ptr)            
 
-        self.txsz = txsz = gamedata.pageman.txsz
+        self.txsz = txsz = (-1, -1, gamedata.pageman.pages['STD'].cdim.w, gamedata.pageman.pages['STD'].cdim.h)
         print(txsz)
 
         if txsz[2] > txsz[3]:
@@ -299,6 +356,12 @@ class Rednerer(object):
         self.reshape(winsize = self.winsize)
         print(self.grid, self.winsize, txsz)
         gldump()
+    
+    def dump_fbos(self, destdir="idumps"):
+        self.fbo.dump(os.path.join(destdir, 'fbo.bmp'))
+        print(os.path.join(destdir, 'fbo.bmp'))
+        self.debug_fbo.dump(os.path.join(destdir, 'debug_fbo.bmp'))
+        print(os.path.join(destdir, 'debug_fbo.bmp'))
     
     @property
     def psz(self):
@@ -385,7 +448,7 @@ class Rednerer(object):
             in the inner third of the overdraw, which is the tile
             with grid coordinates (1,1) for an overdraw of 3 """
             
-        plog = logging.getLogger('fgt.pan').warn
+        plog = logging.getLogger('fgt.pan').debug
 
         xpad = self.psz.x*self._overdraw//3
         ypad = self.psz.y*self._overdraw//3
@@ -425,30 +488,43 @@ class Rednerer(object):
         plog("pan result mvp={} ro={}".format(self.map_viewport, self.render_origin))
 
     def zoom(self, zcmd, zpos = None):
+        if self.hp_debug.active:
+            return self.zoom_x4(zcmd, zpos)
         if zcmd == 'zoom_in' and self.Pszar.z > 1:
-            psz = self.Pszar.z - 1
-        elif zcmd == 'zoom_out' and self.Pszar.z < self.max_psz:
             psz = self.Pszar.z + 1
+        elif zcmd == 'zoom_out' and self.Pszar.z < self.max_psz:
+            psz = self.Pszar.z - 1
         elif zcmd == 'zoom_reset':
             psz = max(self.txsz[2], self.txsz[3])
         if zpos is None:
             zpos = Coord2( self.window._w // 2, self.window._h // 2 )
         if psz >= self.min_psz and psz <= self.max_psz:
             self.reshape(zoom = (psz, zpos))
+            
+    def zoom_x4(self, zcmd, zpos):
+        if zcmd == 'zoom_in' and self.Pszar.z > 1:
+            psz = (self.Pszar.z//4 + 1)*4
+        elif zcmd == 'zoom_out' and self.Pszar.z < self.max_psz:
+            psz = (self.Pszar.z//4 - 1)*4
+        elif zcmd == 'zoom_reset': # not quite the same than above..
+            psz = (psz//4 + 1)*4
+        if zpos is None:
+            zpos = Coord2( self.window._w // 2, self.window._h // 2 )
+        if psz >= self.min_psz and psz <= self.max_psz:
+            self.reshape(zoom = (psz, zpos))
 
-    def _render_one_grid(self, render_origin, mouse_pos, mouse_color, darken, frame_no):
+    def _render_one_grid(self, origin, m_pos, m_color, darken, frame_no, hidden = True, debug = False):
         self.grid_shader(
             map_size = self.gamedata.dim,
             grid_size = self.grid.size, 
             pszar = self.Pszar, 
             tileflags = self.gamedata.tileflags,
             tex = self.tex,
-            txsz = self.txsz,
-            render_origin = render_origin,
-            mouse_pos = mouse_pos, 
-            mouse_color = mouse_color,
-            show_hidden = 1 if self.show_hidden else 0, 
-            debug_active = 1 if self.debug_active else 0, 
+            render_origin = origin,
+            mouse_pos = m_pos, 
+            mouse_color = m_color,
+            show_hidden = 1 if hidden else 0, 
+            debug_active = 1 if debug else 0, 
             falpha = 1.0, 
             darken = darken,
             frame_no = frame_no)
@@ -465,15 +541,29 @@ class Rednerer(object):
         win_mouse_pos = Coord2._make(sdlmouse.get_mouse_state()[1:])
         fbo_mouse_pos = self.win2glfb(win_mouse_pos)
         grid_mouse_pos_f = self.win2dffb(win_mouse_pos)
-        # TODO: describe the +1 fudge factor.
-        # It has to do with glfb - grid conversion which depends somehow
-        # on glfb.y/psz.y being floor()-ed or ceil()-ed. 
-        grid_mouse_pos = Coord2(int(grid_mouse_pos_f.x),int(grid_mouse_pos_f.y) + 1)
+        grid_mouse_pos = Coord2(int(grid_mouse_pos_f.x), int(grid_mouse_pos_f.y))
         map_mouse_pos = Coord3(self.render_origin.x + grid_mouse_pos.x, 
             self.render_origin.y + grid_mouse_pos.y, self.render_origin.z)
         
         mc = abs ( (tick % 1000)/500.0 - 1)
         mouse_color = ( mc, mc, mc, 1.0)
+        
+        if self.hp_debug.active:
+            # todo: render debug data in single pass instead of what's below
+            # outputting a second color output to a separate fbo
+            black = (0,0,0,1)
+            fbosz = Size2(self.fbo.size.w, self.fbo.size.h)
+            self.debug_fbo.resize(fbosz)
+            self.debug_fbo.bind(clear = black)
+            nomouse = Coord2(-1, -1)
+            self._render_one_grid(self.render_origin, nomouse, black, 1.0, frame_no, debug = True)
+            # the tile under the mouse
+            trect = Rect((fbo_mouse_pos.x//self.psz.x) * self.psz.x,
+                         (fbo_mouse_pos.y//self.psz.y) * self.psz.y,
+                          self.psz.x, self.psz.y)
+            # read it back
+            pixels = self.debug_fbo.readpixels(trect)
+            self.hp_debug.update(self.winsize, pixels, self.psz, trect)
         
         self.fbo.bind(clear = bgc)
 
@@ -485,17 +575,19 @@ class Rednerer(object):
                 continue
             render_origin = self.render_origin._replace(z = i + zed)
             darken = zd[-i]
-            self._render_one_grid(render_origin, grid_mouse_pos, mouse_color, darken, frame_no)
+            self._render_one_grid(render_origin, 
+                    grid_mouse_pos, mouse_color, darken, frame_no,
+                    hidden = self.show_hidden)
 
         self.fbo.blit(self.map_viewport)
-        panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat ]
+        panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat, self.hp_debug ]
 
         self.hp_renderer.update(self.winsize, self.map_viewport,
             gfps = self.fps.value(self.last_render_time), anim_fps = self.anim_fps, frame_no = frame_no,
             origin = self.render_origin, grid = self.grid.size, map = self.gamedata.dim,
             pszar = self.Pszar, psz = self.psz, 
             winsize = self.winsize, fbosize = self.fbo.size,
-            debug_active = self.debug_active, show_hidden = self.show_hidden)
+            show_hidden = self.show_hidden)
             
         self.hp_mouse.update(self.winsize, self.hp_renderer, self, 
             win_mouse_pos, fbo_mouse_pos, grid_mouse_pos, grid_mouse_pos_f, map_mouse_pos)
@@ -566,6 +658,8 @@ class Rednerer(object):
                             paused = not paused
                         elif kcode == SDLK_F1:
                             self.hp_cheat.active = not self.hp_cheat.active
+                        elif kcode == SDLK_F2:
+                            self.dump_fbos()
                         elif kcode == SDLK_ESCAPE:
                             if self.had_input:
                                 finished = True
@@ -574,8 +668,8 @@ class Rednerer(object):
                                 self.hp_cheat.active = False
                         elif kcode == SDLK_KP_MULTIPLY:
                             self.show_hidden = False if self.show_hidden else True
-                        elif kcode == SDLK_KP_DIVIDE:
-                            self.debug_active = False if self.debug_active else True
+                        elif kcode in (SDLK_KP_DIVIDE, SDLK_BACKQUOTE):
+                            self.hp_debug.active = False if self.hp_debug.active else True
                         elif kcode == SDLK_PERIOD and ev.mod & KMOD_SHIFT:
                             self.zpan(-1)
                         elif kcode == SDLK_COMMA  and ev.mod & KMOD_SHIFT:
@@ -627,9 +721,9 @@ class Rednerer(object):
                         mpos = Coord2._make(sdlmouse.get_mouse_state()[1:])
                         if kmodstate & KMOD_CTRL:
                             if amount > 0:
-                                self.zoom("zoom_out", mpos)
-                            else:
                                 self.zoom("zoom_in", mpos)
+                            else:
+                                self.zoom("zoom_out", mpos)
                         elif kmodstate & KMOD_SHIFT:
                             self.zpan(10 * amount)
                         else:
@@ -656,7 +750,6 @@ def main():
     ap.add_argument('dump', metavar="dump-file", help="dump file name")
     ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws-stdpage'])
     ap.add_argument('-loud', nargs='*', help="spit lots of useless info, values: gl, reshape, parser, ...", default=[])
-    ap.add_argument('-inverty', action='store_true', help="invert y-coord in textures", default=False)
     ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
     pa = ap.parse_args()
     
@@ -665,7 +758,6 @@ def main():
         glinfo()
 
     mo = MapObject(pa.dfprefix, pa.rawsdir, loud = pa.loud, apidir = '')
-    mo.invert_tc = pa.inverty    
     mo.use_dump(pa.dump)
     rednr = Rednerer(window, pa.ss, mo, pa.loud, pa.zeddown)
     if pa.zoom:
