@@ -154,9 +154,6 @@ class DFAPI(object):
             siegeengine_type
             trap_type
             workshop_type
-            
-        and a CArray 'tt_flags'
-        
     """
     
     def __init__(self, dfapipath):
@@ -197,16 +194,9 @@ class DFAPI(object):
                 flags = flags | TCF_VOID
             return flags
 
-        tt_enum = parse(os.path.join(dfapipath, 'df.tile-types.xml'))[-1]
-        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
-        tt_enum.extend('flags', flag_a_tile)
-        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
-        tt_enum.uppercase()
-        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
-        self.tt_flags = CArray(None, "I", len(tt_enum))
-        for ei in tt_enum._values.values():
-            self.tt_flags.set([ ei.flags ], ei.value)
-        self.tiletype = tt_enum
+        self.tiletype = parse(os.path.join(dfapipath, 'df.tile-types.xml'))[-1]
+        self.tiletype.extend('flags', flag_a_tile)
+        self.tiletype.uppercase()
         
         bt_enums = parse(os.path.join(dfapipath, 'df.buildings.xml'))
         for e in bt_enums:
@@ -1727,6 +1717,11 @@ class MapObject(object):
 
         log.info("objcode: {1} mats, {0} defined tiles, {2} frames max".format(
             len(objcode.map.keys()), tcount, objcode.maxframe))
+
+        self.tileflags = CArray(None, "I", len(self.api.tiletype))
+        for ei in self.api.tiletype:
+            self.tileflags.set([ ei.flags ], ei.value)
+        log.info("tileflags: {}".format(self.tileflags))
 
         self.codew = int(math.ceil(math.sqrt(tcount)))
         self.codeh = self.codew
