@@ -246,7 +246,7 @@ class Pageman(object):
                     dst = Rect(cx, cy, page.cdim.w, page.cdim.h)
                     album.blit(page.surface, dst, src)
                     self.mapping[(page.name.upper(), i, j)] = index
-                    self.findex.set((cx, cy, page.cdim.w, page.cdim.h), i)
+                    self.findex.set((cx, cy, page.cdim.w, page.cdim.h), index)
                     index += 1
                     cx += page.cdim.w
         # cut off unused tail
@@ -257,13 +257,13 @@ class Pageman(object):
         
     def dump(self, dumpdir):
         sk = sorted(self.mapping.keys())
-        with open(os.path.join(dumpdir, 'album.mapping', 'w')) as f:
+        with open(os.path.join(dumpdir, 'album.mapping'), 'w') as f:
             f.write(str(self.surface) + "\n")
-            f.write(repr(self.uniform) + "\n")
             for k in sk:
-                f.write("{}:{}:{} -> {}:{} \n".format(
-                        k[0], k[1], k[2], self.mapping[k][0], self.mapping[k][1]))
+                f.write("{}:{}:{} -> {} \n".format(
+                        k[0], k[1], k[2], self.mapping[k]))
         self.surface.write_bmp(os.path.join(dumpdir, 'album.bmp'))
+        self.findex.dump(open(os.path.join(dumpdir, "album.index"), 'wb'))
 
     def __call__(self, pagename, ref): # pagename comes in uppercased
         page = self.pages[pagename]
@@ -296,18 +296,16 @@ class BasicFrame(object):
         self.bg = blend[2]
 
     def __str__(self):
-        if self.mode == 0:
-            return "mode=discard"
-        elif self.mode == 1:
-            return "mode=as is   blit={}".format(self.blit)
-        elif self.mode == 2:
-            return "mode=classic blit={} fg={:08x} bg={:08x}".format(self.blit, self.fg, self.bg)
-        elif self.mode == 3:
-            return "mode=fg-only blit={} fg={:08x}".format(self.blit, self.fg)
-        elif self.mode == 4:
-            return "mode=???"
-        elif self.mode == 6:
-            return "mode=PROFIT!!!"
+        if self.mode == BM_NONE:
+            return "mode=BM_NONE"
+        elif self.mode == BM_ASIS:
+            return "mode=BM_ASIS   blit={}".format(self.blit)
+        elif self.mode == BM_CLASSIC:
+            return "mode=BM_CLASSIC blit={} fg={:08x} bg={:08x}".format(self.blit, self.fg, self.bg)
+        elif self.mode == BM_FGONLY:
+            return "mode=BM_FGONLY blit={} fg={:08x}".format(self.blit, self.fg)
+        else:
+            return "mode={} WTF?!".format(self.mode)
 
     def __repr__(self):
         return self.__str__()
@@ -1549,7 +1547,7 @@ class MapObject(object):
 
     def use_dump(self, dumpfname, dump_dir=None):
         if dump_dir:
-            self.pageman.surface.write_bmp(os.path.join(dump_dir, 'album.bmp'))
+            self.pageman.dump(dump_dir)
             irdump = open(os.path.join(dump_dir, 'intrep.dump'), 'w')
         else:
             irdump = None
@@ -1731,11 +1729,19 @@ class MapObject(object):
         self.dispw = self.max_mat_id
         self.disph = len(self.api.tiletype)
 
-        dispatch = CArray(None, "HH", self.dispw, self.disph, inverty = True)
-        dispatch.memset(128)
+        dispatch = CArray(None, "HH", self.dispw, self.disph)
+        #dispatch.memset(128)
+        for i in range(dispatch.w):
+            for j in range(dispatch.h):
+                dispatch.set((i,j), i, j)
         log.info("dispatch: {}".format(dispatch))
-        blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth, inverty = True)
+        
+        blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth)
         blitcode.memset(BM_CODEDBAD)
+        for i in range(blitcode.w):
+            for j in range(blitcode.h):
+                for k in range(blitcode.d):
+                    blitcode.set((BM_CODEDBAD,i,j,34), i, j, k)      
         log.info("blitcode: {}".format(blitcode))
         
         tc = 1 # reserve 0,0 blitinsn as an implicit nop
@@ -1759,15 +1765,15 @@ class MapObject(object):
 
                 frame_no = 0
                 for frame in frameseq:
-                    bm = 0 if frame.mode == BM_NONE else ( frame.blit << 8 ) & frame.mode
+                    bm = 0 if frame.mode == BM_NONE else ( frame.blit << 8 ) | frame.mode
                     unused = 0
                     fg = frame.fg if frame.mode in ( BM_CLASSIC, BM_FGONLY ) else 0
                     bg = frame.bg if frame.mode == BM_CLASSIC else 0
                     
                     blitcode.set((bm, unused, fg, bg), cx, cy, frame_no)
                         
-                    irdump.write("dis@{:03d}:{:03d} code@{}:{} {} {} {}\n".format(mat_id, 
-                                    tile_id, cx, cy, mat_name, tilename, frame))
+                    irdump.write("dis@{:03d}:{:03d} code@{}:{} {} {} frame=({}) bm={:08x}\n".format(mat_id, 
+                                    tile_id, cx, cy, mat_name, tilename, frame, bm))
                     frame_no += 1
                     if frame_no > self.codedepth - 1: # cutoff
                         break

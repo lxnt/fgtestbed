@@ -1,13 +1,13 @@
 #version 130
-#line 2 0
+#pragma debug(on)
 
 /* blend modes */
-#define BM_NONE         0   // discard.
-#define BM_ASIS         1   // no blend.
-#define BM_CLASSIC      2
-#define BM_FGONLY       3
-#define BM_OVERSCAN     254
-#define BM_CODEDBAD     255   // filler insn
+#define BM_NONE         0u   // discard.
+#define BM_ASIS         1u   // no blend.
+#define BM_CLASSIC      2u
+#define BM_FGONLY       3u
+#define BM_OVERSCAN     254u
+#define BM_CODEDBAD     255u   // filler insn
 
 uniform usampler2D      findex;         // RGBA16UI: cs, cy, cw, ch
 uniform sampler2D       font;
@@ -39,11 +39,10 @@ void borderglow(inout vec4 color, in vec4 border_color) {
 
 vec4 debug_encode(in uint value) {
 /* encodes the value into rgb, take one */
-    return vec4( 
-        ((value >> 16) & 0xff)/255.0, 
-        ((value >> 8) & 0xff)/255.0,  
-        (value & 0xff)/255.0, 
-    1.0);
+    return vec4( ((value >> 16u) & 0xffu),
+                 ((value >> 8u) & 0xffu),
+                  (value & 0xffu),
+                   255u) / 255.0;
 }
 vec4 debug_output_row(in uvec4 dval) { 
     float x = gl_PointCoord.x;
@@ -71,81 +70,83 @@ vec4 debug_output(in uvec4 d0, in uvec4 d1, in uvec4 d2, in uvec4 d3) {
         return debug_output_row(d3);
 }
 
-vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 bg) {
+vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 bg, out uvec4 d2, out uvec4 d3) {
     ivec2 finsz = textureSize(findex,0);
-    ivec2 fintc = ivec2(cindex % finsz.x, cindex / finsz.x);
-    //ivec2 fintc = ivec2(cindex % finsz.x, finsz.x - cindex / finsz.x - 1);
+    ivec2 fintc = ivec2(int(cindex) % finsz.x, int(cindex) / finsz.x);
     uvec4 cinfo = texelFetch(findex, fintc, 0);
     ivec2 fonsz = textureSize(font,0);
+    d2 = cinfo;
+    d3 = uvec4(finsz.xy, fonsz.xy);
     
-    //cinfo.y = fonsz.y - cinfo.y - 1;
-    //cinfo.t = - cinfo.t;
-    
-    vec2 texcoords;
-    texcoords.x = (cinfo.x + cinfo.s * pc.x) / fonsz.x;
-    texcoords.y = (cinfo.y + cinfo.t * pc.y) / fonsz.y;
+    // tile size in font texture normalized coordinates
+    vec2 tilesizeN = vec2(float(cinfo.z)/float(fonsz.x), float(cinfo.w)/float(fonsz.y));
+    // offset to the tile in font texture normalized coordinates
+    vec2 offsetN = vec2(float(cinfo.x) / float(fonsz.x), float(cinfo.y) / float(fonsz.y));
+    // finally, the texture coordinated for the fragment
+    vec2 texcoords = offsetN + tilesizeN * pc;
     
     vec4 tile_color = textureLod(font, texcoords, 0);
     vec4 rv;
 
-    switch (mode) {
-        case BM_FGONLY: 
+    switch (int(mode)) {
+        case int(BM_FGONLY):
             rv = fg * tile_color;
             rv.a = 1.0;
             break;
-        case BM_CLASSIC:
+        case int(BM_CLASSIC):
             rv = mix(tile_color * fg, bg, 1.0 - tile_color.a);
             rv.a = 1.0;
             break;
-        case BM_ASIS:
+        case int(BM_ASIS):
             rv = tile_color;
             rv.a = 1.0;
             break;
-        case BM_NONE:	    
+        case int(BM_NONE):
         default:
-            rv = vec4(float(mode)/16.0,0,0,0);
+            rv = vec4(float(mode)/16.0,0,0,1);
             break;
     }
     return rv;
 }
 
 void main() {
-    uint fl_mode = stuff.x & 0xFF;
-    uint fl_cindex = stuff.x >> 8;
-    uint up_cindex = stuff.y >> 8;
-    uint up_mode = stuff.y & 0xFF;
+    uint fl_mode = stuff.x & 0xFFu;
+    uint fl_cindex = stuff.x >> 8u;
+    uint up_cindex = stuff.y >> 8u;
+    uint up_mode = stuff.y & 0xFFu;
     uint mouse = stuff.z;
     uint hidden = stuff.w;
     
-    uvec4 debug3 = uvec4(fl_mode, fl_cindex, 23, 42);
+    uvec4 debug2 = uvec4(8u, 8u, 8u, 8u);
+    uvec4 debug3 = uvec4(42u, 23u, 23u, 42u);
     
     vec2 pc = gl_PointCoord/pszar.xy;
     if ((pc.x > 1.0) || (pc.y > 1.0))
         discard;
 
-    if (debug_active > 0) {
-        frag = debug_output(debug0, debug1, stuff, debug3);
-        return;
-    }
-    
     if (fl_mode == BM_OVERSCAN) {
         frag = vec4(0.42, 0.23, 0.08, 1.0);
         return;
     }
 
-    if (hidden > 0) {
+    if (hidden > 0u) {
         frag = vec4(0.5, 0.5, 0.5, 1.0);
         return;
     }
 
-    vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg);
+    vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg, debug2, debug3);
+
+    if (debug_active > 0) {
+        frag = debug_output(debug0, debug1, debug2, debug3);
+        return;
+    }
     
     if (liquicolor.a > 0.1)
         color = mix(liquicolor, color, 0.5);
     
     color.rgb *= darken;
     
-    if (mouse > 0)
+    if (mouse > 0u)
         borderglow(color, mouse_color);
     
     frag = color;

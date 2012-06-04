@@ -54,6 +54,8 @@ import pygame2.image as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
+OpenGL.FULL_LOGGING = True
+OpenGL.ERROR_ON_COPY = True
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import *
@@ -71,7 +73,7 @@ from sdlenums import *
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
 logconfig ap_data_args ap_render_args
 rgba_surface bar2voidp mmap2voidp CArray
-glinfo upload_tex2d upload_tex2da gldumplog glcalltrace
+glinfo upload_tex2d upload_tex2da gldumplog glcalltrace dump_tex2da texparams
 Shader0 VAO0
 HudTextPanel Hud
 GridVAO DumbGridShader
@@ -112,11 +114,11 @@ class CArray(object):
         if data is None:
             self.data = bytearray(w*h*d*self.dt.size)
         else:
-            self.data = data
-            if len(data) > self.dt.size*w*h*d:
-                logging.getLogger("fgt.CArrray").warn("{} extra bytes".format(len(data) - self.dt.size*w*h*d))
-            elif len(data) < self.dt.size*w*h*d:
+            if len(data) < self.dt.size*w*h*d:
                 raise ValueError("insufficient data: {} < {}".format(len(data), self.dt.size*w*h*d))
+            elif len(data) > self.dt.size*w*h*d:
+                logging.getLogger("fgt.CArrray").warn("{} extra bytes".format(len(data) - self.dt.size*w*h*d))
+            self.data = data
 
     def __str__(self):
         return "{}x{}x{}{}; {}K".format(self.w, self.h, self.d, 
@@ -154,25 +156,73 @@ class CArray(object):
     def dump(self, flike):
         flike.write(self.data)
 
-def upload_tex2d(txid, informat, tw, th, dformat, dtype, dptr):
+def upload_tex2d(txid, informat, tw, th, dformat, dtype, dptr, filter):
     glBindTexture(GL_TEXTURE_2D, txid)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
     glTexImage2D(GL_TEXTURE_2D, 0, informat, tw, th, 0, dformat, dtype, dptr)
+    if informat != GL_RGBA8:
+        texparams(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, 0)
 
-def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr):
+def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr, filter):
     glBindTexture(GL_TEXTURE_2D_ARRAY,  txid)
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)   
+    try:
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+    except:
+        gldump()
+        raise
+    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, filter)
+    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, filter)
+    #glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0)
+    unpackstate()
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)
+    texparams(GL_TEXTURE_2D_ARRAY)
+
+def unpackstate():
+    d = [
+            (glGetBoolean, GL_UNPACK_SWAP_BYTES, "GL_UNPACK_SWAP_BYTES"),
+            (glGetBoolean, GL_UNPACK_LSB_FIRST, "GL_UNPACK_LSB_FIRST"),
+            (glGetInteger, GL_UNPACK_IMAGE_HEIGHT, "GL_UNPACK_IMAGE_HEIGHT"),
+            (glGetInteger, GL_UNPACK_SKIP_IMAGES, "GL_UNPACK_SKIP_IMAGES"),
+            (glGetInteger, GL_UNPACK_ROW_LENGTH, "GL_UNPACK_ROW_LENGTH"),
+            (glGetInteger, GL_UNPACK_SKIP_ROWS, "GL_UNPACK_SKIP_ROWS"),
+            (glGetInteger, GL_UNPACK_SKIP_PIXELS, "GL_UNPACK_SKIP_PIXELS"),
+            (glGetInteger, GL_UNPACK_ALIGNMENT, "GL_UNPACK_ALIGNMENT"),
+        ]
+    for foo, param, name in d:
+        print("{} = {}".format(name, foo(param)))
+
+def texparams(target):
+    w = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_WIDTH)
+    h = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_HEIGHT)
+    d = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_DEPTH)
+    ifmt = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_INTERNAL_FORMAT)
+    rt = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_RED_TYPE)
+    bt = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_GREEN_TYPE)
+    gt = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_BLUE_TYPE)
+    at = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_ALPHA_TYPE)
+    rsz = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_RED_SIZE)
+    gsz = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_GREEN_SIZE)
+    bsz = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_BLUE_SIZE)
+    asz = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_ALPHA_SIZE)
+    min_f = glGetTexParameteriv(target, GL_TEXTURE_MIN_FILTER)
+    max_f = glGetTexParameteriv(target, GL_TEXTURE_MAG_FILTER)
+    wrap_s = glGetTexParameteriv(target, GL_TEXTURE_WRAP_S)
+    wrap_t = glGetTexParameteriv(target, GL_TEXTURE_WRAP_T)
+    print(w,h,d,glname.get(ifmt))
+    print(glname.get(rt),glname.get(bt),glname.get(gt),glname.get(at),rsz,gsz,bsz,asz)
+    print(glname.get(min_f), glname.get(max_f), glname.get(wrap_s), glname.get(wrap_t))
     
-def download_tex2d(tuid):
-    glActiveTexture(tuid)
+
+def dump_tex2da(fname):
+    d = glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA_INTEGER, GL_UNSIGNED_INT)
+    gldumplog()
+    open(fname, "wb").write(d)
+    raise SystemExit
     
     
 class Shader0(object):
@@ -250,6 +300,8 @@ class Shader0(object):
         nfo = glGetShaderInfoLog(rv)
         if result == GL_TRUE:
             log.info("compiled '{}'.".format(filename))
+            for l in nfo.decode('utf-8').strip().split("\n"):
+                log.info(l)
         else:
             log.error("compiling '{}': ".format(filename))
             for l in nfo.decode('utf-8').strip().split("\n"):
@@ -260,6 +312,7 @@ class Shader0(object):
         glValidateProgram(self.program)
         validation = glGetProgramiv( self.program, GL_VALIDATE_STATUS )
         if validation == GL_FALSE:
+            gldump()
             raise RuntimeError(
                 """Validation failure (%s): %s"""%(
                 validation,
@@ -589,7 +642,8 @@ def glinfo():
         (    2, GL_MAX_TEXTURE_IMAGE_UNITS, "GL_MAX_TEXTURE_IMAGE_UNITS" ),  # samplers in frag shader
         (    3, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS" ), # samplers in vert shader
         (   12, GL_MAX_VARYING_FLOATS, "GL_MAX_VARYING_FLOATS" ), # 4 varying_floats = 1 texture_coord?
-#        (    3, GL_MAX_TEXTURE_COORDS, "GL_MAX_TEXTURE_COORDS" ), # 1 texture_coord = 4 varying_floats?
+        (    3, GL_MAX_TEXTURE_COORDS, "GL_MAX_TEXTURE_COORDS" ), # 1 texture_coord = 4 varying_floats?
+#        (    3, GL_MAX_VERTEX_OUTPUT_COMPONENTS, "GL_MAX_VERTEX_OUTPUT_COMPONENTS" ), # 1 texture_coord = 4 varying_floats?
 #        (   -4, GL_POINT_SIZE_MIN, "GL_POINT_SIZE_MIN" ),
 #        (   32, GL_POINT_SIZE_MAX, "GL_POINT_SIZE_MAX" ),
         (    2, GL_MAX_VERTEX_ATTRIBS, "GL_MAX_VERTEX_ATTRIBS" ), 
@@ -638,7 +692,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
         (SDL_GL_STENCIL_SIZE, "SDL_GL_STENCIL_SIZE", 0, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE),
         (SDL_GL_DOUBLEBUFFER, "SDL_GL_DOUBLEBUFFER", 1, None),
         (SDL_GL_CONTEXT_MAJOR_VERSION, "SDL_GL_CONTEXT_MAJOR_VERSION", 3, None),
-        (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 0, None),
+        (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 2, None),
         (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG, None),
         (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", SDL_GL_CONTEXT_PROFILE_CORE, None),
     )
@@ -779,7 +833,7 @@ class rgba_surface(object):
     def upload_tex2d(self, texture_name):
         assert self.pitch == 4 * self.w # muahahaha
         upload_tex2d(texture_name, GL_RGBA8, self.w, self.h,
-                self._gl_fmt, GL_UNSIGNED_BYTE, self.pixels)
+                self._gl_fmt, GL_UNSIGNED_BYTE, self.pixels, GL_LINEAR)
 
     def fill(self, color):
         """ expects RGBA8888 4-tuple """
@@ -883,11 +937,10 @@ def logconfig(info = None, calltrace = None):
         },
         'loggers': {
             'root': { 'level': 'INFO', 'handlers': ['console'] },
-            #'OpenGL.error': { 'level': logging.CRIT },
-            'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'] },
+            'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'], 'propagate': 0 },
             'fgt': { 'level': 'INFO' },
             'fgt.shader': { 'level': 'INFO' },
-            'fgt.shader.locs': { 'level': 'WARN' },
+            'fgt.shader.locs': { 'level': 'INFO' },
             'fgt.pan': { 'level': 'WARN' },
             'fgt.zoom': { 'level': 'WARN' },
             'fgt.reshape': { 'level': 'WARN' },

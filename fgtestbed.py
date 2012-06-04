@@ -84,6 +84,8 @@ class GridShader(Shader0):
             show_hidden, debug_active, 
             falpha, darken, frame_no):
         
+        glcalltrace("GridShader.__call__")
+        
         glUseProgram(self.program)
 
         glUniform3i(self.uloc[b'mapsize'], *map_size)
@@ -122,7 +124,9 @@ class GridShader(Shader0):
         glActiveTexture(GL_TEXTURE4)
         glBindTexture(GL_TEXTURE_2D_ARRAY, tex.screen)
         glUniform1i(self.uloc[b"screen"], 4)
-
+        
+        self.validate()
+        
 class RendererPanel(HudTextPanel):
     def __init__(self, font):
         strs = (
@@ -228,12 +232,12 @@ class DebugPanel(HudTextPanel):
     def __init__(self, font):
         strs = (
             "{trect}",
-            "{d[0][0]: 8d} {d[0][1]: 8d} {d[0][2]: 8d} {d[0][3]: 8d}",
-            "{d[1][0]: 8d} {d[1][1]: 8d} {d[1][2]: 8d} {d[1][3]: 8d}",
-            "{d[2][0]: 8d} {d[2][1]: 8d} {d[2][2]: 8d} {d[2][3]: 8d}",
-            "{d[3][0]: 8d} {d[3][1]: 8d} {d[3][2]: 8d} {d[3][3]: 8d}",
+            "tile, mat, dispatch.xy {d[0][0]: 4d} {d[0][1]: 4d} {d[0][2]: 6d} {d[0][3]: 6d}",
+            "fontref, mode, fg, bg  {d[1][0]: 4d} {d[1][1]: 4d} {d[1][2]:06x} {d[1][3]:06x}",
+            "cinfo                  {d[2][0]: 4d} {d[2][1]: 4d} {d[2][2]: 6d} {d[2][3]: 6d}",
+            "st, psz                {d[3][0]: 4d} {d[3][1]: 4d} {d[3][2]: 6d} {d[3][3]: 6d}",
         )
-        super(DebugPanel, self).__init__(font, strs, longest_str = "8"*(4*8+3), active = False)
+        super(DebugPanel, self).__init__(font, strs, longest_str = "8"*(4*8+14), active = False)
     
     def update(self, win, pixels, psz, trect):
         d = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
@@ -268,7 +272,7 @@ class DebugPanel(HudTextPanel):
         return self._data    
 
 class Rednerer(object):
-    _overdraw = 3 # a constant, can't be less than 3 and better be even
+    _overdraw = 3 # a constant, can't be less than 3 
     # due to the panning algorithm, and no sense in making it more than 3 either
     # With 3 there's always a neighbouring tile drawn to any visible one.
     # Since grid is sized based on viewport size modulo tile size, this
@@ -310,32 +314,38 @@ class Rednerer(object):
         self.hp_mouse = MousePanel(font)
         self.hp_cheat = CheatPanel(font)
         self.hp_debug = DebugPanel(font)
+        self.hp_debug.active = True
         
         self.render_origin = gamedata.window
         self.map_viewport = Rect(0, 0, window._w, window._h)
-        
+
+        glcalltrace("upload dispatch")
+        glActiveTexture(GL_TEXTURE0)
+        upload_tex2d(self.tex.dispatch, GL_RG16UI,
+            gamedata.dispatch.w, gamedata.dispatch.h, 
+            GL_RG_INTEGER, GL_UNSIGNED_SHORT, gamedata.dispatch.ptr, GL_NEAREST)
+            
+        glcalltrace("upload blitcode")
+        glActiveTexture(GL_TEXTURE1)
+        upload_tex2da(self.tex.blitcode, GL_RGBA32UI,
+            gamedata.blitcode.w, gamedata.blitcode.h, gamedata.blitcode.d,
+            GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.blitcode.ptr, GL_NEAREST)
+
         glcalltrace("upload font")
+        glActiveTexture(GL_TEXTURE2)
         gamedata.pageman.surface.upload_tex2d(self.tex.font)
         
         glcalltrace("upload findex")
+        glActiveTexture(GL_TEXTURE3)
         upload_tex2d(self.tex.findex, GL_RGBA16UI,
             gamedata.pageman.findex.w, gamedata.pageman.findex.h,
-            GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, gamedata.pageman.findex.ptr )
-            
-        glcalltrace("upload dispatch")
-        upload_tex2d(self.tex.dispatch, GL_RG16UI,
-            gamedata.dispatch.w, gamedata.dispatch.h, 
-            GL_RG_INTEGER, GL_UNSIGNED_SHORT, gamedata.dispatch.ptr)
-        
-        glcalltrace("upload blitcode")
-        upload_tex2da(self.tex.blitcode, GL_RGBA32UI,
-            gamedata.blitcode.w, gamedata.blitcode.h, gamedata.blitcode.d,
-            GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.blitcode.ptr )
-            
+            GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, gamedata.pageman.findex.ptr, GL_NEAREST)
+
         glcalltrace("upload screen")
+        glActiveTexture(GL_TEXTURE4)
         upload_tex2da(self.tex.screen, GL_RGBA32UI,
                gamedata.mapdata.w, gamedata.mapdata.h, gamedata.mapdata.d,
-               GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapdata.ptr)            
+               GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapdata.ptr, GL_NEAREST)
 
         if psize is None:
             psize = max(gamedata.pageman.pages['STD'].cdim.w, gamedata.pageman.pages['STD'].cdim.h)
@@ -509,6 +519,7 @@ class Rednerer(object):
             self.reshape(zoom = (psz, zpos))
 
     def _render_one_grid(self, origin, m_pos, m_color, darken, frame_no, hidden = True, debug = False):
+        glcalltrace('_render_one_grid')
         self.grid_shader(
             map_size = self.gamedata.dim,
             grid_size = self.grid.size, 

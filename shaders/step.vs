@@ -1,13 +1,13 @@
 #version 130
-#line 2 0
+#pragma debug(on)
 
 /* blend modes */
-#define BM_NONE         0   // discard.
-#define BM_ASIS         1   // no blend.
-#define BM_CLASSIC      2
-#define BM_FGONLY       3
-#define BM_OVERSCAN     254
-#define BM_CODEDBAD     255   // filler insn
+#define BM_NONE         0u   // discard.
+#define BM_ASIS         1u   // no blend.
+#define BM_CLASSIC      2u
+#define BM_FGONLY       3u
+#define BM_OVERSCAN     254u
+#define BM_CODEDBAD     255u   // filler insn
 
 uniform usampler2DArray screen;   // mapdata under traditional name
 uniform usampler2D      dispatch; // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
@@ -53,17 +53,16 @@ void decode_insn(in uint mat, in uint tile, out uint mode, out vec4 fg, out vec4
     fg = vec4(1,0,0,1);
     bg = vec4(0,0,0,0);
     
-    uvec4 addr = texelFetch(dispatch, ivec2(mat, tile), 0);
+    uvec4 addr = texelFetch(dispatch, ivec2(int(mat), int(tile)), 0);
     
     debug0 = uvec4(mat, tile, addr.x, addr.y);
-    debug1 = uvec4(8,8,8,8);
     
     addr.z = uint(frame_no);
     uvec4 insn = texelFetch(blitcode, ivec3(addr.xyz), 0);
     
-    debug1 = insn;
+    debug1 = uvec4(insn.x >>8u, insn.x & 0xffu, insn.z>>8u, insn.w>>8u);
     
-    mode = insn.y;
+    mode = insn.x;
     fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
     bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
 }
@@ -110,11 +109,11 @@ void main() {
         return;
     }
     
-    uint fl_mat = 0, fl_tile = 0; uint fl_mode = BM_CODEDBAD;
-    uint up_mat = 0, up_tile = 0; uint up_mode = BM_CODEDBAD;
-    uint gr_mat = 0, gr_amt = 0;
+    uint fl_mat = 0u, fl_tile = 0u; uint fl_mode = BM_CODEDBAD;
+    uint up_mat = 0u, up_tile = 0u; uint up_mode = BM_CODEDBAD;
+    uint gr_mat = 0u, gr_amt = 0u;
     uint designation = 0u;
-    
+       
     decode_tile(map_posn, fl_mat, fl_tile, up_mat, up_tile, gr_mat, gr_amt, designation);
     decode_insn(fl_mat, fl_tile, fl_mode, fl_fg, fl_bg);
     
