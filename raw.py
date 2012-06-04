@@ -128,111 +128,156 @@ class DfapiEnum(object):
         else:
             return self.emap[key.upper()]
 
-
-def flag_tiles(dfapipath):
-    """
-    Okay. Tileclasses/flags.
-    What do we need:
-     - is_grass flag : to select grass mat
-     - needs_fakefloor flag: to know we've got to fake a floor for this tile
-     - is_floor flag : for faking floors by looking at neighbours; for floor melding
-     - is_openspace : for drawing open space as open, see
-     
-     most of this can be inferred from the df.tile-types.xml contents.
-     
-    """
-
-    class enum_t(object):
-        log = logging.getLogger('fgt.enum_t')
-        debug = logging.getLogger('fgt.enum_t').debug
-        def __init__(self, e, typedict):
-            self._names = {}
-            self._values = {}
-            self.name = e.get('type-name')
-            self.debug("__init__() name={}".format(self.name))
-            attrtypes = { 'name': None, 'value': None }
-            for ea in lxml.etree.XPath('enum-attr')(e):
-                attrtypes[ea.get('name')] = ( typedict[ea.get('type-name', None)], ea.get('default-value') )
-            
-            nt = namedtuple(self.name, attrtypes.keys())
-            
-            i = 0
-            for ei in lxml.etree.XPath('enum-item')(e):
-                try:
-                    i = int(ei.get('value'))
-                except:
-                    pass
-                attvals = dict.fromkeys(attrtypes, None)
-                attvals['name'] = ei.get('name')
-                attvals['value'] = i
-                for ia in lxml.etree.XPath('item-attr')(ei):
-                    aname = ia.get('name')
+class enum_t(object):
+    debug = logging.getLogger('fgt.enum_t').debug
+    def __init__(self, e, typedict):
+        self._names = {}
+        self._values = {}
+        self.name = e.get('type-name')
+        self.debug("__init__() name={}".format(self.name))
+        attrtypes = { 'name': None, 'value': None }
+        for ea in lxml.etree.XPath('enum-attr')(e):
+            attrtypes[ea.get('name')] = ( typedict[ea.get('type-name', None)], ea.get('default-value') )
+        
+        nt = namedtuple(self.name, attrtypes.keys())
+        self._type = nt
+        
+        i = 0
+        for ei in lxml.etree.XPath('enum-item')(e):
+            try:
+                i = int(ei.get('value'))
+            except:
+                pass
+            attvals = dict.fromkeys(attrtypes, None)
+            attvals['name'] = ei.get('name')
+            attvals['value'] = i
+            for ia in lxml.etree.XPath('item-attr')(ei):
+                aname = ia.get('name')
+                atype = attrtypes[aname][0]
+                avalue = ia.get('value')
+                self.debug("({}, {}, {}, {})".format(aname, atype, avalue, atype(avalue)))
+                attvals[aname] = atype(avalue)
+            for aname, avalue in attvals.items():
+                if aname != 'name' and avalue is None:
                     atype = attrtypes[aname][0]
-                    avalue = ia.get('value')
-                    self.debug("({}, {}, {}, {})".format(aname, atype, avalue, atype(avalue)))
-                    attvals[aname] = atype(avalue)
-                for aname, avalue in attvals.items():
-                    if aname != 'name' and avalue is None:
-                        atype = attrtypes[aname][0]
-                        adefval = attrtypes[aname][1]
-                        attvals[aname] = atype(adefval)
-                self.debug("attvals={} nt={}".format(repr(attvals), nt(**attvals)))
-                self._names[attvals['name']] = self._values[attvals['value']] = nt(**attvals)
-                i += 1
+                    adefval = attrtypes[aname][1]
+                    attvals[aname] = atype(adefval)
+            self.debug("attvals={} nt={}".format(repr(attvals), nt(**attvals)))
+            self._names[attvals['name']] = self._values[attvals['value']] = nt(**attvals)
+            i += 1
+        self.last = i - 1
+        typedict[self.name] = lambda x: self[x]
+    
+    def extend(self, fieldname, valuefactory):
+        """ adds a field to each item """
+        names = {}
+        values = {}
+        typename = self._type.__doc__.split('(')[0]
+        newtype = namedtuple( typename, list(self._type._fields) + [ fieldname ] )
+        for number, value in self._values.items():
+            value = newtype( *(list(value) + [ valuefactory(value) ]) )
+            names[value.name] = value
+            values[number] = value
             
-            typedict[self.name] = lambda x: self[x]
+        self._type = newtype
+        self._names = names
+        self._values = values
+    
+    def uppercase(self):
+        """ enables uppercased name lookups 
+            side-effect: removes the None key """
+        names = {}
+        for name, value in self._names.items():
+            if name is not None:
+                names[name] = names[name.upper()] = value
+        self._names = names
+    
+    def __len__(self):
+        return self.last + 1
+    
+    def __iter__(self):
+        cur = -1
+        while cur < len(self) -1:
+            cur += 1
+            yield self[cur]
+    
+    def __getitem__(self, val):
+        if isinstance(val, int):
+            return self._values[val]
+        elif isinstance(val, str):
+            return self._names[val]
+        else:
+            raise TypeError("can't lookup with {}".repr(val))
+
+
+class DFAPI(object):
+    """ currently has the following enum_t attribures:
+            tiletype
+            building_type
+            civzone_type
+            construction_type
+            furnace_type
+            shop_type
+            siegeengine_type
+            trap_type
+            workshop_type
             
-        def __getitem__(self, val):
-            if isinstance(val, int):
-                return self._values[val]
-            elif isinstance(val, str):
-                return self._names[val]
-            else:
-                raise TypeError("can't lookup with {}".repr(val))
-
-    def parse_tiletypes(fname):
-        parser = lxml.etree.XMLParser(remove_blank_text = True)
-        root = lxml.etree.parse(fname, parser).getroot()
-        for e in root.iter():
-            if isinstance(e, lxml.etree._Comment):
-                e.getparent().remove(e)
-            else:
-                e.tail = e.text = None
-
-        typedict = { 
-            None: lambda s: s,
-            'bool': lambda s: True if s == 'true' else False 
-        }
-        for e in lxml.etree.XPath('enum-type')(root):
-            rv = enum_t(e, typedict)
-
-        return rv
+        and a CArray 'tt_flags'
         
-    def flag_a_tile(tt):
-        flags = 0
-        if tt.name is None:
-            return TCF_UNKNOWN
+    """
+    
+    def __init__(self, dfapipath):
+        def parse(filename):
+            parser = lxml.etree.XMLParser(remove_blank_text = True)
+            root = lxml.etree.parse(filename, parser).getroot()
+            for e in root.iter():
+                if isinstance(e, lxml.etree._Comment):
+                    e.getparent().remove(e)
+                else:
+                    e.tail = e.text = None
+
+            typedict = { 
+                None: lambda s: s,
+                'bool': lambda s: True if s == 'true' else False 
+            }
+            rv = []
+            for e in lxml.etree.XPath('enum-type')(root):
+                rv.append(enum_t(e, typedict))
+
+            return rv
+
+        def flag_a_tile(tt):
+            flags = 0
+            if tt.name is None:
+                return TCF_UNKNOWN                
+            if tt.name.startswith('Grass'):
+                flags = flags | TCF_GRASS
+            if tt.shape.name in ('TREE', 'SHRUB', 'SAPLING'):
+                flags = flags | TCF_PLANT
+            if (tt.material.name in ('DRIFTWOOD', 'CAMPFIRE', 'FIRE') or
+               tt.shape.name in ('TREE', 'SHRUB', 'SAPLING', 'PEBBLES', 'BOULDER', 'STAIR_UP')):
+                   flags = flags | TCF_FAKEFLOOR 
+            if ( tt.name.endswith(('FloorSmooth', 'Floor1', 'Floor2', 'Floor3', 'Floor4', 'Floor')) and
+                tt.name not in ('ConstructedFloor', 'GlowingFloor')):
+                    flags = flags | TCF_TRUEFLOOR
+            if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name == 'Void'):
+                flags = flags | TCF_VOID
+            return flags
+
+        tt_enum = parse(os.path.join(dfapipath, 'df.tile-types.xml'))[-1]
+        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
+        tt_enum.extend('flags', flag_a_tile)
+        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
+        tt_enum.uppercase()
+        print (len(tt_enum), len(tt_enum._names), len(tt_enum._values))
+        self.tt_flags = CArray(None, "I", len(tt_enum))
+        for ei in tt_enum._values.values():
+            self.tt_flags.set([ ei.flags ], ei.value)
+        self.tiletype = tt_enum
         
-        if tt.name.startswith('Grass'):
-            flags = flags | TCF_GRASS
-        if tt.shape.name in ('TREE', 'SHRUB', 'SAPLING'):
-            flags = flags | TCF_PLANT
-        if (tt.material.name in ('DRIFTWOOD', 'CAMPFIRE', 'FIRE') or
-           tt.shape.name in ('TREE', 'SHRUB', 'SAPLING', 'PEBBLES', 'BOULDER', 'STAIR_UP')):
-               flags = flags | TCF_FAKEFLOOR 
-        if ( tt.name.endswith(('FloorSmooth', 'Floor1', 'Floor2', 'Floor3', 'Floor4', 'Floor')) and
-            tt.name not in ('ConstructedFloor', 'GlowingFloor')):
-                flags = flags | TCF_TRUEFLOOR
-        if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name == 'Void'):
-            flags = flags | TCF_VOID
-        return flags
-
-    e = parse_tiletypes(os.path.join(dfapipath, 'df.tile-types.xml'))
-
-    rv = CArray(None, "I", len(e._values))
-    for ei in e._values.values():
-        rv.set((flag_a_tile(ei),), ei.value)
-    return rv
+        bt_enums = parse(os.path.join(dfapipath, 'df.buildings.xml'))
+        for e in bt_enums:
+            setattr(self, e.name, e)
 
 class Pageman(object):
     """ blits tiles in order of celpage submission to album.w//max(cdim.w) columns """
@@ -1574,9 +1619,7 @@ class MapObject(object):
         self._mmap_fd = None
         self.cutoff = cutoff
         
-        self.tileresolve = DfapiEnum(apidir, 'tiletype')
-        self.building_t = DfapiEnum(apidir, 'building_type')
-        self.tileflags = flag_tiles(apidir)
+        self.api = DFAPI(apidir)
         
         self._parse_raws(dfprefix, fgraws)
 
@@ -1757,7 +1800,7 @@ class MapObject(object):
         self.codedepth = maxframes
         
         self.dispw = self.max_mat_id
-        self.disph = len(self.tileresolve)
+        self.disph = len(self.api.tiletype)
 
         dispatch = CArray(None, "HH", self.dispw, self.disph, inverty = True)
         dispatch.memset(128)
@@ -1775,7 +1818,7 @@ class MapObject(object):
 
             for tilename, frameseq in tileset.items():
                 try:
-                    tile_id = self.tileresolve[tilename]
+                    tile_id = self.api.tiletype[tilename].value
                 except KeyError:
                     raise CompileError("unknown tile name '{}' in mat '{}'".format(tilename, mat_name))
                     
@@ -1816,8 +1859,8 @@ class MapObject(object):
         grass_amount = ( grass >> 16 ) & 0xff
 
         flags = self.tileflags.get(tile_id)[0]
-        tilename = self.tileresolve[tile_id]
-        btilename = self.tileresolve[btile_id]
+        tilename = self.api.tiletype[tile_id].name
+        btilename = self.api.tiletype[btile_id].name
 
         matname, matklass, matsubklass = self.mat_ksk.get(mat_id, None)
         bmatname, bmatklass, bmatsubklass = self.mat_ksk.get(bmat_id, None)
@@ -1917,7 +1960,7 @@ class MapObject(object):
             pass
         rep.write("\nFAILs:\n")
         for eka, val in fails.items():
-            rep.write("{} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None), self.tileresolve[eka[1]], val))
+            rep.write("{} {} {} {}:{}\n".format(eka[0], eka[1], self.mat_ksk.get(eka[0], None), self.api.tiletype[eka[1]].name, val))
 
 class Designation(object):
     def __init__(self, u32):
