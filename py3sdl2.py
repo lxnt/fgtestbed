@@ -249,7 +249,7 @@ class Shader0(object):
         result = glGetShaderiv(rv, GL_COMPILE_STATUS)
         nfo = glGetShaderInfoLog(rv)
         if result == GL_TRUE:
-            log.info("compilied '{}' successfully.".format(filename))
+            log.info("compiled '{}'.".format(filename))
         else:
             log.error("compiling '{}': ".format(filename))
             for l in nfo.decode('utf-8').strip().split("\n"):
