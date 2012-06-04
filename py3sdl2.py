@@ -28,7 +28,9 @@ distribution.
 
 """
 
-import os, os.path, sys, collections, struct, time, ctypes, logging, mmap
+import os, os.path, sys, collections, struct, time, ctypes, mmap
+import logging, logging.config, argparse
+
 from collections import namedtuple
 sys.path.append('/home/lxnt/00DFGL/sdlhg/prefix/lib/python3.2/site-packages/')
 
@@ -52,7 +54,6 @@ import pygame2.image as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
-OpenGL.FULL_LOGGING = True
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import *
@@ -66,6 +67,24 @@ from OpenGL.error import GLError
 
 from glname import glname as glname
 from sdlenums import *
+
+__all__ = """sdl_init sdl_flip sdl_offscreen_init
+logconfig ap_data_args ap_render_args
+rgba_surface bar2voidp mmap2voidp CArray
+glinfo upload_tex2d upload_tex2da gldumplog glcalltrace
+Shader0 VAO0
+HudTextPanel Hud
+GridVAO DumbGridShader
+Rect Coord2 Coord3 Size2 Size3 GLColor
+FBO EmaFilter""".split()
+
+Coord2 = namedtuple('Coord2', 'x y')
+Coord3 = namedtuple('Coord3', 'x y z')
+Rect = namedtuple('Rect', 'x y w h')
+Size2 = namedtuple('Size2', 'w h')
+Size3 = namedtuple('Size3', 'w h d')
+GLColor = namedtuple('GLColor', 'r g b a')
+VertexAttr = namedtuple('VertexAttr', 'index size type stride offset')
 
 ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
 ctypes.pythonapi.PyByteArray_FromStringAndSize.restype = ctypes.py_object
@@ -84,19 +103,25 @@ def mmap2voidp(_mmap):
 
 class CArray(object):
     def __init__(self, data, fmt, w, h=1, d=1, inverty = False):
+        assert ( h != 1) or ( d == 1) # I don't need this crap
         self.dt = struct.Struct(fmt)
         self.w = w
         self.h = h 
         self.d = d
-        self.inverty = False # for the GL textures and such
+        self.inverty = inverty # for the GL textures and such
         if data is None:
             self.data = bytearray(w*h*d*self.dt.size)
         else:
             self.data = data
             if len(data) > self.dt.size*w*h*d:
-                print("warn, extra data: {} > {}".format(len(data), self.dt.size*w*h*d))
+                logging.getLogger("fgt.CArrray").warn("{} extra bytes".format(len(data) - self.dt.size*w*h*d))
             elif len(data) < self.dt.size*w*h*d:
-                raise LintError("insufficient data: {} < {}".format(len(data), self.dt.size*w*h*d))
+                raise ValueError("insufficient data: {} < {}".format(len(data), self.dt.size*w*h*d))
+
+    def __str__(self):
+        return "{}x{}x{}{}; {}K".format(self.w, self.h, self.d, 
+            ", y-inverted" if self.inverty else "",
+            self.w*self.h*self.d*self.dt.size >>10)
 
     def memset(self, c=0):
         ctypes.memset(self.ptr, c, self.w*self.h*self.d*self.dt.size)
@@ -129,22 +154,6 @@ class CArray(object):
     def dump(self, flike):
         flike.write(self.data)
 
-__all__ = """sdl_init sdl_flip sdl_offscreen_init
-rgba_surface bar2voidp mmap2voidp CArray
-glinfo upload_tex2d upload_tex2da gldump glcalltrace
-Shader0 VAO0
-HudTextPanel Hud
-GridVAO DumbGridShader
-Rect Coord2 Coord3 Size2 Size3 GLColor
-FBO EmaFilter""".split()
-
-Coord2 = namedtuple('Coord2', 'x y')
-Coord3 = namedtuple('Coord3', 'x y z')
-Rect = namedtuple('Rect', 'x y w h')
-Size2 = namedtuple('Size2', 'w h')
-Size3 = namedtuple('Size3', 'w h d')
-GLColor = namedtuple('GLColor', 'r g b a')
-VertexAttr = namedtuple('VertexAttr', 'index size type stride offset')
 def upload_tex2d(txid, informat, tw, th, dformat, dtype, dptr):
     glBindTexture(GL_TEXTURE_2D, txid)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
@@ -161,6 +170,10 @@ def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr):
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)   
+    
+def download_tex2d(tuid):
+    glActiveTexture(tuid)
+    
     
 class Shader0(object):
     """ shader base class.
@@ -180,8 +193,9 @@ class Shader0(object):
         Vertex attribute number 0 is always named 'position'.
                 
     """
-    def __init__(self, sname=None, loud=False, sdir = 'shaders'):
-        self.loud = loud
+    def __init__(self, sname=None, sdir = 'shaders'):
+        log_locs = logging.getLogger('fgt.shader.locs').info
+        
         self.aloc = { b'position': 0 }
         self.uloc = collections.defaultdict(lambda:-1)
         if sname is None:
@@ -201,8 +215,7 @@ class Shader0(object):
             
         for name, loc in self.aloc.items():
             glBindAttribLocation(program, loc, name)
-            if self.loud:
-                print("  vao{0}: name={1}".format(loc, name))
+            log_locs("  vao{0}: name={1}".format(loc, name))
         glBindFragDataLocation(program, 0, b'frag')
 
         glLinkProgram(program)
@@ -221,8 +234,7 @@ class Shader0(object):
             name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
             loc = glGetUniformLocation(program, name)
             self.uloc[name] = loc
-            if self.loud:
-                print("  uni{0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc))
+            log_locs("  uni{0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc))
         
         self.program = program
 
@@ -230,12 +242,18 @@ class Shader0(object):
         raise NotImplemented
     
     def _compile(self, lines, stype, filename):
+        log = logging.getLogger('fgt.shader')
         rv = glCreateShader(stype)
         glShaderSource(rv, lines)
         glCompileShader(rv)
         result = glGetShaderiv(rv, GL_COMPILE_STATUS)
         nfo = glGetShaderInfoLog(rv)
-        print("compiling {}: result={}; nfo:\n{}".format(filename, result, nfo.decode('utf-8').strip()))
+        if result == GL_TRUE:
+            log.info("compilied '{}' successfully.".format(filename))
+        else:
+            log.error("compiling '{}': ".format(filename))
+            for l in nfo.decode('utf-8').strip().split("\n"):
+                log.error(l)
         return rv
     
     def validate(self):
@@ -327,8 +345,8 @@ class GridVAO(VAO0):
 
 class Grid(object):
     """ dumb state container atm """
-    def __init__(self, size, pszar, loud):
-        self.shader = DumbGridShader(loud=loud)
+    def __init__(self, size, pszar):
+        self.shader = DumbGridShader()
         self.vao = GridVAO()
         self.vao.resize(size)
         self.pszar = pszar
@@ -506,6 +524,7 @@ class FBO(object):
         pixels = self.readpixels(srcrect)
         surf = rgba_surface(srcrect.w, srcrect.h, pixels)
         surf.write_bmp(filename)
+        log = logging.getLogger("fgt.fbo.dump").info("wrote '{}'".format(filename))
     
     def blit(self, srcrect):
         """ blits visible part onto the window. 
@@ -577,28 +596,30 @@ def glinfo():
 #        (    2, GL_MAX_VERTEX_UNIFORM_BLOCKS, "GL_MAX_VERTEX_UNIFORM_BLOCKS" ),
     ]
 
-    if False:
-        exts = []
+    log = logging.getLogger('fgt.glinfo')
+    log_exts = logging.getLogger('fgt.glinfo.extensions')
+
+    if log_exts.isEnabledFor(logging.INFO):
         for i in range(glGetInteger(GL_NUM_EXTENSIONS)):
-            exts.append(glGetStringi(GL_EXTENSIONS, i))
-        print("\n".join(map(str,exts)))
-        
-    for e,s in strs.items():
-        print("{0}: {1}".format(s, glGetString(e)))
-        gldump()
-        
-    for t in ints:
-        try:
-            p = glGetInteger(t[1])
-            if (p<t[0]) or ((t[0]<0) and (p+t[0] >0)):
-                w = "** "
-            else:
-                w = ""
-            print("{0}: {1}".format(t[2], p, abs(t[0]), w))
-        except GLError as e:
-            if e.err != 1280:
-                raise
-            print("{0}: {1}".format(t[2], "invalid enumerant"))
+            log_exts.info(glGetStringi(GL_EXTENSIONS, i).decode('utf-8'))
+    
+    if log.isEnabledFor(logging.INFO):
+        for e,s in strs.items():
+            log.info("{0}: {1}".format(s, glGetString(e).decode('utf-8')))
+            
+        for t in ints:
+            try:
+                p = glGetInteger(t[1])
+                if (p<t[0]) or ((t[0]<0) and (p+t[0] >0)):
+                    w = "** "
+                else:
+                    w = ""
+                log.info("{0}: {1}".format(t[2], p, abs(t[0]), w))
+            except GLError as e:
+                if e.err != 1280:
+                    raise
+                log.warn("{0}: {1}".format(t[2], "invalid enumerant"))
+        gldumplog()
 
 def glcalltrace(s):
     s = "{0} {1} {0}".format("*" * 16, s)
@@ -607,7 +628,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
     posn = (sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY, sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY)
     posn = (0, 0)
-    
+    log = logging.getLogger('fgt.sdl_init')
     gl_attrs = (
         (SDL_GL_RED_SIZE, "SDL_GL_RED_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE),
         (SDL_GL_GREEN_SIZE, "SDL_GL_GREEN_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE),
@@ -623,7 +644,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     )
 
     for attr, name, val, unused in gl_attrs:
-        print("request", name, val)
+        log.debug("requesting {}={}".format(name, val))
         sdlvideo.gl_set_attribute(attr, val)
 
     window = sdlvideo.create_window(title, posn[0], posn[1], size[0], size[1], 
@@ -631,21 +652,15 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     if icon:
         sdlvideo.set_window_icon(window, icon)
     context = sdlvideo.gl_create_context(window)
-    gldump("just after context")
+    gldumplog("just after context", logger=log) # this catches PyOpenGL's try: glGetString() except: glGetStringiv() unsanity
     for attr, name, val, glenum in gl_attrs:
         if glenum is None:
             got = sdlvideo.gl_get_attribute(attr)
         else:
             continue # GL_FRAMEBUFFER_ATTACHMENT_*_SIZE fail for some reason
             got = glGetInteger(glenum)
-            gldump()
-        print("{} requested {} got {}".format(name, val, got))
+        log.info("{} requested {} got {}".format(name, val, got))
     
-    #gldump(ignore=True) # SDL's SDL_GL_ExtensionSupported vs forward-compatible context
-    gldump("before")
-    for e in "GL_NV_texgen_reflection GL_NV_texture_byrrier".split():
-        print(e, sdlvideo.gl_extension_supported(e))
-    gldump("aftarr")
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE)
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -655,10 +670,12 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     image.init()
     return window, context
 
-def gldump(s=None, ignore=False):
-    glcalltrace("gldump(s={} ignore={})".format(s, ignore))
-    if s:
-        print("gldump({})".format(s))
+def gldumplog(header = '', logger = None):
+    if logger is None:
+        logger = logging.getLogger('OpenGL.debug_output')
+    glcalltrace("gldump({})".format(header))
+    logger.info("gldump({})".format(header))
+    
     count = 256
     logSize = 1048576
     sources = arrays.GLuintArray.zeros((count, ))
@@ -669,16 +686,22 @@ def gldump(s=None, ignore=False):
     messageLog = arrays.GLcharArray.zeros((logSize, ))
     
     num = glGetDebugMessageLogARB(count, logSize, sources, types, ids, severities, lengths, messageLog)
-    if ignore:
-        return
     offs = 0
+    ldict = {
+        GL_DEBUG_SEVERITY_HIGH_ARB : logger.error,
+        GL_DEBUG_SEVERITY_MEDIUM_ARB : logger.warn,
+        GL_DEBUG_SEVERITY_LOW_ARB : logger.info,
+    }
+        
     for n in range(num):
         msg = bytes(messageLog[offs:offs+lengths[n]]).decode('utf-8')
-        print(glname.get(sources[n], sources[n]),
-            glname.get(types[n], types[n]),
-            glname.get(ids[n], ids[n]),
-            glname.get(severities[n], severities[n]),
-            msg)
+        ldict.get(severities[n],logger.error)(
+            "{} {} {} {} {}".format(
+                glname.get(sources[n], sources[n]),
+                glname.get(types[n], types[n]),
+                glname.get(ids[n], ids[n]),
+                glname.get(severities[n], severities[n]),
+                msg))
         offs += lengths[n]  
     
 def sdl_offscreen_init():
@@ -801,7 +824,7 @@ def sdl_fini():
     ttf.quit()
     sdl.quit()
 
-def loop(window, bg_color, fbo_color, grid, hud, panels):
+def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
     fbo = FBO(Size2(window._w, window._h))
     while True:
         while True:
@@ -840,23 +863,97 @@ def loop(window, bg_color, fbo_color, grid, hud, panels):
         hud.render(panels)
 
         sdl_flip(window)
-        #gldump()
-        time.sleep(0.5)
+        if choke > 0:
+            time.sleep(1/choke)
 
+def logconfig(info = None, calltrace = None):
+    lcfg = {
+        'version': 1,
+        'handlers': {
+            'console': { 
+                'class': 'logging.StreamHandler',
+                'level': 'INFO',
+                'stream': sys.stdout,
+            },
+            'calltrace': { 
+                'class': 'logging.StreamHandler',
+                'level': 'INFO',
+                'stream': sys.stdout,
+            },
+        },
+        'loggers': {
+            'root': { 'level': 'INFO', 'handlers': ['console'] },
+            #'OpenGL.error': { 'level': logging.CRIT },
+            'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'] },
+            'fgt': { 'level': 'INFO' },
+            'fgt.shader': { 'level': 'INFO' },
+            'fgt.shader.locs': { 'level': 'WARN' },
+            'fgt.pan': { 'level': 'WARN' },
+            'fgt.zoom': { 'level': 'WARN' },
+            'fgt.reshape': { 'level': 'WARN' },
+            'fgt.glinfo': { 'level': 'WARN' },
+            'fgt.glinfo.extensions': { 'level': 'WARN' },
+        },
+    }
+    if calltrace is not None:
+        lcfg['loggers']['OpenGL.calltrace']['level'] = 'INFO'
+        lcfg['handlers']['calltrace']['stream'] = open(calltrace, 'w')
+        
+    if info is not None:
+        lcfg['loggers']['fgt.glinfo']['level'] = 'INFO'
+        if info == 'exts':
+            lcfg['loggers']['fgt.glinfo.extensions']['level'] = 'INFO'
+    logging.config.dictConfig(lcfg)
+ 
+def ap_render_args(ap, **kwargs):
+    ap.add_argument('-choke', metavar='fps', type=float, default=0, help="renderer fps cap")
+    ap.add_argument('-psize', metavar="psize", type=int, help="point size")
+    ap.add_argument('-par', metavar="par", type=float, help="point aspect ratio")
+    ap.add_argument('-calltrace', metavar="outfile", nargs='?', type=str, const='calltrace.out', 
+            help="enable GL call trace, write to given file")
+    ap.add_argument('-glinfo', metavar="exts", nargs='?', type=str, const='noexts',
+            help="log GL caps and possibly extensions")
+    ap.add_argument('-ss', metavar='sname', help='shader set name', default='step')
+    ap.set_defaults(**kwargs)
+
+def ap_data_args(ap, **kwargs):
+    ap.add_argument('-cutoff', metavar="frameno", type=int, default=-1, 
+            help="frame number to cut animation at")    
+    ap.add_argument('-apidir', metavar="../somedir", default=os.path.join("..","df-structures"),
+            help="df-structures directory to get xml data from")
+    ap.add_argument('-dfdir', metavar="../df_linux", default=os.path.join("..","df_linux"),
+            help="df directory to get base tileset and raws from")
+    ap.add_argument('dfdump', metavar="some.dump", help="dump file name")
+    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', default=['fgraws-stdpage'],
+            help="FG raws dir to parse")    
+    ap.set_defaults(**kwargs)
+    
 def main():
-    psize = int(sys.argv[1]) if len(sys.argv) > 1 else 128
-    pszar_x = 0.8
-    pszar_y = 1.0
-    bg_color = ( 0,1,0,1 )
-    fbo_color = ( 1,0,0,1 )
+    ap = argparse.ArgumentParser(description = 'full-graphics renderer backend test')    
+    ap_render_args(ap, psize=96, par=0.8, ss='dumb', choke=2)
+    pa = ap.parse_args()
+    logconfig(pa.glinfo, pa.calltrace)
     
     window, context = sdl_init()
     glinfo()
-        
+    
+    psize = pa.psize
+    if pa.par > 1:
+        pszar_x = 1
+        pszar_y = 1/pa.par
+    else:
+        pszar_x = pa.par
+        pszar_y = 1
+
     grid_w = int(window._w // (pszar_x*psize))
     grid_h = int(window._h // (pszar_y*psize))
-    print("grid {}x{} psize {}x{}".format(grid_w, grid_h, pszar_x*psize, pszar_y*psize))
-    grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize), loud = ['gl'])
+        
+    bg_color = ( 0,1,0,1 )
+    fbo_color = ( 1,0,0,1 )
+    
+    logging.getLogger("fgt.test").info("grid {}x{} psize {}x{}".format(grid_w, grid_h, 
+        int(pszar_x*psize), int(pszar_y*psize)))
+    grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
     hud = Hud()
 
     font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
@@ -866,7 +963,7 @@ def main():
     panels.append(HudTextPanel(font, [ "Skoromorkovka" ]))
     panels[1].moveto(Coord2(400, 100))
     hud.reshape(Size2(window._w, window._h))
-    loop(window, bg_color, fbo_color, grid, hud, panels)
+    loop(window, bg_color, fbo_color, grid, hud, panels, pa.choke)
     sdl_fini()
     return 0
 

@@ -37,7 +37,7 @@ distribution.
 from __future__ import division
 
 import sys, time, math, struct, io, ctypes, zlib, ctypes, copy
-import argparse, traceback, os, types, mmap, logging
+import argparse, traceback, os, types, mmap, logging, logging.config
 
 from raw import MapObject, Designation
 from py3sdl2 import * 
@@ -281,22 +281,21 @@ class Rednerer(object):
         [1.0, 0.60, 0.45, 0.30, 0.15 ],
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
 
-    def __init__(self, window, shaderset, gamedata, loud=[], zeddown=2):
+    def __init__(self, window, shaderset, gamedata, 
+                 psize, par, zeddown, anim_fps):
+        log = logging.getLogger('fgt.renderer.init')
+
         self.window = window
         self.gamedata = gamedata
         self.hud = Hud()
         self.fbo = FBO()
         self.debug_fbo = FBO()
         self.grid = GridVAO()
-        self.grid_shader = GridShader(shaderset, 'gl' in loud)
+        self.grid_shader = GridShader(shaderset)
         self.tex = namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
         
-        self.loud_gl      = 'gl' in loud
-        self.loud_reshape = 'reshape' in loud
-        
         self._zeddown = zeddown
-        self.anim_fps = 12
-        self.cutoff_frame = gamedata.codedepth - 1
+        self.anim_fps = anim_fps
         self.min_psz = 3
         self.max_psz = 1024
         
@@ -338,35 +337,30 @@ class Rednerer(object):
                gamedata.mapdata.w, gamedata.mapdata.h, gamedata.mapdata.d,
                GL_RGBA_INTEGER, GL_UNSIGNED_INT, gamedata.mapdata.ptr)            
 
-        self.txsz = txsz = (-1, -1, gamedata.pageman.pages['STD'].cdim.w, gamedata.pageman.pages['STD'].cdim.h)
-        print(txsz)
-
-        if txsz[2] > txsz[3]:
-            self.Pszar = Coord3(
-                    x = 1.0, 
-                    y = txsz[3]/txsz[2],
-                    z = txsz[2] )
+        if psize is None:
+            psize = max(gamedata.pageman.pages['STD'].cdim.w, gamedata.pageman.pages['STD'].cdim.h)
+        self.std_psize = psize
+        
+        if par is None:
+            par = gamedata.pageman.pages['STD'].cdim.w / gamedata.pageman.pages['STD'].cdim.h
+        if par > 1:
+            self.Pszar = Coord3(1, 1/par, psize)
         else:
-            self.Pszar = Coord3(
-                    x = txsz[2]/txsz[3],
-                    y = 1.0, 
-                    z = txsz[3] )
+            self.Pszar = Coord3(par, 1, psize)
 
         self.winsize = Size2(window._w, window._h)
         self.reshape(winsize = self.winsize)
-        print(self.grid, self.winsize, txsz)
-        gldump()
+        log.info(str(self.grid))
+        log.info(str(self.winsize))
+        gldumplog()
     
     def dump_fbos(self, destdir="idumps"):
         self.fbo.dump(os.path.join(destdir, 'fbo.bmp'))
-        print(os.path.join(destdir, 'fbo.bmp'))
         self.debug_fbo.dump(os.path.join(destdir, 'debug_fbo.bmp'))
-        print(os.path.join(destdir, 'debug_fbo.bmp'))
     
     @property
     def psz(self):
         return Coord2(int(self.Pszar.z * self.Pszar.x), int(self.Pszar.z * self.Pszar.y))
-    
     
     def win2glfb(self, win):
         """ converts window coordinates (pixels, SDL coordinate system)
@@ -403,6 +397,7 @@ class Rednerer(object):
         return Coord2(self.render_origin.x + dffb.x, self.render_origin.y + dffb.y)
 
     def reshape(self, winsize = None, zoom = None):
+        log = logging.getLogger("fgt.reshape")
         """ resize or zoom """
         if winsize is not None: # a resize
             pan = Coord2(( self.winsize.w - winsize.w ) // 2,
@@ -427,7 +422,7 @@ class Rednerer(object):
         psz = self.psz
         gridsz = Size2(self.map_viewport.w // psz.x + self._overdraw * 2, 
                        self.map_viewport.h // psz.y + self._overdraw * 2)
-        print("reshape({}, {}): newgrid={} (map_vp={} Pszar={} psz={})".format(
+        log.info("({}, {}) -> newgrid={} (map_vp={} Pszar={} psz={})".format(
                 winsize, zoom, gridsz, self.map_viewport, self.Pszar, self.psz))
         # resize both the grid and the fbo
         self.grid.resize(gridsz)
@@ -495,7 +490,7 @@ class Rednerer(object):
         elif zcmd == 'zoom_out' and self.Pszar.z < self.max_psz:
             psz = self.Pszar.z - 1
         elif zcmd == 'zoom_reset':
-            psz = max(self.txsz[2], self.txsz[3])
+            psz = self.std_psize
         if zpos is None:
             zpos = Coord2( self.window._w // 2, self.window._h // 2 )
         if psz >= self.min_psz and psz <= self.max_psz:
@@ -531,7 +526,7 @@ class Rednerer(object):
         try:
             self.grid()
         except:
-            gldump()
+            gldumplog()
             raise()
 
     def render(self, frame_no):
@@ -605,12 +600,11 @@ class Rednerer(object):
             z = self.gamedata.dim.z - 1
         self.render_origin = self.render_origin._replace(z=z)
             
-    def loop(self, anim_fps = 12, choke = 0):
-        self.anim_fps = anim_fps
+    def loop(self, choke):
+        last_frame = self.gamedata.codedepth - 1
         frame_no = 0
-        
         last_render_ts = 0
-        render_choke = 1000.0/choke # ala G_FPS_CAP but in ticks
+        render_choke = 1000.0/choke if choke > 0 else 0 # ala G_FPS_CAP but in ticks
         
         last_animflip_ts = 0
         anim_period = 1000.0 / self.anim_fps
@@ -642,7 +636,7 @@ class Rednerer(object):
                 if now - last_animflip_ts > anim_period:
                     frame_no += 1
                     last_animflip_ts = now
-                    if frame_no > self.cutoff_frame:
+                    if frame_no > last_frame:
                         frame_no = 0
             
             render_time = self.render(frame_no)
@@ -738,32 +732,21 @@ class Rednerer(object):
         pass
 
 def main():
-    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed', 
-        epilog =  "Controls:\n" + CONTROLS)
-    
+    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed')     
     ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
-    ap.add_argument('-choke', metavar='fps', type=float, default=60, help="renderer fps cap")
-    ap.add_argument('-zoom', metavar='px', type=int, default=None, help="set zoom at start")
     ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
-    ap.add_argument('-ss', metavar='sname', help='shader set name', default='three')
-    ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
-    ap.add_argument('dump', metavar="dump-file", help="dump file name")
-    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws-stdpage'])
-    ap.add_argument('-loud', nargs='*', help="spit lots of useless info, values: gl, reshape, parser, ...", default=[])
-    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
+    ap_render_args(ap)
+    ap_data_args(ap)
     pa = ap.parse_args()
     
+    logconfig(pa.glinfo, pa.calltrace)
     window, context = sdl_init()
-    if "gl" in pa.loud:
-        glinfo()
-
-    mo = MapObject(pa.dfprefix, pa.rawsdir, loud = pa.loud, apidir = '')
-    mo.use_dump(pa.dump)
-    rednr = Rednerer(window, pa.ss, mo, pa.loud, pa.zeddown)
-    if pa.zoom:
-        rednr.Psz = pa.zoom
-        rednr.reshape(zoompoint = (0,0))
-    rednr.loop(pa.afps, pa.choke)
+    glinfo()
+    
+    mo = MapObject(pa.dfdir, pa.rawsdir, pa.apidir)
+    mo.use_dump(pa.dfdump)
+    rednr = Rednerer(window, pa.ss, mo, pa.psize, pa.par, pa.zeddown, pa.afps)
+    rednr.loop(pa.choke)
     rednr.fini()
     
 if __name__ == "__main__":

@@ -26,15 +26,15 @@ distribution.
 """
 
 import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
-import traceback, stat, copy, struct, math, mmap, pprint, ctypes, weakref
+import stat, copy, struct, math, mmap, ctypes
+import logging, logging.config
 from collections import namedtuple
 import lxml.etree
 
 from fractions import gcd
 lcm = lambda a, b: abs(a * b) // gcd(a, b)
 
-from py3sdl2 import rgba_surface, sdl_offscreen_init, Coord3, CArray, Size2, Rect
-
+from py3sdl2 import *
 from tokensets import *
 
 # tileflags:
@@ -73,7 +73,7 @@ class DfapiEnum(object):
             'siegeengine_type': 'df.buildings.xml',
             'trap_type': 'df.buildings.xml',
         }
-        f = os.path.join(dfapipath, 'xml', names2files[name])
+        f = os.path.join(dfapipath, names2files[name])
         self.enums = []
         self.enumc = []
         self.emap = {}
@@ -143,11 +143,13 @@ def flag_tiles(dfapipath):
     """
 
     class enum_t(object):
+        log = logging.getLogger('fgt.enum_t')
+        debug = logging.getLogger('fgt.enum_t').debug
         def __init__(self, e, typedict):
             self._names = {}
             self._values = {}
             self.name = e.get('type-name')
-            #print("\n\n{}\n\n".format(self.name))
+            self.debug("__init__() name={}".format(self.name))
             attrtypes = { 'name': None, 'value': None }
             for ea in lxml.etree.XPath('enum-attr')(e):
                 attrtypes[ea.get('name')] = ( typedict[ea.get('type-name', None)], ea.get('default-value') )
@@ -167,14 +169,14 @@ def flag_tiles(dfapipath):
                     aname = ia.get('name')
                     atype = attrtypes[aname][0]
                     avalue = ia.get('value')
-                    #print(aname, atype, avalue, atype(avalue))
+                    self.debug("({}, {}, {}, {})".format(aname, atype, avalue, atype(avalue)))
                     attvals[aname] = atype(avalue)
                 for aname, avalue in attvals.items():
                     if aname != 'name' and avalue is None:
                         atype = attrtypes[aname][0]
                         adefval = attrtypes[aname][1]
                         attvals[aname] = atype(adefval)
-                #print(repr(attvals), nt(**attvals), "\n")
+                self.debug("attvals={} nt={}".format(repr(attvals), nt(**attvals)))
                 self._names[attvals['name']] = self._values[attvals['value']] = nt(**attvals)
                 i += 1
             
@@ -225,7 +227,7 @@ def flag_tiles(dfapipath):
             flags = flags | TCF_VOID
         return flags
 
-    e = parse_tiletypes(os.path.join(dfapipath, 'xml','df.tile-types.xml'))
+    e = parse_tiletypes(os.path.join(dfapipath, 'df.tile-types.xml'))
 
     rv = CArray(None, "I", len(e._values))
     for ei in e._values.values():
@@ -448,12 +450,11 @@ class ObjectCode(object):
             for frameseq in tilesframes.values():
                 if len(frameseq) not in seen:
                     maxframes = lcm(maxframes, len(frameseq))
-        print("maxframe {}".format(maxframes - 1))
         return maxframes
 
 
 class RawsParser0(object):
-    loud = False
+    log = logging.getLogger('fgt.raws')
     
     def parse_file(self, fna, handler):
         data = None
@@ -486,15 +487,12 @@ class RawsParser0(object):
                 try:
                     handler(name, tail)
                 except StopIteration:
-                    if self.loud:
-                        print("{} stopiteration {}:{}".format(self.__class__.__name__, fna, lnum))
+                    self.log.debug("{} stopiteration {}:{}".format(self.__class__.__name__, fna, lnum))
                     return
                 except :
-                    print("{}:{}:{}".format(fna, lnum, l.rstrip()))
-                    traceback.print_exc(limit=32)
+                    self.log.exception("unexpected exception at {}:{}:{}".format(fna, lnum, l.rstrip()))
                     raise SystemExit
-        if self.loud:
-            print("{} parsed {}".format(self.__class__.__name__, fna))
+        self.log.debug("{} parsed {}".format(self.__class__.__name__, fna))
 
     @staticmethod
     def tileparse(t):
@@ -544,7 +542,6 @@ class ObjectHandler(RawsParser0):
         self.object_klasses = {}
         self.objects = {}
         self.stack = []
-        self.loud = kwargs.get('loud', False)
         for ok in object_klasses:
             self.object_klasses[ok.object_klass] = ok
     
@@ -563,8 +560,7 @@ class ObjectHandler(RawsParser0):
                     try:
                         ok = self.object_klasses[tail[0]]
                     except KeyError:
-                        if self.loud:
-                            print("Ignoring unhandled object klass {}".format(tail[0]))
+                        self.log.debug("Ignoring unhandled object klass {}".format(tail[0]))
                         raise StopIteration
                     o = ok(name, tail)
                     self.objects[tail[0]] = o
@@ -573,8 +569,7 @@ class ObjectHandler(RawsParser0):
     
         # see if current object can handle the token itself.        
         if name in self.stack[-1].parses:
-            if self.loud:
-                print("{} parses {}".format(self.stack[-1].__class__.__name__, name))
+            self.log.debug("{} parses {}".format(self.stack[-1].__class__.__name__, name))
             self.stack[-1].parse(name, tail)
             return True
         
@@ -585,20 +580,17 @@ class ObjectHandler(RawsParser0):
         except KeyError:
             pass # alas
         except TypeError:
-            print(type(self.stack[-1]))
+            self.log.exception("hfs? {}".format(type(self.stack[-1])))
             raise
        
         # got some stack to unwind
-        if self.loud: 
-            print('unwinding stack: {} for {}'.format(' '.join(map(lambda x: x.__class__.__name__, self.stack)), name))
+        self.log.debug('unwinding stack: {} for {}'.format(' '.join(map(lambda x: x.__class__.__name__, self.stack)), name))
 
         o = self.stack.pop(-1)
         if self.stack[-1].add(o):
-            if self.loud: 
-                print("{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
+            self.log.debug("{} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
         else:
-            if self.loud: 
-                print("{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
+            self.log.debug("{} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
         
         # continue unwinding stack until we've put the token somewhere.
         self.parse_token(name, tail)
@@ -606,15 +598,12 @@ class ObjectHandler(RawsParser0):
 
     def finalize_object(self):
         while len(self.stack) > 1:
-            if self.loud:
-                print('fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack))))
+            self.log.debug('fin(): unwinding stack: {}'.format( ' '.join(map(lambda x: x.__class__.__name__, self.stack))))
             o = self.stack.pop(-1)
             if self.stack[-1].add(o):
-                if self.loud:
-                    print("fin(): {} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
+                self.log.debug("fin(): {} accepted {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
             else:
-                if self.loud:
-                    print("fin(): {} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
+                self.log.debug("fin(): {} did not accept {}".format(self.stack[-1].__class__.__name__, o.__class__.__name__))
 
     def get(self, oklass):
         self.finalize_object()
@@ -949,8 +938,7 @@ class NoneMat(object):
     pad_celdefs = lambda x: None
 
 class TSParser(RawsParser0):
-    def __init__(self, templates, materialsets, loud = False):
-        self.loud = loud
+    def __init__(self, templates, materialsets):
         self.all = []
         self.otype = None
         self.mat = None
@@ -964,8 +952,8 @@ class TSParser(RawsParser0):
             for sel in self.materialsets:
                 if sel.match(self.mat):
                     matched = True
-            if self.loud and not matched:
-                print("no matset accepted {}".format(self.mat))
+            if not matched:
+                self.log.debug("no matset accepted {}".format(self.mat))
             self.mat = None
 
     def parse_inorganic(self, name, tail):
@@ -1011,7 +999,7 @@ class TSParser(RawsParser0):
             elif self.otype == 'PLANT':
                 self.parse_plant(name, tail)
         except KeyError:
-            print(self.templates)
+            self.log.exception("not in " + repr(self.templates.keys()))
             raise
 
     def get(self):
@@ -1113,7 +1101,6 @@ class CelEffect(Token):
             else:
                 rv.append(int(k))
         return rv
-        #print("effect {}:{}  {}->{}".format(self.name, self.color, color, rv))
 
 class KeyFrame(object):
     def __init__(self, number, idef = []):
@@ -1580,12 +1567,11 @@ class CreaGraphicsSet(Token):
 
 
 class MapObject(object):
-    def __init__(self, dfprefix,  fgraws=[], apidir='', cutoff = 0, loud=[]):
+    def __init__(self, dfprefix,  fgraws=[], apidir='', cutoff = -1):
         self.dispatch_dt = struct.Struct("HH") # s t GL_RG16UI - 32 bits, all used.
         self.blitcode_dt = struct.Struct("IIII") # cst mode fg bg GL_RGBA32UI - 128 bits. 16 bits unused.
         self.data_dt = struct.Struct("IIII") # stoti bmabui grass designation GL_RGBA32UI - 128 bits. 16 bits unused.
         self._mmap_fd = None
-        self.loud = loud
         self.cutoff = cutoff
         
         self.tileresolve = DfapiEnum(apidir, 'tiletype')
@@ -1610,36 +1596,29 @@ class MapObject(object):
         self._mmap_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws):
+        log = logging.getLogger('fgt.raws')
         stdraws = os.path.join(dfprefix, 'raw')
         
-        boo = ObjectHandler(MaterialTemplates, FullGraphics, CreaGraphicsSet, loud='objecthandler' in self.loud)
+        boo = ObjectHandler(MaterialTemplates, FullGraphics, CreaGraphicsSet)
         boo.eat(stdraws, *fgraws)
 
         mtset = boo.get(MaterialTemplates)
         fgdef = boo.get(FullGraphics)
         cgset = boo.get(CreaGraphicsSet)
         
-        if "fgdef" in self.loud:
-            print(fgdef)
-        
-        print("ObjectHandler done.")
+        log.info("ObjectHandler done.")
 
-        stdparser = TSParser(mtset.templates, fgdef.materialsets, loud = 'stdparser' in self.loud)
+        stdparser = TSParser(mtset.templates, fgdef.materialsets)
             
         stdparser.eat(stdraws)
         materialsets = stdparser.get()
 
-        print("TSParser done.")
-
-        if 'materialset' in self.loud:
-            for ms in materialsets:
-                print(ms)
+        log.info("TSParser done.")
 
         fontpath, colormap = InitParser(dfprefix).get()
         fgdef.celpages.append(StdCelPage(fontpath))
         self.pageman = Pageman(pages = fgdef.celpages) # + cgset.celpages) when creatures become supported
-        #print("Pageman done.")
-        print(self.pageman)
+        log.info(str(self.pageman))
 
         ctx = namedtuple("ctx", "pageman colors effects")(
             pageman = self.pageman,
@@ -1648,9 +1627,11 @@ class MapObject(object):
         
         self._objcode = TSCompile(materialsets, fgdef.tilesets, ctx)
         
-        print("TSCompile done.")
+        log.info("TSCompile done.")
     
     def _mmap_dump(self, dumpfname):
+        log = logging.getLogger('fgt.mapdata')
+        
         if self._mmap_fd:
             self._tiles_mmap.close()
             os.close(self._mmap_fd)
@@ -1664,11 +1645,11 @@ class MapObject(object):
             self._tiles_mmap = mmap.mmap(self._map_fd, self.tiles_size, 
                 offset = self.tiles_offset, access = mmap.ACCESS_READ)
         except ValueError:
-            print("fsize: {} tiles {},{} effects: {}".format(fsize, 
+            log.exception("fsize: {} tiles {},{} effects: {}".format(fsize, 
                 self.tiles_offset, self.tiles_size, self.flows_offset ))
             raise
         self.mapdata = CArray(self._tiles_mmap, 'IIII', self.dim.x, self.dim.y, self.dim.z)
-        print("mapdata: {}x{}x{} {}M".format(self.dim.x, self.dim.y, self.dim.z, self.tiles_size >>20))
+        log.info("loaded {}x{}x{} {}M".format(self.dim.x, self.dim.y, self.dim.z, self.tiles_size >>20))
 
     def _parse_dump(self, dumpfname):
         self.mat_ksk = {}
@@ -1752,12 +1733,15 @@ class MapObject(object):
                 def write(*args, **kwargs):
                     pass
             irdump = irdummy
-        
-        # maxframes:for how many frames to extend cel's final framesequence
+        log = logging.getLogger('fgt.raws')
+
+        # maxframes defines for how many frames to extend cel's final framesequence
         # (if cel don't have that much frames on its own)
-        # cutoff: cut all animations after this frame (this is done in _assemble_blitcode)
-        maxframe = self.cutoff if objcode.maxframe > self.cutoff else objcode.maxframe
-        self.codedepth = maxframe + 1
+        # cutoff: cut all animations after this frame
+        if self.cutoff == -1: # don't cut:
+            maxframes = objcode.maxframe
+        else:
+            maxframes = self.cutoff if objcode.maxframe > self.cutoff else objcode.maxframe
 
         tcount = 0
         for mat, tset in objcode.map.items():
@@ -1765,37 +1749,35 @@ class MapObject(object):
         if tcount > 65536:
             raise TooManyTilesDefinedCommaManCommaYouNutsZedonk
 
+        log.info("objcode: {1} mats, {0} defined tiles, {2} frames max".format(
+            len(objcode.map.keys()), tcount, objcode.maxframe))
+
         self.codew = int(math.ceil(math.sqrt(tcount)))
         self.codeh = self.codew
+        self.codedepth = maxframes
         
-        self.dispw = self.matcount = self.max_mat_id
-        self.disph = self.tiletypecount = len(self.tileresolve)
-        
-        rep = "objcode: {1} mats, {0} defined tiles\n".format(len(objcode.map.keys()), tcount)
-        rep += "dispatch: {}x{}, {} bytes\n".format(self.dispw, self.disph, self.dispw * self.disph * self.dispatch_dt.size)
-        nf = self.codedepth * self.codew * self.codeh
-        rep += "blitcode: {}x{}x{}; {} units, {} bytes\n".format(self.codew, self.codeh, self.codedepth, nf, nf * self.blitcode_dt.size)
-            
-        print(rep)
-        # dispatch is tiles columns by mats rows. dt.size always is a multiple of 4 bytes 
+        self.dispw = self.max_mat_id
+        self.disph = len(self.tileresolve)
+
         dispatch = CArray(None, "HH", self.dispw, self.disph, inverty = True)
         dispatch.memset(128)
+        log.info("dispatch: {}".format(dispatch))
         blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth, inverty = True)
         blitcode.memset(BM_CODEDBAD)
+        log.info("blitcode: {}".format(blitcode))
         
         tc = 1 # reserve 0,0 blitinsn as an implicit nop
         for mat_name, tileset in objcode.map.items():
             try:
                 mat_id = self.mat_ids[mat_name]
-            except KeyError:
-                print('\n'.join(map(str, self.mat_ids.items())))
-                raise
+            except KeyError:                
+                raise CompileError("unknown mat name '{}' in tileset '{}'".format(mat_name, tileset))
 
             for tilename, frameseq in tileset.items():
                 try:
                     tile_id = self.tileresolve[tilename]
                 except KeyError:
-                    raise CompileError("unk tname {} in mat {}".format(tilename, mat_name))
+                    raise CompileError("unknown tile name '{}' in mat '{}'".format(tilename, mat_name))
                     
                 cx = int (tc % self.codew)
                 cy = int (tc // self.codew)
@@ -1812,7 +1794,8 @@ class MapObject(object):
                     
                     blitcode.set((bm, unused, fg, bg), cx, cy, frame_no)
                         
-                    irdump.write("dis@{:03d}:{:03d} code@{}:{} {} {} {}\n".format(mat_id, tile_id, cx, cy, mat_name, tilename, frame))
+                    irdump.write("dis@{:03d}:{:03d} code@{}:{} {} {} {}\n".format(mat_id, 
+                                    tile_id, cx, cy, mat_name, tilename, frame))
                     frame_no += 1
                     if frame_no > self.codedepth - 1: # cutoff
                         break
@@ -1857,7 +1840,6 @@ class MapObject(object):
         else:
             assert zstart < self.dim.z
         rep = open('lint.out', 'w')
-        print("Lint: tilecount={} matcount={} code={}x{}".format(self.tiletypecount, self.matcount, self.codew, self.codeh))
         oks = {}
         fails = {}
         count = 0
@@ -1978,15 +1960,13 @@ class Designation(object):
 
 def main():
     ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
-    ap.add_argument('-dump-dir', metavar='dir-name', help="dump intermediate representation, dispatch, blitcode and the texture album here")
-    ap.add_argument('dfprefix', metavar="../df_linux", help="df directory to get base tileset and raws from")
-    ap.add_argument('dump', metavar="dump-file", help="map dump file name")
-    ap.add_argument('-loud', nargs='*', help="spit lots of useless info", default=[])
+    ap_data_args(ap)
+    ap.add_argument('-dump-dir', metavar='dir-name', 
+            help="dump intermediate representation, dispatch, blitcode and the texture album here")
     ap.add_argument('-lint', nargs='?', metavar='zstart', type=int, const=-1,
             help="cross-check compiler output, starting at z-level zstart; results written to 'lint.out'")
-    ap.add_argument('-cutoff-frame', metavar="frameno", type=int, default=96, help="frame number to cut animation at")
-    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', help="FG raws dir to parse", default=['fgraws'])
     pa = ap.parse_args()
+    logconfig()
 
     if pa.dump_dir is not None and not os.path.isdir(pa.dump_dir):
         os.mkdir(pa.dump_dir)
@@ -1994,12 +1974,12 @@ def main():
     sdl_offscreen_init()
     
     mo = MapObject(     
-        dfprefix = pa.dfprefix,
+        dfprefix = pa.dfdir,
         fgraws = pa.rawsdir,
-        apidir = '',
-        loud = pa.loud )
+        cutoff = pa.cutoff,
+        apidir = pa.apidir)
 
-    mo.use_dump(pa.dump, pa.dump_dir)
+    mo.use_dump(pa.dfdump, pa.dump_dir)
 
     if pa.lint is not None:
         mo.lint(pa.lint)
