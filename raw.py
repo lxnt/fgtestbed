@@ -50,7 +50,8 @@ BM_NONE = 0
 BM_ASIS = 1
 BM_CLASSIC = 2
 BM_FGONLY = 3
-BM_CODEDBAD = 255
+BM_OVERSCAN = 254 # used for tile-places outside the map
+BM_CODEDBAD = 255 # filler
 
 class ParseError(Exception):
     pass
