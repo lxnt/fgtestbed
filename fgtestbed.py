@@ -102,8 +102,8 @@ class GridShader(Shader0):
         glUniform4f(self.uloc[b"mouse_color"], *mouse_color)
         
         # ati vs nvidia :(
-        tc_uloc = self.uloc[b"tileclass"] if self.uloc[b"tileclass"] != -1 else self.uloc[b"tileclass[0]"]
-        glUniform1iv(tc_uloc, tileflags.w, tileflags.ptr)
+        tc_uloc = self.uloc[b"tileflags"] if self.uloc[b"tileflags"] != -1 else self.uloc[b"tileflags[0]"]
+        glUniform1uiv(tc_uloc, tileflags.w, tileflags.ptr)
         
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, tex.dispatch)

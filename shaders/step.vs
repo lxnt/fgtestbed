@@ -9,6 +9,17 @@
 #define BM_OVERSCAN     254u
 #define BM_CODEDBAD     255u   // filler insn
 
+#define TF_GRASS        1u
+#define TF_FAKEFLOOR    2u
+#define TF_TRUEFLOOR    4u
+#define TF_VOID         8u
+#define TF_UNKNOWN     16u
+#define TF_PLANT       32u
+
+#define TILETYPECOUNT   699     // tile types
+
+uniform uint tileflags[TILETYPECOUNT];
+
 uniform usampler2DArray screen;   // mapdata under traditional name
 uniform usampler2D      dispatch; // blit_insn to blitcode_idx lookup table. Texture is GL_RG16UI.
 uniform usampler2DArray blitcode; // blit and blend insns. Texture is GL_RGBA32UI ARRAY
@@ -115,7 +126,17 @@ void main() {
     uint designation = 0u;
        
     decode_tile(map_posn, fl_mat, fl_tile, up_mat, up_tile, gr_mat, gr_amt, designation);
+    
+    uint fl_flags = tileflags[fl_tile];
+    uint up_flags = tileflags[up_tile];
+    
+    if ((fl_flags & TF_GRASS) > 0u)
+        fl_mat = gr_mat;
+    if ((fl_flags & TF_PLANT) > 0u)
+        fl_mat = up_mat;
+    
     decode_insn(fl_mat, fl_tile, fl_mode, fl_fg, fl_bg);
+    
     
     liquicolor = liquimount(designation);
     stuff = uvec4(fl_mode, 0, mouse_here(), hidden(designation));
