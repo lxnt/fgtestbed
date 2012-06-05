@@ -267,18 +267,13 @@ class Pageman(object):
 
     def __call__(self, pagename, ref): # pagename comes in uppercased
         page = self.pages[pagename]
-        if len(ref) == 1:
-            try:
-                tmp = int(ref[0])
-            except ValueError: # must be a def
-                s, t = page.defs[ref[0]]
-            except TypeError:
-                s, t = ref
-            else: # it's an index.
-                s = tmp % page.pdim[0]
-                t = tmp // page.pdim[1]
+        if isinstance(ref, int): # an idx
+            s = ref % page.pdim[0]
+            t = ref // page.pdim[1]
+        elif isinstance(ref, str): # a def
+            s, t = page.defs[ref]
         else:
-            s, t = int(ref[0]), int(ref[1])
+            s, t = ref
         return self.mapping[(pagename, s, t)]  
 
     def __str__(self):
@@ -336,7 +331,6 @@ def Inflate(tilename, material, keyframes, ctx):
             blend = (0, None, None)
         else:
             blend = keyframes[0]._blend.emit(ctx.colors, effect)
-        
         
         return [ BasicFrame(blit, blend) ]
 
@@ -460,24 +454,6 @@ class RawsParser0(object):
                     self.log.exception("unexpected exception at {}:{}:{}".format(fna, lnum, l.rstrip()))
                     raise SystemExit
         self.log.debug("{} parsed {}".format(self.__class__.__name__, fna))
-
-    @staticmethod
-    def tileparse(t):
-        """ parses stdraws' celspecs in the form of:
-                int in a string 
-                quoted character is a string (think '`')
-            to an single int.
-            """
-
-        try:
-            return int(t)
-        except ValueError:
-            pass
-            
-        if  (len(t) != 3 and 
-              (t[0] != "'" or t[2] != "'")):
-            raise ValueError("invalid literal for tile: \"{}\"".format(t))
-        return ord(t[1])
 
     def eat(self, *paths):
         final = []
@@ -683,41 +659,65 @@ class Color(object):
 
 class CelRef(object):
     """ celref can """
-    def __init__(self, page = 'STD', idx = None, st = None, cref = None):
-        if isinstance(idx, str):
-            idx = RawsParser0.tileparse(idx)
-        
-        self.page = page
-        self.cref = cref
-        self.idx = idx if idx is None else [ int(idx) ]
-        self.st = st
-        if st is None:
+    log = logging.getLogger('raw.CelRef')
+    def __init__(self, ref = None):
+        """ accepted forms:
+            a. <pagename>[,{<idx>|<s>,<t>|<def>}]
+                where pagename is a predefined page, 
+                'NONE', 'STD', 'MAT' or a fgraws-defined page
+                'NONE' shall not have any parameters following
+                'MAT' shall have no or a single parameter idx or def
+            b. a tuple of (pagename, ref)
+        """
+        if isinstance(ref, tuple):
+            self.page, self.ref = ref
             return
-        elif st == 'MAT':
-            assert idx is None
-            assert page == 'STD'
-            return
-        self.st = list(map(int, st))
+        ref = ref.split(',')
+        self.page = ref.pop(0)
+        if self.page == 'NONE':
+            assert len(ref) == 0
+            self.ref = None
+        elif self.page == 'MAT':
+            try:
+                self.ref = ref.pop(0)
+            except IndexError:
+                self.ref = 0
+            assert len(ref) == 0
+        else:
+            if len(ref) == 2:
+                self.ref = tuple(map(int, ref))
+            elif len(ref) == 1:
+                try: # an index?
+                    self.ref = int(ref)
+                except ValueError: # a def.
+                    self.ref = ref
+            else:
+                raise ValueError("page={} ref={}".format(self.page, repr(ref)))
 
     def emit(self, material, pageman):
         """ returns st tuple as returned by the pageman lookup """
-        if self.st == 'MAT':
-            assert self.cref is not None
-            cd = material.getceldef(self.cref)
-            return cd if cd is None else cd[0].emit(material, pageman)
-        elif self.st is not None:
-            assert self.cref is None
-            assert self.idx is None
-            return pageman(self.page, self.st)
+        if self.page == 'MAT':
+            """ a 'proxy' celref: actual emit is delegated to the one
+                from the material definition """
+            try:
+                self.log.debug("{} {} {}".format(material, material.celdefs, self.ref))
+            except AttributeError:
+                self.log.debug("{} {} {}".format(material, material.parent.celdefs, self.ref))
+            celdef = material.getceldef(self.ref)
+            if celdef is None:
+                self.log.debug("celdef is None")
+                return None
+            celref = celdef[0]
+            self.log.debug("self.ref:{} proxied celref:{}".format(self.ref, celref))
+            return pageman(celref.page, celref.ref)
+        elif self.page == 'NONE':
+            """ BM_NONE """
+            return None
         else:
-            if self.cref is not None:
-                assert self.idx is None
-                return pageman(self.page, self.cref)
-            else:
-                return pageman(self.page, self.idx)
+            return pageman(self.page, self.ref)
 
     def __str__(self):
-        return "CelRef(page={} idx={} st={} cref={})".format(self.page, self.idx, self.st, self.cref)
+        return "CelRef(page={} ref={})".format(self.page, self.ref)
 
 class CelDiscard(object):
     def emit(self, un, used):
@@ -736,6 +736,23 @@ class RawsObject0(object):
 
     def add(self, name):
         self.tokens.add(name)
+
+    @staticmethod
+    def parse_tile(t):
+        """ parses stdraws' celspecs in the form of:
+                int in a string 
+                quoted character is a string (think '`')
+            to an single int.
+            """
+        try:
+            return int(t)
+        except ValueError:
+            pass
+            
+        if  (len(t) != 3 and 
+              (t[0] != "'" or t[2] != "'")):
+            raise ValueError("invalid literal for tile: \"{}\"".format(t))
+        return ord(t[1])
 
     def __contains__(self, what):
         return what in self.tokens
@@ -764,20 +781,20 @@ class Plant(RawsObject0):
         celrefs are for std 16x16 font.
     """
     TREE_CELDEFS = { # tiletype -> (blit,blend)
-        'TREE':         (CelRef(st = (5,  0)), Color((2, 0, 1))),
-        'SAPLING':      (CelRef(st = (7, 14)), Color((2, 0, 1))),
-        'DEAD_TREE':     (CelRef(st = (6, 12)), Color((6, 0, 0))),
-        'DEAD_SAPLING':  (CelRef(st = (7, 14)), Color((6, 0, 0))), }
+        'TREE':          (CelRef(('STD', (5,  0))), Color((2, 0, 1))),
+        'SAPLING':       (CelRef(('STD', (7, 14))), Color((2, 0, 1))),
+        'DEAD_TREE':     (CelRef(('STD', (6, 12))), Color((6, 0, 0))),
+        'DEAD_SAPLING':  (CelRef(('STD', (7, 14))), Color((6, 0, 0))), }
     SHRUB_CELDEFS = {
-        'DEAD_SHRUB':    (CelRef(st = (2, 2)), Color((6, 0, 0))),
-        'SHRUB':        (CelRef(st = (2, 2)), Color((2, 0, 1))), }
+        'DEAD_SHRUB':    (CelRef(('STD', (2,  2))), Color((6, 0, 0))),
+        'SHRUB':         (CelRef(('STD', (2,  2))), Color((2, 0, 1))), }
     GRASS_CELDEFS = { # mdt_idx -> (blit,blend)); 
     # in fact mdt_idx can be anything that doesn't contain ':'
     # called 'index' since it's used in grass only whose raws aren't that advanced
-        '0':       (CelRef(idx = 39), Color((2, 0, 1))), # GRASSwhateverFLOOR0 
-        '1':       (CelRef(idx = 44), Color((2, 0, 0))),
-        '2':       (CelRef(idx = 96), Color((6, 0, 1))),
-        '3':       (CelRef(idx = 39), Color((6, 0, 0))), }
+        '0':       (CelRef(('STD', 39)), Color((2, 0, 1))), # GRASSwhateverFLOOR0 
+        '1':       (CelRef(('STD', 44)), Color((2, 0, 0))),
+        '2':       (CelRef(('STD', 96)), Color((6, 0, 1))),
+        '3':       (CelRef(('STD', 39)), Color((6, 0, 0))), }
 
     def __init__(self, name):
         super(Plant, self).__init__(name, 'PLANT')
@@ -833,7 +850,8 @@ class Plant(RawsObject0):
                 i += 1
                 self._addcolor(i, Color((fg, bgs.pop(0), brs.pop(0))))
         elif name.endswith('_TILE'):
-            self._addcref(name[:-5], CelRef(idx=tail[0]))
+            tile_idx = self.parse_tile(tail[0])
+            self._addcref(name[:-5], CelRef(('STD', tile_idx)))
         elif name.endswith('_COLOR'):
             self._addcolor(name[:-6], Color(tail))
         self.add(name)
@@ -849,8 +867,8 @@ class Inorganic(RawsObject0):
             self._dc = Color(tail)
             self._addcolor('WALL', self._dc)
         elif name == 'TILE':
-            self._addcref('WALL', CelRef(idx = tail[0]))
-            
+            tile_idx = self.parse_tile(tail[0])
+            self._addcref('WALL', CelRef(('STD', tile_idx)))
         self.add(name)
 
     def update(self, template):
@@ -1082,38 +1100,13 @@ class KeyFrame(object):
         # parse inline celdef (only place where effects are allowed)
         #  -- moderately ugly hack.
         self._blend = 'MAT' # inline celdefs always rely on material color
-        if idef[0] == 'MAT':
-            if len(idef) == 1:
-                self._blit = CelRef(st='MAT', idx=0) # (first) material-defined tile from the std tileset
-            elif len(idef) == 2: # (MAT, mdt_ref) # mdt = 'material-defined tile'
-                self._blit = CelRef(st='MAT', cref=idef[1])
-            elif len(idef) == 3: # (MAT, mdt_ref, effect)
-                self._blit =  CelRef(st='MAT', cref=idef[1])
-                self._effect = idef[2]
-        elif idef[0] == 'NONE': # explicit discard
-            return
-        elif len(idef) == 2: # ( page, idx)  or (page, def)
-            try:
-                self._blit = CelRef(page=idef[0], idx=idef[1]) 
-            except ValueError:
-                self._blit = CelRef(page=idef[0], cdef=idef[1])
-        elif len(idef) == 3: # ( page, s, t) or (page, idx, effect) or (page, def, effect)
-            try:
-                self._blit = CelRef(page=idef[0], st=idef[1:])
-            except ValueError:
-                self._effect = idef[2]
-                try:
-                    self._blit = CelRef(page=idef[0], idx=int(idef[1]))
-                except ValueError:
-                    self._blit = CelRef(page=idef[0], cref=idef[1])
-        elif len(idef) == 4: # ( page, s, t, effect )
-            self._blit = CelRef(page=idef[0], st=idef[1:2])
-            self._effect = idef[3]
-        else:
-            raise ParseError("Incomprehensible inline celdef '{}'".format(':'.join(idef)))
+        self._blit = CelRef(idef[0])
+        if len(idef) == 2:
+            self._effect = idef[1]
 
     def blit(self, cref):
         assert type(cref) in ( list, tuple )
+        raise Tantrum # how do we never get here ??
         self._blit = CelRef(page=cref[0], st=cref[1:])
 
     def blend(self, color):

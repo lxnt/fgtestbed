@@ -28,10 +28,11 @@
 #
 # [blit:<celref>] blits given cel with current frame's blend or glow settings
 # Celref is one of:
-#  [blit:<pagename>:<celdefname>] - refers to an alias defined in [tilepage]
-#  [blit:<pagename>:<index>] - cel by index
-#  [blit:<pagename>:<s>:<t>] - cel by column, row
-#  [blit:none]   - don't blit anything (same as omitting [blit] for the keyframe)
+#  <pagename>,<celdefname>  - refers to an alias defined in [tilepage]
+#  <pagename>,<index>       - cel by index
+#  <pagename>,<s>,<t>       - cel by column, row
+#  mat[,{<index>|<def>}]    - get cel from material raws
+#  none      - don't blit anything (same as omitting [blit] for the keyframe)
 #
 # [blend:<colordef>] mixes given color with cel being blitted this frame.
 #  Colordef is one of:
@@ -200,21 +201,21 @@
     [tilesets:vegetation]
 
 [tileset:nonmat]
-    [tile:Ashes1][cel:std:2:15]
-    [tile:Ashes2][cel:std:3:15]
-    [tile:Ashes3][cel:std:3:15]
-    [tile:Campfire][cel:std:0:0]
+    [tile:Ashes1][cel:std,2,15]
+    [tile:Ashes2][cel:std,3,15]
+    [tile:Ashes3][cel:std,3,15]
+    [tile:Campfire][cel:std,0,0]
     [tile:Chasm][cel:none]
-    [tile:Driftwood][cel:std:0:15]
-    [tile:EeriePit][cel:std:0:0]
-    [tile:Fire][cel:std:0:0]
-    [tile:GlowingBarrier][cel:std:0:0]
-    [tile:GlowingFloor][cel:std:0:0]
-    [tile:MagmaFlow][cel:std:0:0]
-    [tile:MurkyPool][cel:std:0:0]
+    [tile:Driftwood][cel:std,0,15]
+    [tile:EeriePit][cel:std,0,0]
+    [tile:Fire][cel:std,0,0]
+    [tile:GlowingBarrier][cel:std,0,0]
+    [tile:GlowingFloor][cel:std,0,0]
+    [tile:MagmaFlow][cel:std,0,0]
+    [tile:MurkyPool][cel:std,0,0]
     [tile:OpenSpace][cel:none]
     [tile:RampTop][cel:none]
-    [tile:SemiMoltenRock][cel:std:0:11]
+    [tile:SemiMoltenRock][cel:std,0,11]
     [tile:Void][cel:none]
     [tile:Waterfall][cel:none]
 
