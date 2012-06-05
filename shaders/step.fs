@@ -102,6 +102,8 @@ vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 
             rv.a = 1.0;
             break;
         case int(BM_NONE):
+            rv = vec4(0,0,0,0);
+            break;
         default:
             rv = vec4(float(mode)/16.0,0,0,1);
             break;
@@ -130,24 +132,30 @@ void main() {
     }
 
     if (hidden > 0u) {
-        frag = vec4(0.5, 0.5, 0.5, 1.0);
+        frag = vec4(0.23, 0.23, 0.23, 1.0);
         return;
     }
 
     vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg, debug2, debug3);
 
     if (debug_active > 0) {
+        debug3.w = uint(color.a * 255.0);
         frag = debug_output(debug0, debug1, debug2, debug3);
         return;
     }
     
-    if (liquicolor.a > 0.1)
-        color = mix(liquicolor, color, 0.5);
+    if (liquicolor.a > 0.1) {
+        if (fl_mode == BM_NONE) {
+            color = vec4(liquicolor.rgb, 0.75);
+        } else {
+            color = mix(liquicolor, color, 0.5);
+        }
+    }
     
     color.rgb *= darken;
     
     if (mouse > 0u)
         borderglow(color, mouse_color);
-    
+
     frag = color;
 }

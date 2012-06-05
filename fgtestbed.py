@@ -298,7 +298,7 @@ class Rednerer(object):
         self.grid_shader = GridShader(shaderset)
         self.tex = namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
         
-        self._zeddown = zeddown
+        self._zeddown = zeddown if zeddown < len(self._zdtab) else len(self._zdtab)
         self.anim_fps = anim_fps
         self.min_psz = 3
         self.max_psz = 1024
