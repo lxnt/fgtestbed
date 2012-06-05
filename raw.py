@@ -316,15 +316,16 @@ def Inflate(tilename, material, keyframes, ctx):
     effect = ctx.effects.get(keyframes[0]._effect, lambda c: c)
     """ """
     def lahy(kf):
-        if kf._blend == 'MAT':
-            kf._blend = material.display_color
+        if not isinstance(kf._blend, Color):
+            try:
+                kf._blend = material.getceldef(kf._blend)[1]
+            except TypeError: # skip Nones from getceldef
+                kf._blend = None
         return kf
 
     # 'instantiate' MAT colors
     keyframes = list(map(lahy, copy.deepcopy(keyframes)))
     
-    # for no reason at all 'mat_name/mat_idx' blits
-    # are handled inside CelRef class. Boooo.
     if len(keyframes) == 1:
         blit = keyframes[0]._blit.emit(material, ctx.pageman)
         if blit is None:
@@ -566,6 +567,7 @@ class ColorMap(object):
             raise ValueError("bogus color {}".format(repr(color)))
 
 class InitParser(RawsParser0):
+    colorseq = "BLACK BLUE GREEN CYAN RED MAGENTA BROWN LGRAY DGRAY LBLUE LGREEN LCYAN LRED LMAGENTA YELLOW WHITE".split()
     def __init__(self, dfprefix):
         init = os.path.join(dfprefix, 'data', 'init', 'init.txt')
         colors = os.path.join(dfprefix, 'data', 'init', 'colors.txt')
@@ -577,10 +579,10 @@ class InitParser(RawsParser0):
         self.parse_file(colors, self.colors_handler)
     
     def colors_handler(self, name, tail):
-        colorseq = "BLACK BLUE GREEN CYAN RED MAGENTA BROWN LGRAY DGRAY LBLUE LGREEN LCYAN LRED LMAGENTA YELLOW WHITE".split()
         cshift = { 'R': 24, 'G': 16, 'B': 8, 'A': 0 }        
         color, channel = name.split('_')
-        self.colortab[colorseq.index(color)] = self.colortab[colorseq.index(color)] | int(tail[0])<< cshift[channel]
+        val = self.colortab[self.colorseq.index(color)] | int(tail[0]) << cshift[channel]
+        self.colortab[self.colorseq.index(color)] = val
         
     def init_handler(self, name, tail):
         if name.endswith('FONT'):
@@ -619,6 +621,8 @@ class Color(object):
     def __init__(self, coldef):
         if coldef == 'NONE':
             self.color = None
+        elif coldef == 'ASIS':
+            self.color = 'ASIS'
         elif len(coldef) == 1:
             self.color = self.parse_rgb(coldef[0])
         elif len(coldef) == 2:
@@ -630,32 +634,24 @@ class Color(object):
         
     def __str__(self):
         return "({})".format(self.color)
+    __repr__ = __str__
         
     def emit(self, colormap, effect = None):
-        """ returns a triplet: mode, fg, bg. 
-            mode is :
-            0 - discard       (0, None, None)
-            1 - no blending   (1, None, None)
-            2 - classic fg/bg (2, fg, bg)
-            3 - fg only       (3, fg, None)
-            4 - ???           ("?", "?", "?")
-            5 - PROFIT!!!     (5, "PROFIT", "!!!")
-        """
-
+        """ returns a triplet: mode, fg, bg. """
         if self.color == 'NONE' or self.color is None: # discard
-            return (0, None, None) 
+            return (BM_NONE, None, None) 
         elif self.color in ('ASIS', 'AS_IS'):
-            return (1, None, None)
+            return (BM_ASIS, None, None)
         elif isinstance(self.color, int): # fg
-            return (3, self.color, None)
+            return (BM_FGONLY, self.color, None)
         elif len(self.color) == 2: # fg,bg
-            return (2, self.color[0], self.color[1])
+            return (BM_CLASSIC, self.color[0], self.color[1])
         elif len(self.color) == 3: # fg,bg,br triplet
             if effect:
                 fg, bg = colormap[effect(self.color)]
             else:
                 fg, bg = colormap[self.color]
-            return (2, fg, bg)
+            return (BM_CLASSIC, fg, bg)
 
 class CelRef(object):
     """ celref can """
@@ -669,6 +665,7 @@ class CelRef(object):
                 'MAT' shall have no or a single parameter idx or def
             b. a tuple of (pagename, ref)
         """
+        self.color_ref = 'MAT'
         if isinstance(ref, tuple):
             self.page, self.ref = ref
             return
@@ -678,8 +675,10 @@ class CelRef(object):
             assert len(ref) == 0
             self.ref = None
         elif self.page == 'MAT':
+            self.color_ref = self.page # ugly hack,see keyframe constructor
             try:
                 self.ref = ref.pop(0)
+                self.color_ref = self.ref # also see Inflate()
             except IndexError:
                 self.ref = 0
             assert len(ref) == 0
@@ -708,7 +707,8 @@ class CelRef(object):
                 self.log.debug("celdef is None")
                 return None
             celref = celdef[0]
-            self.log.debug("self.ref:{} proxied celref:{}".format(self.ref, celref))
+            self.log.debug("{} self.ref:{} proxied celref:{} color:{}".format(
+                material.name, self.ref, celref, celdef[1]))
             return pageman(celref.page, celref.ref)
         elif self.page == 'NONE':
             """ BM_NONE """
@@ -718,6 +718,8 @@ class CelRef(object):
 
     def __str__(self):
         return "CelRef(page={} ref={})".format(self.page, self.ref)
+        
+    __repr__ = __str__
 
 class CelDiscard(object):
     def emit(self, un, used):
@@ -866,6 +868,7 @@ class Inorganic(RawsObject0):
         if name == 'DISPLAY_COLOR':
             self._dc = Color(tail)
             self._addcolor('WALL', self._dc)
+            self._addcolor('MAT', self._dc) # another hack :(
         elif name == 'TILE':
             tile_idx = self.parse_tile(tail[0])
             self._addcref('WALL', CelRef(('STD', tile_idx)))
@@ -889,6 +892,8 @@ class Derived(object):
         
         self.tokens.update(template.parsed)
         self._dc = template.display_color
+        self.parent._addcolor('MAT', self._dc) # awww, i'm sick of this
+        
     
     def token(self, name, tail):
         if name == 'DISPLAY_COLOR':
@@ -919,8 +924,10 @@ class Derived(object):
 class NoneMat(object):
     name = 'NONEMAT'
     klass = 'BUILTIN'
-    display_color = Color('NONE')
+    display_color = Color('ASIS')
     pad_celdefs = lambda x: None
+    getceldef = lambda x, y: ( None, x.display_color )
+    
 
 class TSParser(RawsParser0):
     def __init__(self, templates, materialsets):
@@ -1099,8 +1106,13 @@ class KeyFrame(object):
             return
         # parse inline celdef (only place where effects are allowed)
         #  -- moderately ugly hack.
-        self._blend = 'MAT' # inline celdefs always rely on material color
         self._blit = CelRef(idef[0])
+        # inline celdefs always rely on material color
+        # but in case we have MAT:def celdef, we must
+        # transplant that def into color since they're
+        # emitted separately (what a mess :( )
+        self._blend = self._blit.color_ref
+        
         if len(idef) == 2:
             self._effect = idef[1]
 
