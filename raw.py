@@ -38,12 +38,12 @@ from py3sdl2 import *
 from tokensets import *
 
 # tileflags:
-TCF_GRASS = 1
-TCF_FAKEFLOOR = 2
-TCF_TRUEFLOOR = 4
-TCF_VOID = 8
-TCF_UNKNOWN = 16
-TCF_PLANT = 32
+TF_GRASS = 1
+TF_FAKEFLOOR = 2
+TF_TRUEFLOOR = 4
+TF_VOID = 8
+TF_UNKNOWN = 16
+TF_PLANT = 32
 
 # blitmodes:
 BM_NONE = 0
@@ -180,19 +180,19 @@ class DFAPI(object):
         def flag_a_tile(tt):
             flags = 0
             if tt.name is None:
-                return TCF_UNKNOWN                
+                return TF_UNKNOWN                
             if tt.name.startswith('Grass'):
-                flags = flags | TCF_GRASS
+                flags = flags | TF_GRASS
             if tt.shape.name in ('TREE', 'SHRUB', 'SAPLING'):
-                flags = flags | TCF_PLANT
+                flags = flags | TF_PLANT
             if (tt.material.name in ('DRIFTWOOD', 'CAMPFIRE', 'FIRE') or
                tt.shape.name in ('TREE', 'SHRUB', 'SAPLING', 'PEBBLES', 'BOULDER', 'STAIR_UP')):
-                   flags = flags | TCF_FAKEFLOOR 
+                   flags = flags | TF_FAKEFLOOR 
             if ( tt.name.endswith(('FloorSmooth', 'Floor1', 'Floor2', 'Floor3', 'Floor4', 'Floor')) and
                 tt.name not in ('ConstructedFloor', 'GlowingFloor')):
-                    flags = flags | TCF_TRUEFLOOR
+                    flags = flags | TF_TRUEFLOOR
             if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name == 'Void'):
-                flags = flags | TCF_VOID
+                flags = flags | TF_VOID
             return flags
 
         self.tiletype = parse(os.path.join(dfapipath, 'df.tile-types.xml'))[-1]
@@ -1832,17 +1832,17 @@ class MapObject(object):
                         
                         flags = self.tileflags.get(fl_tile)[0]
                         
-                        if (flags & TCF_TRUEFLOOR) and (flags & TCF_FAKEFLOOR):
+                        if (flags & TF_TRUEFLOOR) and (flags & TF_FAKEFLOOR):
                             fails[(fl_mat, fl_tile)] = "mode=floor true+fake"
                             continue
                             
-                        if flags & TCF_GRASS:
+                        if flags & TF_GRASS:
                             fl_mat = gr_mat
                         
-                        if flags & TCF_PLANT:
+                        if flags & TF_PLANT:
                             fl_mat = up_mat
                         
-                        if (flags & TCF_VOID):
+                        if (flags & TF_VOID):
                             fl_mat = 0
                         else:
                             empty = False
