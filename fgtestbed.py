@@ -751,7 +751,7 @@ def main():
     pa = ap.parse_args()
     
     logconfig(pa.glinfo, pa.calltrace)
-    window, context = sdl_init()
+    window, context = sdl_init(fwdcore=True)
     glinfo()
     
     mo = MapObject(pa.dfdir, pa.rawsdir, pa.apidir)

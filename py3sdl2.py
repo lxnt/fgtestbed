@@ -54,7 +54,7 @@ import pygame2.image as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
-OpenGL.FULL_LOGGING = True
+OpenGL.FULL_LOGGING = 'GLTRACE' in os.environ
 OpenGL.ERROR_ON_COPY = True
 
 from OpenGL.GL import *
@@ -144,6 +144,7 @@ class CArray(object):
         offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
         self.dt.pack_into(self.data, offs, *value)
 
+
     @property
     def ptr(self):
         if isinstance(self.data, bytearray):
@@ -163,8 +164,8 @@ def upload_tex2d(txid, informat, tw, th, dformat, dtype, dptr, filter):
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
     glTexImage2D(GL_TEXTURE_2D, 0, informat, tw, th, 0, dformat, dtype, dptr)
-    if informat != GL_RGBA8:
-        texparams(GL_TEXTURE_2D)
+    #if informat != GL_RGBA8:
+        #texparams(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, 0)
 
 def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr, filter):
@@ -178,9 +179,9 @@ def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr, filter):
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, filter)
     glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, filter)
     #glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0)
-    unpackstate()
+    #unpackstate()
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)
-    texparams(GL_TEXTURE_2D_ARRAY)
+    #texparams(GL_TEXTURE_2D_ARRAY)
 
 def unpackstate():
     d = [
@@ -678,11 +679,22 @@ def glinfo():
 def glcalltrace(s):
     s = "{0} {1} {0}".format("*" * 16, s)
     logging.getLogger('OpenGL.calltrace' ).info(s)
-def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
+def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=False, fwdcore=False):
     sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
     posn = (sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY, sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY)
     posn = (0, 0)
     log = logging.getLogger('fgt.sdl_init')
+
+    cflags = 0
+    cmask = 0
+    if fwdcore:
+        cflags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG
+        cmask |= SDL_GL_CONTEXT_PROFILE_CORE
+    else:
+        cmask |= SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+    if gldebug:
+        cflags |= SDL_GL_CONTEXT_DEBUG_FLAG
+    
     gl_attrs = (
         (SDL_GL_RED_SIZE, "SDL_GL_RED_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE),
         (SDL_GL_GREEN_SIZE, "SDL_GL_GREEN_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE),
@@ -693,8 +705,8 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
         (SDL_GL_DOUBLEBUFFER, "SDL_GL_DOUBLEBUFFER", 1, None),
         (SDL_GL_CONTEXT_MAJOR_VERSION, "SDL_GL_CONTEXT_MAJOR_VERSION", 3, None),
         (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 2, None),
-        (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG, None),
-        (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", SDL_GL_CONTEXT_PROFILE_CORE, None),
+        (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", cmask, None),
+        (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", cflags, None),
     )
 
     for attr, name, val, unused in gl_attrs:
@@ -725,6 +737,8 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None):
     return window, context
 
 def gldumplog(header = '', logger = None):
+    if not bool(glGetDebugMessageLogARB):
+        return
     if logger is None:
         logger = logging.getLogger('OpenGL.debug_output')
     glcalltrace("gldump({})".format(header))
@@ -939,8 +953,14 @@ def logconfig(info = None, calltrace = None):
             'root': { 'level': 'INFO', 'handlers': ['console'] },
             'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'], 'propagate': 0 },
             'fgt': { 'level': 'INFO' },
-            'fgt.shader': { 'level': 'INFO' },
-            'fgt.shader.locs': { 'level': 'INFO' },
+            'fgt.raws': { 'level': 'DEBUG' },
+            'fgt.raws.rpn.trace': {'level': 'ERROR' },
+            'fgt.raws.TSParser':  {'level': 'ERROR' },
+            'fgt.raws.ObjectHandler': {'level': 'ERROR' },
+            'fgt.raws.InitParser': {'level': 'ERROR' },
+            'fgt.raws.pageman.get': {'level': 'ERROR' },
+            'fgt.shader': { 'level': 'WARN' },
+            'fgt.shader.locs': { 'level': 'WARN' },
             'fgt.pan': { 'level': 'WARN' },
             'fgt.zoom': { 'level': 'WARN' },
             'fgt.reshape': { 'level': 'WARN' },
