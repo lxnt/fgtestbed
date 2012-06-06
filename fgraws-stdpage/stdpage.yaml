@@ -1,0 +1,293 @@
+unused-celpages:
+    STD:
+        skip: true
+        page-dim: [ 16, 16 ]
+        cel-dim: ~
+        file: ~
+        defs:
+            intro_bg: [ 0, 0 ]        # Used for background tiles in the intro CMV, rarely used elsewhere
+            civdwarf: [ 1, 0 ]        #Civilian dwarves# used for dead dwarves
+            mildwarf: [ 2, 0 ]        #Military dwarves# used for dead dwarves
+            dimple_cup: [ 3, 0 ]      #Dimple cups
+            cut_gem: [ 4, 0 ]         #Cut gems, large  gems
+            maple: [ 5, 0 ]           #Acacia trees,  Mangrove trees,  Maple trees,  quarry bushes,  Alder trees,  Birch trees
+            plump: [ 6, 0 ]           #Plump helmets,  Oak trees,  quarry bush leaves,  Mahogany trees,  Chestnut trees,  Ash trees
+            stone: [ 7, 0 ]           #Stone, solid  workshop tile for several workshops like the  magma smelter,  lakes in main map,  caves in the main map, moon on travel map
+            nest_box: [ 8, 0 ]        #Solid workshop tile for several other workshops like the  magma forge,  tanner workshop,  catapult cup, fortress keeps on travel map,  nest box tool,  nest box building
+            well: [ 9, 0 ]            #Well,  ant colony,  millstone,  quern, vertical  axle, fortress walls on travel map, sun behind clouds on travel map, fortresses on world map
+            unk_10: [ 10, 0 ]              
+            male: [ 11, 0 ]            #Male sign,  bags
+            female: [ 12, 0 ]          #Female sign,  amulet
+            ladies: [ 13, 0 ]          #Ladles
+            armor_stand: [ 14, 0 ]     #Armor stands
+            gem_rough: [ 15, 0 ]       #Unmined  Gem Cluster, Rough  Gems and Raw  Glass, unmined  bituminous coal, mined  bituminous coal,  currency symbol,  masterpiece  quality symbol, spider  webs,  turtle, sun,  gear assemblies, fireballs, bandit camps on travel map
+
+    #                                ====Row 2 (16-31)====
+            tri_right: [ 0, 1 ]       #Head of  Ballista arrow facing east,  manta ray
+            tri_left: [ 1, 1 ]        #Head of  Ballista arrow facing west
+            unk_18: [ 2, 1 ]              
+            cage: [ 3, 1 ]            #Cages, on- fire symbol, vertical  bars
+            goblet: [ 4, 1 ]          #Mugs, largest elven cities, cumulonimbus clouds on travel map,  Highwood trees
+            rope: [ 5, 1 ]            #Restraints,  whip vine,  Rope
+            logs: [ 6, 1 ]            #Logs,  hive tool,  hive building
+            cedar: [ 7, 1 ]           #Cedar trees
+            dir_n: [ 8, 1 ]           #Interface text (bridge direction),  Pine trees,  Larch trees, some conifer forests on world map
+            dir_s: [ 9, 1 ]           #Hungry/thirsty/drowsy/unhappy indicator,  bridge placement raising direction indicator
+            dir_e: [ 10, 1 ]           #Interface text (bridge direction)
+            dir_w: [ 11, 1 ]           #Interface text (bridge direction)
+            unk_28: [ 12, 1 ]               
+            unk_29: [ 13, 1 ]               
+            ramp_up: [ 14, 1 ]         #Head of  Ballista arrow facing north, ramp up
+            ramp_down: [ 15, 1 ]       #Head of  Ballista arrow facing south, ramp down
+
+    #                                ====Row 3 (32-47)====
+            space: [ 0, 2 ]           #Spaces in text messages, used for background on the title screen/menu
+            '!': [ 1, 2 ]               #Various  status icons, text
+            shrub: [ 2, 2 ]           #Shrub, quotation marks, Carpenter's workshop tile, kobold's glowing eyes
+            floor_grate: [ 3, 2 ]     #floor grates, labyrinths on travel map Sandstone,  Rock salt,  Basalt,  Gypsum
+            coin: [ 4, 2 ]            #Coins
+            meal: [ 5, 2 ]            #Prepared meal, unexplored underground,  screw pump in action Siltstone,  Slate,  Brimstone,  Kimberlite ,  Bismuthinite,  Realgar,  Stibnite,  Marcasite,  Olivine,  Orthoclase,  Microcline,  Petrified wood,  Brimstone,  Pyrolusite
+            demon: [ 6, 2 ]           #Demons
+            floor_rough0: [ 7, 2 ]    #Rough  floors, unexplored underground,  Claystone,  Rhyolite,  Periclase
+            (: [ 8, 2 ]               #Foreign object opening tag, tile in  bowyer's workshop, waxing moon on travel map, text
+            ): [ 9, 2 ]               #Foreign object closing tag, waning moon on travel map, text
+            ore: [ 10, 2 ]             #Ore,  glowing pits, superior  quality tags, key reference, working  gear assembly,  gem  floodgate,  Lignite
+            floor_smooth: [ 11, 2 ]    #Smooth/constructed  floors, injured status, finely-crafted  quality tags, text,  block/ bar  bridge or  road, towns on world map
+            floor_rough1: [ 12, 2 ]    #Rough  floors,  Claystone, unexplored underground, text
+            arrow: [ 13, 2 ]           #Scepters,  arrows in flight, well-crafted  quality tags, keyboard reference, Part of animation when two creatures or dwarves are on the same spot
+            floor_rough2: [ 14, 2 ]    #Rough  floors,  Felsite, text, unexplored underground
+            bolt: [ 15, 2 ]            #Weapons,  bolts,  Ballista tile, text
+
+    #                                ====Row 4 (48-63)====
+            coffin: [ 0, 3 ]          #Coffins, text
+            1: [ 1, 3 ]                #Text, fluids if  SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            2: [ 2, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            3: [ 3, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            4: [ 4, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            5: [ 5, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            6: [ 6, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            7: [ 7, 3 ]                #Text, fluids if SHOW_FLOW_AMOUNTS is YES in d_init.txt
+            8: [ 8, 3 ]                #Fortress gates on travel map, text
+            9: [ 9, 3 ]                #Text
+            berry: [ 10, 3 ]           #Wild strawberry,  prickle berry,  fisher berry,  sun berry, snowstorms, underground shrubs, command menu text
+            ;: [ 11, 3 ]                #Mason's Workshop,  Kitchen, command menu text ( Movies key)
+            stair_up: [ 12, 3 ]        #Stairs up, brackets around squad names, "Less than 1 unit weight" on Trading screen.
+            pile: [ 13, 3 ]            #Empty  Stockpiles, hamlets on world map,  Chert,  Gneiss,  Sylvite,  Chromite,  Kaolinite
+            stair_down: [ 14, 3 ]      #Stairs down, brackets around squad names.
+            ?: [ 15, 3 ]                #"Task assigned"  indicator, looking for path
+
+    #                                ====Row 5 (64-79)====
+            '@': [ 0, 4 ]               #Sheriff#, berserk dwarf#, adventurer#,  fortress guard#,  royal guard#, dwarven  merchants#,  caravan guards#, adventurer's location on map
+            A: [ 1, 4 ]               #Alligator#, Tile in Farm Workshop, text
+            B: [ 2, 4 ]               #Bears#, text
+            C: [ 3, 4 ]               #Cow#, camels#,  bronze colossus#, text
+            D: [ 4, 4 ]               #Dragon#,  Draltha#, Depot Access Display, text
+            E: [ 5, 4 ]               #Elephant#,  elk bird#, text
+            F: [ 6, 4 ]               #Text
+            G: [ 7, 4 ]               #Text
+            H: [ 8, 4 ]               #Horse#, text
+            I: [ 9, 4 ]               #Support, text
+            J: [ 10, 4 ]               #Text
+            K: [ 11, 4 ]               #Text
+            L: [ 12, 4 ]               #Leopard#, text
+            M: [ 13, 4 ]               #Magma man#,  mule#,  muskox#, text
+            N: [ 14, 4 ]               #Text
+            O: [ 15, 4 ]               #Trade depot post, glass portal, Tile in Farm Workshop, column$, wall construction, Giant Olm, full moon on travel map, text
+
+    #                                ====Row 6 (80-95)====
+            P: [ 0, 5 ]               #Text
+            Q: [ 1, 5 ]               #Text
+            R: [ 2, 5 ]               #Giant Rat#, Text
+            S: [ 3, 5 ]               #Sasquatch#,  giant desert scorpion#,  Giant Cave Spider#, text
+            T: [ 4, 5 ]               #Titan#, Text
+            U: [ 5, 5 ]               #Human#,  Unicorn#, text
+            V: [ 6, 5 ]               #Badlands on map, Text
+            W: [ 7, 5 ]               #Depot Access Display, Text
+            X: [ 8, 5 ]               #Bin, stone  floodgate, shop post, building footprint, Depot Access Display, text, up/down stairs, Tile in Ashery, keyboard cursor<br />Nausea / Winded / Stunned / Unconscious / Migrant  indicator
+            Y: [ 9, 5 ]               #Text
+            Z: [ 10, 5 ]               #Sleep  indicator, text
+    #    [DEF:11:5:[               #Clothing,  armor, item stack opening tag, moon on travel map, text
+            \: [ 12, 5 ]                #Part of animation when two creatures or dwarves are on the same spot,  Ballista tile
+            ']': [ 13, 5 ]               #Floor tile in  workshops and  furnaces, item stack closing tag, text
+            trap: [ 14, 5 ]            #Trap,  Alabaster,  Volcano on world map
+            _: [ 15, 5 ]               #Channel  designation, text
+
+    #                                ====Row 7 (96-111)====
+            floor_rough3: [ 0, 6 ]   #Rough floors, unexplored underground Dolomite, Schist, Alunite, Rutile
+            a: [ 1, 6 ]               
+            b: [ 2, 6 ]               
+            c: [ 3, 6 ]                   
+            d: [ 4, 6 ]               #Dog#, text
+            e: [ 5, 6 ]               #Elf#, Text
+            f: [ 6, 6 ]               #Frogman#, text
+            g: [ 7, 6 ]               #Goblin#,  Mountain goat#,  Gremlin#,  Groundhog#, text
+            h: [ 8, 6 ]               #Harpy#, text
+            i: [ 9, 6 ]               #Fire imp#, text
+            j: [ 10, 6 ]               #Text
+            k: [ 11, 6 ]               #Kobold#, text
+            l: [ 12, 6 ]               #Text
+            m: [ 13, 6 ]               #Mandrill#,  mussel, text
+            n: [ 14, 6 ]              #Hilly Grassland(?) on Map, Text
+            o: [ 15, 6 ]               #Well construction, bridge construction, text,  millstone in action, floor tile in magma  furnaces
+
+    #                                ====Row 8 (112-127)====
+            p: [ 0, 7 ]               #Text
+            q: [ 1, 7 ]               #Text
+            r: [ 2, 7 ]               #Ratman#, text
+            s: [ 3, 7 ]               #Snakeman#,  Slugman#,  Snailman#, text
+            t: [ 4, 7 ]               #Troglodyte#, text
+            u: [ 5, 7 ]               #Text
+            v: [ 6, 7 ]               #Text[Main:Anhydrite|Anhydrite,  Mica
+            w: [ 7, 7 ]               #Wolf#, text
+            saltpeter: [ 8, 7 ]      #Saltpeter, text
+            y: [ 9, 7 ]               #Text
+            z: [ 10, 7 ]               #Text
+            '{': [ 11, 7 ]               #Forbidden opening tag, tile in Jewellers Workshop.
+            talc: [ 12, 7 ]           #Talc, pipe sections, Part of animation when two creatures or dwarves are on the same spot
+            '}': [ 13, 7 ]               #Forbidden closing tag
+            '~': [ 14, 7 ]               #Unfinished rough stone  road,  river,  magma,  flows, dirt  road,  farm plot under construction,  sand, furrowed soils,  blood smear, guts
+            atrap: [ 15, 7 ]               #Animal trap, low  mountains on world map, part of  mechanic's workshop
+
+    #                                ====Row 9 (128-143)====
+            mechanism: [ 0, 8 ]      #Mechanisms
+        #   unkn: [ 1, 8 ]               #Text
+        #   unkn: [ 2, 8 ]               #Text
+        #   unkn: [ 3, 8 ]               #Text
+        #   unkn: [ 4, 8 ]               #Text
+        #   unkn: [ 5, 8 ]               #Text
+        #   unkn: [ 6, 8 ]               #Text
+            totem: [ 7, 8 ]          #Totems
+        #   unkn: [ 8, 8 ]               #Text
+        #   unkn: [ 9, 8 ]               #Text, military elves
+        #   unkn: [ 10, 8 ]               #Text
+        #   unkn: [ 11, 8 ]               #Text
+        #   unkn: [ 12, 8 ]               #Elven forest retreat
+    #    [DEF:13:8:               
+    #    [DEF:14:8:               
+        #   unkn: [ 15, 8 ]               #Idols, shrines on travel map, text
+
+    #                                ====Row 10 (144-159)====
+    #    [DEF:0:9:               
+        #   unkn: [ 1, 9 ]                #Toys, hamlets on world map
+        #   unkn: [ 2, 9 ]                #Coffers,  quivers,  backpacks, hamlets on world map
+        #   unkn: [ 3, 9 ]                #Cauldrons
+        #   unkn: [ 4, 9 ]                #Rings
+            lever_off: [ 5, 9 ]       #Unactivated  levers,  Stingrays#, text
+            bucket: [ 6, 9 ]          #Bucket, text
+    #    [DEF:7:9:               
+            herb: [ 8, 9 ]            #Valley herb
+            bracelet: [ 9, 9 ]        #Bracelets
+        #   unkn: [ 10, 9 ]                #Military Humans
+            hatch_closed: [ 11, 9 ]    #Closed  hatches
+        #   unkn: [ 12, 9 ]                #Many valuable metals in veins, Other Features in Local embark map screen (when display is enabled)
+        #   unkn: [ 13, 9 ]                #Cave lobster
+    #    [DEF:14:9:               
+        #   unkn: [ 15, 9 ]                #Rope reed, [[splints
+
+    #                                ====Row 11 (160-175)====
+    #    [DEF:0:10:               
+    #    [DEF:1:10:               
+            lever_on: [ 2, 10 ]        #Activated  levers, text
+    #    [DEF:3:10:               
+        #   unkn: [ 4, 10 ]                #Bogeymen
+        #   unkn: [ 5, 10 ]                #Night Creatures
+    #    [DEF:6:10:               
+            cloth: [ 7, 10 ]           #Cloth
+            instrument: [ 8, 10 ]      #Instrument
+            withered: [ 9, 10 ]        #Withered  plants
+    #    [DEF:10:10:               
+    #    [DEF:11:10:               
+    #    [DEF:12:10:               
+            flask: [ 13, 10 ]           #Flask,  waterskin
+        #   unkn: [ 14, 10 ]                #Tail of  Ballista arrow facing west, item with  decoration tag
+        #   unkn: [ 15, 10 ]                #Tail of  Ballista arrow facing east, item with  decoration tag
+
+    #                                ====Row 12 (176-191)====
+        #   unkn: [ 0, 11 ]                #Partially dug rock,  miasma,  cave-in dust,  steam, smoke,  Fishery & Butcher's workshops, fog on travel map,  Jet,  Chalk,  Diorite, various soils
+        #   unkn: [ 1, 11 ]                #Partially dug rock,  miasma,  cave-in dust,  steam, smoke, side tiles for catapult,  window, fog on travel map[Main:Gabbro|Gabbro,  Obsidian, various soilsorkshops (craftdwarf's, bowyer's, mason's, mechanic's, jeweler's, clothier's,  kitchen, and leather works)
+        #   unkn: [ 2, 11 ]                #Partially dug rock,  miasma,  cave-in dust,  steam, smoke, tannery,  Wagon body, fog on travel map,  Marble,  Limestone,  Flint,  Granite, various soils, sky$
+        #   unkn: [ 3, 11 ]                #rivers,  well  chain/rope, rotating  axles
+        #   unkn: [ 4, 11 ]                #Overworld  rivers, top-right tile for  Loom, glumprong  tree
+        #   unkn: [ 5, 11 ]                #bridges,  catapult tile
+    #    [DEF:6:11:               
+            wall_s_ssw: [ 7, 11 ]      #Ends of smooth walls
+            wall_s_sww: [ 8, 11 ]      #Ends of smooth walls
+            wall_s_nnssww: [ 9, 11 ]   #Smooth/constructed walls
+            wall_s_nnss: [ 10, 11 ]     #Smooth/constructed walls,  bridges, wooden  doors, center  catapult tile, center  Ballista tile,  axles, fortress walls on travel map
+            wall_s_ssww: [ 11, 11 ]     #Smooth/constructed walls, bridges
+            wall_s_nnww: [ 12, 11 ]     #Smooth/constructed walls, bridges
+            wall_s_nnw: [ 13, 11 ]      #Ends of smooth walls
+            wall_s_nww: [ 14, 11 ]      #Ends of smooth walls
+        #   unkn: [ 15, 11 ]                #Overworld  rivers
+
+    #                                ====Row 13 (192-27)====
+        #   unkn: [ 0, 12 ]                #Overworld rivers/Roads
+        #   unkn: [ 1, 12 ]                #Overworld rivers/Roads
+        #   unkn: [ 2, 12 ]                #Overworld rivers/Roads, [[crutches
+        #   unkn: [ 3, 12 ]                #Overworld rivers/Roads, top-left tile for  Loom
+        #   unkn: [ 4, 12 ]                #Overworld rivers/Roads, rotating  axles
+            door: [ 5, 12 ]            #Doors, overworld rivers/Roads, floor  detailing/ engraving in progress
+            tree_winter: [ 6, 12 ]     #Bridges, trees in winter, (un)dead trees, [[catapult tile
+    #    [DEF:7:12:               
+            wall_s_nnee: [ 8, 12 ]     #Smooth/constructed walls, bridges, fortress walls on travel map
+            wall_s_ssee: [ 9, 12 ]     #Smooth/constructed walls, bridges, fortress walls on travel map
+            wall_s_nneeww: [ 10, 12 ]   #Smooth/constructed walls
+            wall_s_sseeww: [ 11, 12 ]   #Smooth/constructed walls, fortress walls on travel map
+            wall_s_nnssee: [ 12, 12 ]   #Smooth/constructed walls
+            wall_s_eeww: [ 13, 12 ]     #Smooth/constructed walls, bridges, planted  crops, center  catapult tile, center  Ballista tile,  axles, fortress walls on travel map
+            wall_s_xx: [ 14, 12 ]       #Smooth/constructed walls, bridges,  fortifications, (flashing) wall  detailing/ engraving/fortifying in progress
+        #   unkn: [ 15, 12 ]                #Tail of  Ballista arrow facing north,  screw press building.
+
+    #                                ====Row 14 (28-223)====
+        #   unkn: [ 0, 13 ]                #Bridges,  catapult tile
+            table: [ 1, 13 ]           #Table, tail of  Ballista arrow facing south
+            chair: [ 2, 13 ]           #Chairs, bridges,  catapult tile, farmer's workshop bottom-middle tile
+            wall_s_nne: [ 3, 13 ]      #Ends of smooth walls
+            wall_s_nee: [ 4, 13 ]      #Ends of smooth walls
+            wall_s_sse: [ 5, 13 ]      #Ends of smooth walls
+            wall_s_see: [ 6, 13 ]      #Ends of smooth walls
+            grate_wall: [ 7, 13 ]      #Wooden floodgates, bone floodgates, wall grates
+        #   unkn: [ 8, 13 ]                #Metal doors
+        #   unkn: [ 9, 13 ]                #Overworld  rivers
+        #   unkn: [ 10, 13 ]                #Overworld rivers
+        #   unkn: [ 11, 13 ]                #Any solid color tile
+        #   unkn: [ 12, 13 ]                #Siege engine parts,  Ballista tile
+        #   unkn: [ 13, 13 ]                #Ballista tile
+        #   unkn: [ 14, 13 ]                #Ballista tile
+        #   unkn: [ 15, 13 ]                #Ballista tile
+
+    #                                ====Row 15 (224-239)====
+        #   unkn: [ 0, 14 ]                #Fish, top-center  fishery tile,  meat, altocumulus clouds on travel map
+        #   unkn: [ 1, 14 ]                #Leather, cumulus clouds on travel map
+        #   unkn: [ 2, 14 ]                #Weight symbol, candlenut  tree, mango tree, rubber tree, cacao tree, palm tree, kapok tree
+            cabinet: [ 3, 14 ]         #Cabinet,  dark fortresses
+        #   unkn: [ 4, 14 ]                #Trap component
+            anvil: [ 5, 14 ]           #Anvil, metalsmith's and magma forge bottom-middle tile,  jugs
+            crown: [ 6, 14 ]           #crown,  ruins on world map
+            tree_sapling: [ 7, 14 ]    #Tree sapling,  pig tail,  cave wheat,  longland grass,  rat weed,  hide root,  muck root,  blade weed,  sliver barb
+            pot: [ 8, 14 ]             #sweet pod,  bloated tuber,  kobold bulb,  pots
+            bed: [ 9, 14 ]             #Beds,  Puddingstone
+            statue: [ 10, 14 ]          #Statues, dwarven cities on map,  sea nettle jellyfish
+            earring: [ 11, 14 ]         #Earrings,  kennel tile
+            boulder: [ 12, 14 ]         #Boulder, dry  brook, middle-right  butcher's shop tile,  Andesite,  Conglomerate, sea foam, images of clouds, fortress gates on travel map,  honeycomb
+            thread: [ 13, 14 ]          #Thread,  loom bottom left tile, farmer's workshop bottom right tile
+        #   unkn: [ 14, 14 ]                #Bowyer's workshop middle-right tile
+            slab: [ 15, 14 ]            #Hills on world map,  slab building 
+
+    #                                ====Row 16 (240-255)====
+            bars: [ 0, 15 ]            #Bars, excellent  quality symbol,  zones, metal/glass  floodgates, floor  bars, cirrus clouds on travel map, hamlets on world map
+        #   unkn: [ 1, 15 ]                #Unfinished  road
+        #   unkn: [ 2, 15 ]                #Debris (spent ammo, ballista bolts, and catapult stones),  ashes
+        #   unkn: [ 3, 15 ]                #Debris (spent ammo, ballista bolts, and catapult stones),  ashes
+            tree_willow: [ 4, 15 ]     #Willow  tree, swamps on world map
+    #    [DEF:5:15:               
+            barrel: [ 6, 15 ]          #Barrel,  screw pump, upper left tile of  still (works well as barrel)
+        #   unkn: [ 7, 15 ]                #Rough stone  road or  bridge,  water,  river,  lava, glob,  fat,  tallow,  farm plot, furrowed soil,  vomit,  blood pools, sea foam, sand, Mudstone, Serpentine, others?
+        #   unkn: [ 8, 15 ]                #Sea foam,  eggs
+        #   unkn: [ 9, 15 ]                #Vermin, Boulders at lower elevation.
+        #   unkn: [ 10, 15 ]                #Seeds, micro-vermin, Open Space$ (changeable with the SKY and CHASM tags in d_init.txt), terrain at lower elevation, plants at lower elevation.
+        #   unkn: [ 11, 15 ]                #Weapon racks,  badlands in main map, check mark (selecting production materials, confirmed items on manager window)
+        #   unkn: [ 12, 15 ]                #Savanna in main map
+        #   unkn: [ 13, 15 ]                #Body parts,  chunks, vermin corpses,  bone,  shell,  skins,  skulls
+        #   unkn: [ 14, 15 ]                #Blocks, trees at lower elevation, human houses/shops on travel map
+        #   unkn: [ 15, 15 ]                #No use?                

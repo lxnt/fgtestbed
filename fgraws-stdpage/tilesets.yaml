@@ -1,0 +1,318 @@
+#
+# Defines arbitrary sets of tiles and their location 
+# in stock 16x16 tile page plus some effects to draw stuff
+# quite close to the stock renderers
+#
+
+effects:
+    sfloor:     [ 0,   0, 1]
+    floor:      [fg,   0, 0]
+    wetfloor:   [fg,   0, 0]
+    ramp:       [fg,   0, 1]
+    dry:        [ 6,   6, 0]
+    dead:       [ 6,   6, 0]
+    dark:       [fg,  bg, 0]
+    light:      [fg,  bg, 1]
+
+tilesets:
+    stone:
+        StoneBoulder: {blit: [std,12,14], effect: ramp}
+        StoneFloor1: {blit: [std,7,2], effect: sfloor}
+        StoneFloor2: {blit: [std,12,2], effect: sfloor}
+        StoneFloor3: {blit: [std,14,2], effect: sfloor}
+        StoneFloor4: {blit: [std,0,6], effect: sfloor}
+        StoneFloorSmooth: {blit: [std,11,2], effect: sfloor}
+        StoneFortification: {blit: [std,14,12]}
+        StonePebbles1: {blit: [std,7,2], effect: sfloor}
+        StonePebbles2: {blit: [std,12,2], effect: sfloor}
+        StonePebbles3: {blit: [std,14,2], effect: sfloor}
+        StonePebbles4: {blit: [std,0,6], effect: sfloor}
+        StonePillar: {blit: [std,7,12]}
+        StoneRamp: {blit: [std,14,1], effect: ramp}
+        StoneStairD: {blit: [std,14,3], effect: ramp}
+        StoneStairU: {blit: [std,12,3], effect: ramp}
+        StoneStairUD: {blit: [std,8,5], effect: ramp}
+        StoneWall: {blit: [mat,Wall]}
+        StoneWallSmoothL2D: {blit: [std,8,11]}
+        StoneWallSmoothL2U: {blit: [std,14,11]}
+        StoneWallSmoothLD: {blit: [std,11,11]}
+        StoneWallSmoothLD2: {blit: [std,7,11]}
+        StoneWallSmoothLR: {blit: [std,13,12]}
+        StoneWallSmoothLRD: {blit: [std,11,12]}
+        StoneWallSmoothLRU: {blit: [std,10,12]}
+        StoneWallSmoothLRUD: {blit: [std,14,12]}
+        StoneWallSmoothLU: {blit: [std,12,11]}
+        StoneWallSmoothLU2: {blit: [std,13,11]}
+        StoneWallSmoothLUD: {blit: [std,9,11]}
+        StoneWallSmoothR2D: {blit: [std,6,13]}
+        StoneWallSmoothR2U: {blit: [std,4,13]}
+        StoneWallSmoothRD: {blit: [std,9,12]}
+        StoneWallSmoothRD2: {blit: [std,5,13]}
+        StoneWallSmoothRU: {blit: [std,8,12]}
+        StoneWallSmoothRU2: {blit: [std,3,13]}
+        StoneWallSmoothRUD: {blit: [std,12,12]}
+        StoneWallSmoothUD: {blit: [std,10,11]}
+        StoneWallWorn1: {blit: [std,0,11]}
+        StoneWallWorn2: {blit: [std,0,12]}
+        StoneWallWorn3: {blit: [std,0,13]}
+    
+    soil:
+        SoilFloor1: {blit: [std,7,2], effect: floor}
+        SoilFloor2: {blit: [std,12,2], effect: floor}
+        SoilFloor3: {blit: [std,14,2], effect: floor}
+        SoilFloor4: {blit: [std,0,6], effect: floor}
+        SoilRamp: {blit: [std,14,1], effect: ramp}
+        SoilStairD: {blit: [std,14,3], effect: ramp}
+        SoilStairU: {blit: [std,12,3], effect: ramp}
+        SoilStairUD: {blit: [std,8,5], effect: ramp}
+        SoilWall: {blit: [mat,Wall]}
+        SoilWetFloor1: {blit: [std,7,2], effect: wetfloor}
+        SoilWetFloor2: {blit: [std,12,2], effect: wetfloor}
+        SoilWetFloor3: {blit: [std,14,2], effect: wetfloor}
+        SoilWetFloor4: {blit: [std,0,6], effect: wetfloor}
+        FurrowedSoil: {blit: [std,14,7]}
+    
+    grass:
+        Grass1StairD: {blit: [std,14,3]}
+        Grass1StairU: {blit: [std,12,3]}
+        Grass1StairUD: {blit: [std,8,5]}
+        Grass2StairD: {blit: [std,14,3]}
+        Grass2StairU: {blit: [std,12,3]}
+        Grass2StairUD: {blit: [std,8,5]}
+        GrassDarkFloor1: {blit: [mat,0], effect: dark}
+        GrassDarkFloor2: {blit: [mat,1], effect: dark}
+        GrassDarkFloor3: {blit: [mat,2], effect: dark}
+        GrassDarkFloor4: {blit: [mat,3], effect: dark}
+        GrassDarkRamp: {blit: [std,14,1], effect: dark}
+        GrassDeadFloor1: {blit: [mat,0], effect: dead}
+        GrassDeadFloor2: {blit: [mat,1], effect: dead}
+        GrassDeadFloor3: {blit: [mat,2], effect: dead}
+        GrassDeadFloor4: {blit: [mat,3], effect: dead}
+        GrassDeadRamp: {blit: [std,14,1], effect: dead}
+        GrassDryFloor1: {blit: [mat,0], effect: dry}
+        GrassDryFloor2: {blit: [mat,1], effect: dry}
+        GrassDryFloor3: {blit: [mat,2], effect: dry}
+        GrassDryFloor4: {blit: [mat,3], effect: dry}
+        GrassDryRamp: {blit: [std,0,0], effect: dry}
+        GrassLightFloor1: {blit: [mat,0], effect: light}
+        GrassLightFloor2: {blit: [mat,1], effect: light}
+        GrassLightFloor3: {blit: [mat,2], effect: light}
+        GrassLightFloor4: {blit: [mat,3], effect: light}
+        GrassLightRamp: {blit: [std,14,1], effect: light}
+    
+    mineral:
+        MineralBoulder: {blit: [std,12,14], effect: ramp}
+        MineralFloor1: {blit: [std,7,2], effect: floor}
+        MineralFloor2: {blit: [std,12,2], effect: floor}
+        MineralFloor3: {blit: [std,14,2], effect: floor}
+        MineralFloor4: {blit: [std,0,6], effect: floor}
+        MineralFloorSmooth: {blit: [std,11,2], effect: floor}
+        MineralFortification: {blit: [std,14,12]}
+        MineralPebbles1: {blit: [std,7,2], effect: floor}
+        MineralPebbles2: {blit: [std,12,2], effect: floor}
+        MineralPebbles3: {blit: [std,14,2], effect: floor}
+        MineralPebbles4: {blit: [std,0,6], effect: floor}
+        MineralPillar: {blit: [std,7,12]}
+        MineralRamp: {blit: [std,14,1], effect: ramp}
+        MineralStairD: {blit: [std,14,3], effect: ramp}
+        MineralStairU: {blit: [std,12,3], effect: ramp}
+        MineralStairUD: {blit: [std,8,5], effect: ramp}
+        MineralWall: {blit: [mat,Wall]}
+        MineralWallSmoothL2D: {blit: [std,8,11]}
+        MineralWallSmoothL2U: {blit: [std,14,11]}
+        MineralWallSmoothLD: {blit: [std,11,11]}
+        MineralWallSmoothLD2: {blit: [std,7,11]}
+        MineralWallSmoothLR: {blit: [std,13,12]}
+        MineralWallSmoothLRD: {blit: [std,11,12]}
+        MineralWallSmoothLRU: {blit: [std,10,12]}
+        MineralWallSmoothLRUD: {blit: [std,14,12]}
+        MineralWallSmoothLU: {blit: [std,12,11]}
+        MineralWallSmoothLU2: {blit: [std,13,11]}
+        MineralWallSmoothLUD: {blit: [std,9,11]}
+        MineralWallSmoothR2D: {blit: [std,6,13]}
+        MineralWallSmoothR2U: {blit: [std,4,13]}
+        MineralWallSmoothRD: {blit: [std,9,12]}
+        MineralWallSmoothRD2: {blit: [std,5,13]}
+        MineralWallSmoothRU: {blit: [std,8,12]}
+        MineralWallSmoothRU2: {blit: [std,3,13]}
+        MineralWallSmoothRUD: {blit: [std,12,12]}
+        MineralWallSmoothUD: {blit: [std,10,11]}
+        MineralWallWorn1: {blit: [std,0,11]}
+        MineralWallWorn2: {blit: [std,0,12]}
+        MineralWallWorn3: {blit: [std,0,13]}
+
+    constructed:
+        ConstructedFortification: {blit: [std,14,12]}
+        ConstructedPillar: {blit: [std,7,12]}
+        ConstructedRamp: {blit: [std,14,1], effect: ramp}
+        ConstructedFloor: {blit: [std,7,2], effect: floor}
+        ConstructedWallL2D: {blit: [std,8,11]}
+        ConstructedWallL2U: {blit: [std,14,11]}
+        ConstructedWallLD: {blit: [std,11,11]}
+        ConstructedWallLD2: {blit: [std,7,11]}
+        ConstructedWallLR: {blit: [std,13,12]}
+        ConstructedWallLRD: {blit: [std,11,12]}
+        ConstructedWallLRU: {blit: [std,10,12]}
+        ConstructedWallLRUD: {blit: [std,14,12]}
+        ConstructedWallLU: {blit: [std,12,11]}
+        ConstructedWallLU2: {blit: [std,13,11]}
+        ConstructedWallLUD: {blit: [std,9,11]}
+        ConstructedWallR2D: {blit: [std,6,13]}
+        ConstructedWallR2U: {blit: [std,4,13]}
+        ConstructedWallRD: {blit: [std,9,12]}
+        ConstructedWallRD2: {blit: [std,5,13]}
+        ConstructedWallRU: {blit: [std,8,12]}
+        ConstructedWallRU2: {blit: [std,3,13]}
+        ConstructedWallRUD: {blit: [std,12,12]}
+        ConstructedWallUD: {blit: [std,10,11]}
+    
+    frozen:
+        FrozenFloor: {blit: [std,7,2], effect: floor}
+        FrozenFloor2: {blit: [std,12,2], effect: floor}
+        FrozenFloor3: {blit: [std,14,2], effect: floor}
+        FrozenFloor4: {blit: [std,0,6], effect: floor}
+        FrozenFloorSmooth: {blit: [std,11,2], effect: floor}
+        FrozenFortification: {blit: [std,14,12]}
+        FrozenPillar: {blit: [std,7,12]}
+        FrozenRamp: {blit: [std,14,1], effect: ramp}
+        FrozenStairD: {blit: [std,14,3], effect: ramp}
+        FrozenStairU: {blit: [std,12,3], effect: ramp}
+        FrozenStairUD: {blit: [std,8,5], effect: ramp}
+        FrozenWall: {blit: [mat,Wall]}
+        FrozenWallSmoothL2D: {blit: [std,8,11]}
+        FrozenWallSmoothL2U: {blit: [std,14,11]}
+        FrozenWallSmoothLD: {blit: [std,11,11]}
+        FrozenWallSmoothLD2: {blit: [std,7,11]}
+        FrozenWallSmoothLR: {blit: [std,13,12]}
+        FrozenWallSmoothLRD: {blit: [std,11,12]}
+        FrozenWallSmoothLRU: {blit: [std,10,12]}
+        FrozenWallSmoothLRUD: {blit: [std,14,12]}
+        FrozenWallSmoothLU: {blit: [std,12,11]}
+        FrozenWallSmoothLU2: {blit: [std,13,11]}
+        FrozenWallSmoothLUD: {blit: [std,9,11]}
+        FrozenWallSmoothR2D: {blit: [std,6,13]}
+        FrozenWallSmoothR2U: {blit: [std,4,13]}
+        FrozenWallSmoothRD: {blit: [std,9,12]}
+        FrozenWallSmoothRD2: {blit: [std,5,13]}
+        FrozenWallSmoothRU: {blit: [std,8,12]}
+        FrozenWallSmoothRU2: {blit: [std,3,13]}
+        FrozenWallSmoothRUD: {blit: [std,12,12]}
+        FrozenWallSmoothUD: {blit: [std,10,11]}
+        FrozenWallWorn1: {blit: [std,0,11]}
+        FrozenWallWorn2: {blit: [std,0,12]}
+        FrozenWallWorn3: {blit: [std,0,13]}
+
+    feature:
+        FeatureBoulder: {blit: [std,12,14], effect: ramp}
+        FeatureFloor1: {blit: [std,7,2], effect: floor}
+        FeatureFloor2: {blit: [std,12,2], effect: floor}
+        FeatureFloor3: {blit: [std,14,2], effect: floor}
+        FeatureFloor4: {blit: [std,0,6], effect: floor}
+        FeatureFloorSmooth: {blit: [std,11,2], effect: floor}
+        FeatureFortification: {blit: [std,14,12]}
+        FeaturePebbles1: {blit: [std,7,2], effect: floor}
+        FeaturePebbles2: {blit: [std,12,2], effect: floor}
+        FeaturePebbles3: {blit: [std,14,2], effect: floor}
+        FeaturePebbles4: {blit: [std,0,6], effect: floor}
+        FeaturePillar: {blit: [std,7,12]}
+        FeatureRamp: {blit: [std,14,1], effect: ramp}
+        FeatureStairD: {blit: [std,14,3], effect: ramp}
+        FeatureStairU: {blit: [std,12,3], effect: ramp}
+        FeatureStairUD: {blit: [std,8,5], effect: ramp}
+        FeatureWall: {blit: [mat,Wall]}
+        FeatureWallSmoothL2D: {blit: [std,8,11]}
+        FeatureWallSmoothL2U: {blit: [std,14,11]}
+        FeatureWallSmoothLD: {blit: [std,11,11]}
+        FeatureWallSmoothLD2: {blit: [std,7,11]}
+        FeatureWallSmoothLR: {blit: [std,13,12]}
+        FeatureWallSmoothLRD: {blit: [std,11,12]}
+        FeatureWallSmoothLRU: {blit: [std,10,12]}
+        FeatureWallSmoothLRUD: {blit: [std,14,12]}
+        FeatureWallSmoothLU: {blit: [std,12,11]}
+        FeatureWallSmoothLU2: {blit: [std,13,11]}
+        FeatureWallSmoothLUD: {blit: [std,9,11]}
+        FeatureWallSmoothR2D: {blit: [std,6,13]}
+        FeatureWallSmoothR2U: {blit: [std,4,13]}
+        FeatureWallSmoothRD: {blit: [std,9,12]}
+        FeatureWallSmoothRD2: {blit: [std,5,13]}
+        FeatureWallSmoothRU: {blit: [std,8,12]}
+        FeatureWallSmoothRU2: {blit: [std,3,13]}
+        FeatureWallSmoothRUD: {blit: [std,12,12]}
+        FeatureWallSmoothUD: {blit: [std,10,11]}
+        FeatureWallWorn1: {blit: [std,0,11]}
+        FeatureWallWorn2: {blit: [std,0,12]}
+        FeatureWallWorn3: {blit: [std,0,13]}
+    
+    lava:
+        LavaBoulder: {blit: [std,12,14], effect: ramp}
+        LavaFloor1: {blit: [std,7,2], effect: floor}
+        LavaFloor2: {blit: [std,12,2], effect: floor}
+        LavaFloor3: {blit: [std,14,2], effect: floor}
+        LavaFloor4: {blit: [std,0,6], effect: floor}
+        LavaFloorSmooth: {blit: [std,11,2], effect: floor}
+        LavaFortification: {blit: [std,14,12]}
+        LavaPebbles1: {blit: [std,7,2], effect: floor}
+        LavaPebbles2: {blit: [std,12,2], effect: floor}
+        LavaPebbles3: {blit: [std,14,2], effect: floor}
+        LavaPebbles4: {blit: [std,0,6], effect: floor}
+        LavaPillar: {blit: [std,7,12]}
+        LavaRamp: {blit: [std,14,1], effect: ramp}
+        LavaStairD: {blit: [std,14,3], effect: ramp}
+        LavaStairU: {blit: [std,12,3], effect: ramp}
+        LavaStairUD: {blit: [std,8,5], effect: ramp}
+        LavaWall: {blit: [mat,Wall]}
+        LavaWallSmoothL2D: {blit: [std,8,11]}
+        LavaWallSmoothL2U: {blit: [std,14,11]}
+        LavaWallSmoothLD: {blit: [std,11,11]}
+        LavaWallSmoothLD2: {blit: [std,7,11]}
+        LavaWallSmoothLR: {blit: [std,13,12]}
+        LavaWallSmoothLRD: {blit: [std,11,12]}
+        LavaWallSmoothLRU: {blit: [std,10,12]}
+        LavaWallSmoothLRUD: {blit: [std,14,12]}
+        LavaWallSmoothLU: {blit: [std,12,11]}
+        LavaWallSmoothLU2: {blit: [std,13,11]}
+        LavaWallSmoothLUD: {blit: [std,9,11]}
+        LavaWallSmoothR2D: {blit: [std,6,13]}
+        LavaWallSmoothR2U: {blit: [std,4,13]}
+        LavaWallSmoothRD: {blit: [std,9,12]}
+        LavaWallSmoothRD2: {blit: [std,5,13]}
+        LavaWallSmoothRU: {blit: [std,8,12]}
+        LavaWallSmoothRU2: {blit: [std,3,13]}
+        LavaWallSmoothRUD: {blit: [std,12,12]}
+        LavaWallSmoothUD: {blit: [std,10,11]}
+        LavaWallWorn1: {blit: [std,0,11]}
+        LavaWallWorn2: {blit: [std,0,12]}
+        LavaWallWorn3: {blit: [std,0,13]}
+
+    river:
+        RiverSource:
+        RiverN:
+        RiverS:
+        RiverE:
+        RiverW:
+        RiverNW:
+        RiverNE:
+        RiverSW:
+        RiverSE:
+
+    brook:
+        BrookN:
+        BrookS:
+        BrookE:
+        BrookW:
+        BrookNW:
+        BrookNE:
+        BrookSW:
+        BrookSE:
+        BrookTop:
+
+    trees:
+        Tree: {blit: [mat,Tree]}
+        Sapling: {blit: [mat,Sapling]}
+        TreeDead: {blit: [mat,Dead_Tree]}
+        SaplingDead: {blit: [mat,Dead_Sapling]}
+        
+    shrubs:
+        ShrubDead: {blit: [mat,Dead_Shrub]}
+        Shrub: {blit: [mat,Shrub]}
+

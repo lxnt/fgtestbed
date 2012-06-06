@@ -1,0 +1,201 @@
+#
+# Terminology.
+# ============
+#   TILE refers to and only to logical tiles the map is composed from,
+#        with the exception of TILE_PAGE which is deemed same as CEL_PAGE.
+#        These are walls, floors, open space, etc.
+#	 Tile names are taken from df/tiletype.h (xml/df.tile-types.xml)
+#
+#   CEL refers to and only to a graphical representation, be it a single
+#        image or an animated sequence.
+# 
+#
+# 'std' is the name of predefined 16x16 celpage
+#
+# Cel defn is as follows:
+# =======================
+#
+# Short variety contains only one set of blit, blend|effect keys. 
+# Such set in fact is a single and the only keyframe.
+#
+# Blend by default is 'mat', which means either display_color 
+# of the material, or of the cel got from material by 'mat' blit ref.
+#
+# Blit is either a celpage ref or 'mat' for materials that have
+# celdef in stock raws. Those are walls and various vegetation.
+#
+# Effects work on classic blits by replacing or mangling the 
+# triplet components. They are useful mostly for mimicking the
+# original renderer. Effect implies "blend: mat". See tilesets.yaml.
+#
+# Long variety is where instead of one dictionary is a sequence of
+# them (each one is still just like above). An extra key, named
+# 'no' defines this keyframe number in the sequence. Another
+# extra key, 'glow', enables color interpolation between keyframes.
+#
+# When a 'glow' key is present, both this and next keyframe must 
+# have non-none and different blend defined. 
+# Blend color gets linearly interpolated for each frame in between, 
+# for both fore and background colors. Blit is replicated from this frame.
+#
+# A final dictionary in the sequence that contains on the 'no' key 
+# signals a delayed loop back to the frame 0. This is to be used when 
+# there's a need to pause at the last frame for some time or a glow 
+# effect is present.
+#
+#
+# Blit sequences and their meaning:
+#  <pagename>,<celdefname>  - refers to an alias defined in the tilepage
+#  <pagename>,<index>       - cel by index
+#  <pagename>,<s>,<t>       - cel by column, row
+#  mat[,{<def>}]            - get cel from material raws
+#  none                     - don't blit anything 
+#                             (same as omitting [blit] for the keyframe)
+#
+# Blend sequences and their meaning:
+#  One of 'rrggbbaa', 'rgba', 'rrggbb', 'rgb' - mix with this color in hex 
+#  'asis', ~  - no blending at all
+#  'mat' or omitted - take material display_color, implies fg/bg blending
+# 
+#
+# Binding cels to tiles and materials.
+# ====================================
+# 
+# An entry in the materialsets list applies materials selected 
+# by the ~selector-expression~ to the tilesets and tiles listed in it.
+#
+# In other words, for each selected material and every tile listed
+# a blitter instruction is emitted, so that when the renderer 
+# gets a tile_id, material_id pair from the game it knows how to draw it.
+# While some ascii cels are listed in the raws, they basically only 
+# cover unmined walls while there are many other tiles to be drawn.
+#
+# A material is a set of "material template tokens", that is those
+# tokens that can be added/found in material templates 
+# (material_template_default.txt file)
+#
+# The material.parent variable refers to the object from which 
+# the material in question was derived. It is not defined for 
+# the inorganic materials. Instead they have inorganic-specific
+# tokens
+#
+#
+#  ~selector-expression~:
+#  ----------------------
+#
+#    A simple expression in reverse polish notation (stoned-yoda-speak).
+#    It must compute to a boolean value or consist of a single keyword 'none'.
+#
+# Operators:
+#     and or not 
+#     eq  - case insensitive string comparison
+#     in  - a:b:in -> a in b -> b.has(a)
+#
+# Variables:
+#     name:                 (alias)
+#         mat                      - set of tokens (f.ex. to select metals)
+#         mat.klass         (mk)   - inorganic; none; structural, seed, etc for derived
+#         mat.name          (mn)   - name
+#         mat.parent        (mp)   - set of tokens for the parent object (GRASS f.ex.)
+#         mat.parent.klass  (mpk)  - plant or creature
+#
+# Keywords:
+#     none: 
+#         expilicty selects built-in material 'nonemat' (see below)
+#
+# Literals:
+#    anything that is not a varname, keyword or operator.
+#
+#    Example: 
+#      mat.klass,seed,eq,mat.name,weed_rat,eq,and
+#       - rat weed seeds
+#
+# Beware of typos: evaluator lacks type-checks and will happily coerce 
+# strings to booleans and search for substrings
+# 
+# 'in' and 'eq' operators can be made implicit since one 
+#  of their parameters is always a variable (or rather variables
+#  can be turned into unary operators), but I feel that would 
+#  make the expressions incomprehensible even to me.
+#
+#  '~' aka None is for materialset to draw tiles that do not 
+#  have any materials associated with them, like OpenSpace, 
+#  Void, EeriePit and the like.
+#
+#
+# Buildings definition: 
+# =====================
+#
+#       see buildings.txt
+#
+---
+materialsets:
+-   expr: [soil,mat,in,soil_ocean,mat,in,or]
+    tilesets: [soil]
+-   expr: [
+        is_gem,mat,in,not,
+        metamorphic,mat,in,
+        sedimentary,mat,in,or,
+        igneous_intrusive,mat,in,or,
+        igneous_extrusive,mat,in,or,
+        and ]
+    tilesets: [stone, constructed]
+    buildings: true 
+-   expr: [is_gem,mat,in,not,environment_spec,mat,in,environment,mat,in,or,and]
+    tilesets: [ mineral, constructed]
+    buildings: true 
+-   expr: [deep_special,mat,in,is_stone,mat,in,and] # raw adamantine (or just mn,raw_adamantine,eq)
+    tilesets: [mineral] 
+-   expr: [deep_surface,mat,in]
+    tilesets: [feature]  # slade
+-   expr: [is_metal,mat,in]
+    tilesets: [constructed]
+    buildings: true 
+-   expr: [wood,mat.klass,eq]
+    tilesets: [constructed]
+    buildings: true 
+-   expr: [soap,mat.klass,eq]   
+    tilesets: [constructed]
+    buildings: true 
+-   expr: [is_gem,mat,in]
+    tilesets: [mineral] 
+-   expr: [grass,mat.parent,in] 
+    tilesets: [grass] 
+-   expr: [mat.klass,structural,eq,
+            mat.parent.klass,plant,eq,and,
+            grass,mat.parent,in,not,and,
+            tree,mat.parent,in,and]
+    tilesets: [trees] 
+-   expr: [mat.klass,structural,eq,
+            mat.parent.klass,plant,eq,and,
+            grass,mat.parent,in,not,and,
+            tree,mat.parent,in,not,and]
+    tilesets: [shrubs]
+
+---
+
+tilesets:
+    nonmat:
+        Ashes1: { blit: [std,2,15] }
+        Ashes2: { blit: [std,3,15] }
+        Ashes3: { blit: [std,3,15] }
+        Campfire:
+        Chasm:
+        Driftwood: { blit: [std,0,15] }
+        EeriePit:
+        Fire:
+        GlowingBarrier:
+        GlowingFloor:
+        MagmaFlow:
+        MurkyPool:
+        OpenSpace:
+        RampTop:
+        SemiMoltenRock: { blit: [std,0,11] }
+        Void:
+        Waterfall:
+
+materialsets:
+-   expr: ~
+    tilesets: [nonmat] 
+
+

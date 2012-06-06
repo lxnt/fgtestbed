@@ -1,0 +1,98 @@
+#
+# Building definitions
+#
+# stuff below is very preliminary and not used yet
+#
+
+buildings:
+    AnimalTrap: { cel: [std,15,7 ] }
+    ArcheryTarget:
+    Armorstand: { cel: [std,14,0] }
+    AxleHorizontal:
+    AxleVertical: { cel: [std,9,0] }
+    BarsFloor:
+    BarsVertical:
+    Bed: { cel: [std,9,14] }
+    Box: { cel: [std,8,5] }
+    Bridge:
+    Cabinet: { cel: [std,3,14] }
+    Cage:
+    Chain: { cel: [std,5,1] }
+    Chair:
+    Coffin: { cel: [std,0,3] }
+    Door: { cel: [std,5,12] }
+    #[cel:std,5,12] # [c:none]
+    #[cond:stone]
+    #[cel:std,5,12]
+    #[cond:metal]
+    #[cel:std,8,13]
+    #[cond:wood]
+    #[cel:std,10,11]
+    GearAssembly: { cel: [std,15,0] }
+    GrateFloor: { cel: [std,3,2] }
+    GrateWall: { cel: [std,7,13] }
+    Hatch:{ state: { open: { cel: [std,11,09] }, closed: { cel: [std,11,09] }}
+    Hive: { cel: [std,6,1] }
+    FarmPlot:
+    Floodgate: { cel: [std,8,5] }
+    Nest: { cel: [std,8,0] }
+    NestBox: { cel: [std,8,0] }
+    RoadDirt: { cel: [std,14,7] }
+    RoadPaved: { cel: [std,11,2] }
+    ScrewPump:
+    Slab: { cel: [std,15,14] }
+    Shop:
+    Statue: { cel: [std,10,14] }
+    Support: { cel: [std,9,4] }
+    Table: { cel: [std,1,13] }
+    TractionBench:
+    TradeDepot:
+
+    Weapon:
+    Weaponrack:
+    Wagon:
+    WaterWheel:
+    Well: { cel: [std,9,0] }
+    Windmill:
+    WindowGlass:
+    WindowGem:
+    Ballista:
+    Catapult:
+    Lever: { state: { off : { cel: [std,5,9] }, on: { cel: [std,2,10] } } }
+    PressurePlate: { cel: [std,14,5] }
+    CageTrap: { cel: [std,14,5] }
+    StoneFallTrap: { cel: [std,14,5] }
+    WeaponTrap: { cel: [std,14,5] }
+
+    WoodFurnace:
+    Smelter:
+    GlassFurnace:
+    Kiln:
+    MagmaSmelter:
+    MagmaGlassFurnace:
+    MagmaKiln:
+    Carpenters:
+    Farmers:
+    Masons:
+    Craftdwarfs:
+    Jewelers:
+    MetalsmithsForge:
+    Bowyers:
+    Mechanics:
+    Siege:
+    Butchers:
+    Leatherworks:
+    Tanners:
+    Clothiers:
+    Fishery:
+    Still:
+    Loom:
+    Quern: { cel: [std,9,0] }
+    Kennels:
+    Kitchen:
+    Ashery:
+    Dyers:
+    Millstone: { cel: [std,9,0] }
+
+    Tools: # tools workshop in fact
+
