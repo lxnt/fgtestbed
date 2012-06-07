@@ -1,0 +1,10 @@
+#!/bin/sh
+
+export FGTDIR=`dirname $0`
+export LIBDIR="${FGTDIR}/lib"
+export PYTHONPATH="${LIBDIR}/python3.2/site-packages/"
+
+$FGTDIR/py3sdl2.py $@
+
+
+
