@@ -29,7 +29,7 @@ distribution.
 """
 
 import os, os.path, sys, collections, struct, time, ctypes, mmap
-import logging, logging.config, argparse
+import logging, logging.config, argparse, subprocess
 
 from collections import namedtuple
 
@@ -70,7 +70,7 @@ from glname import glname as glname
 from sdlenums import *
 
 __all__ = """sdl_init sdl_flip sdl_offscreen_init
-logconfig ap_data_args ap_render_args
+logconfig ap_data_args ap_render_args a_mono_font
 rgba_surface bar2voidp mmap2voidp CArray
 glinfo upload_tex2d upload_tex2da gldumplog glcalltrace dump_tex2da texparams
 Shader0 VAO0
@@ -362,7 +362,7 @@ class VAO0(object):
         i = 0
         for d in attrs:
             offs = i * self._data_type.size
-            self._data[offs:offs + self._data_type.size] = self._data_type.pack(*d)
+            self._data_type.pack_into(self._data, offs, *d)
             i += 1
 
         data_ptr = bar2voidp(self._data)
@@ -913,6 +913,38 @@ def sdl_fini():
     ttf.quit()
     sdl.quit()
 
+def findafont(subnames = []):
+    stuff = subprocess.check_output("fc-list : style family file".split())
+    leest = []
+    for l in stuff.decode('utf-8').split("\n"):
+        try:
+            path, fam, style = l.split(':')
+            leest.append((path, fam, style))
+        except ValueError:
+            pass
+    for subname in subnames:
+        for path, fam, style in leest:
+            if subname.lower() in fam.lower():
+                print(path, fam, subname)
+                return ( path, subname)
+            else:
+                print(subname.lower(), fam.lower(), style, "fail")
+    return (path, None)
+
+def a_mono_font(pref = None, size = 23):
+    if pref is None:
+        pref = ['ntu mono', 'vu sans mono', 'ion mono', 'reemono', 'bus mono', 'mono', ]
+    elif ',' in pref:
+        pref, size =  pref.split(',')
+        size = int(size)
+        pref = [ pref ]
+    else:
+        pref = [ pref ]
+    ttfname, unused = findafont(pref)
+    print(ttfname)
+    return ttf.open_font(ttfname.encode('utf-8'), size)
+
+
 def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
     fbo = FBO(Size2(window._w, window._h))
     while True:
@@ -1011,6 +1043,7 @@ def ap_render_args(ap, **kwargs):
     ap.add_argument('-glinfo', metavar="exts", nargs='?', type=str, const='noexts',
             help="log GL caps and possibly extensions")
     ap.add_argument('-ss', metavar='sname', help='shader set name', default='step')
+    ap.add_argument('-hudfont', metavar='family', help='font family substring', default=None)
     ap.set_defaults(**kwargs)
 
 def ap_data_args(ap, **kwargs):
@@ -1052,7 +1085,7 @@ def main():
     grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
     hud = Hud()
 
-    font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 38)
+    font = a_mono_font(pa.hudfont, 38)
     panels = []
     panels.append(HudTextPanel(font, [ "Yokarny Babai" ]))
     panels[0].moveto(Coord2(100, 400))

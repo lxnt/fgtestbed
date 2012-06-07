@@ -290,7 +290,7 @@ class Rednerer(object):
         [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
 
     def __init__(self, window, shaderset, gamedata, 
-                 psize, par, zeddown, anim_fps):
+                 psize, par, zeddown, anim_fps, hudfont):
         log = logging.getLogger('fgt.renderer.init')
 
         self.window = window
@@ -313,11 +313,10 @@ class Rednerer(object):
         self.had_input = False
         self.show_hidden = True
         
-        font = ttf.open_font(b"/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf", 18)
-        self.hp_renderer = RendererPanel(font) 
-        self.hp_mouse = MousePanel(font)
-        self.hp_cheat = CheatPanel(font)
-        self.hp_debug = DebugPanel(font)
+        self.hp_renderer = RendererPanel(hudfont) 
+        self.hp_mouse = MousePanel(hudfont)
+        self.hp_cheat = CheatPanel(hudfont)
+        self.hp_debug = DebugPanel(hudfont)
         self.hp_debug.active = True
         
         self.render_origin = gamedata.window
@@ -770,7 +769,9 @@ def main():
         dump_dir = None)
     mo.use_dump(pa.dfdump)
     
-    rednr = Rednerer(window, pa.ss, mo, pa.psize, pa.par, pa.zeddown, pa.afps)
+    hudfont = a_mono_font(pa.hudfont, 18)
+
+    rednr = Rednerer(window, pa.ss, mo, pa.psize, pa.par, pa.zeddown, pa.afps, hudfont)
     rednr.loop(pa.choke)
     rednr.fini()
     
