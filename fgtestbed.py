@@ -71,8 +71,9 @@ CONTROLS = """\
     Arrows, PgUp/PgDn/Home/End: scroll
     Shift+same:                 faster scroll
     Backspace:                  recenter map
+    =/-:                        adjust number of zlevels drawn
     Keypad +/-:                 adjust animation FPS
-    Keypad *:                   toggle reveal_all
+    Keypad *:                   toggle show_hidden
     Keypad /, ~:                toggle debug feedback mode
     Left mouse button, Space:   toggle animation"""
 
@@ -131,7 +132,7 @@ class GridShader(Shader0):
 class RendererPanel(HudTextPanel):
     def __init__(self, font):
         strs = (
-            "gfps: {gfps:3.1f} afps: {anim_fps:02d} frame# {frame_no:03d}",
+            "gfps: {gfps:3.1f} afps: {anim_fps:02d} frame# {frame_no:03d} zeddown={zeddown:02d}",
             "origin: {origin.x}:{origin.y}:{origin.z} grid: {grid.w}x{grid.h} map: {map.x}x{map.y}x{map.z}",
             "pszar: {pszar.x:.2f} {pszar.y:.2f} {pszar.z};  {psz.x}x{psz.y} px",
             "map_viewport: {viewport.x:02d} {viewport.y:02d} {viewport.w:d} {viewport.h:d}",
@@ -281,13 +282,6 @@ class Rednerer(object):
     # With 3 there's always a neighbouring tile drawn to any visible one.
     # Since grid is sized based on viewport size modulo tile size, this
     # guarantees that all visible tiles are drawn.
-    
-    _zdtab = [  # darkening coefficients for drawing multiple z-levels.
-        [1.0],
-        [1.0, 0.50 ],
-        [1.0, 0.66, 0.33],
-        [1.0, 0.60, 0.45, 0.30, 0.15 ],
-        [1.0, 0.60, 0.50, 0.40, 0.30, 0.20]  ]
 
     def __init__(self, window, shaderset, gamedata, 
                  psize, par, zeddown, anim_fps, hudfont):
@@ -302,7 +296,7 @@ class Rednerer(object):
         self.grid_shader = GridShader(shaderset)
         self.tex = namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
         
-        self._zeddown = zeddown if zeddown < len(self._zdtab) else len(self._zdtab)
+        self.zeddown = zeddown if zeddown < gamedata.dim.z else gamedata.dim.z - 1
         self.anim_fps = anim_fps
         self.min_psz = 3
         self.max_psz = 1024
@@ -311,13 +305,13 @@ class Rednerer(object):
         self.last_hud_time = 10
         
         self.had_input = False
-        self.show_hidden = True
+        self.show_hidden = False
         
         self.hp_renderer = RendererPanel(hudfont) 
         self.hp_mouse = MousePanel(hudfont)
         self.hp_cheat = CheatPanel(hudfont)
         self.hp_debug = DebugPanel(hudfont)
-        self.hp_debug.active = True
+        self.hp_debug.active = False
         
         self.render_origin = gamedata.window
         self.map_viewport = Rect(0, 0, window._w, window._h)
@@ -577,7 +571,8 @@ class Rednerer(object):
         self.fbo.bind(clear = bgc)
 
         zed = self.render_origin.z
-        zd = self._zdtab[self._zeddown]
+        zeddown = min(self.zeddown, zed+1)
+        zd = list((zeddown-z)/zeddown for z in range(zeddown)) # linear darkening
         for i in range(1-len(zd), 1): # draw starting from -zeddown zlevels and up
             # draw the map.
             if i + zed < 0:
@@ -594,9 +589,8 @@ class Rednerer(object):
         panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat, self.hp_debug ]
 
         self.hp_renderer.update(self.winsize, self.map_viewport,
-            hud_time = self.last_hud_time,
-            loop_time = self.last_loop_time,
-            anim_fps = self.anim_fps, frame_no = frame_no,
+            hud_time = self.last_hud_time, loop_time = self.last_loop_time,
+            zeddown = zeddown, anim_fps = self.anim_fps, frame_no = frame_no,
             origin = self.render_origin, grid = self.grid.size, map = self.gamedata.dim,
             pszar = self.Pszar, psz = self.psz, 
             winsize = self.winsize, fbosize = self.fbo.size,
@@ -707,6 +701,12 @@ class Rednerer(object):
                             else:
                                 self.anim_fps /= 2
                             anim_period = 1000.0 / self.anim_fps
+                        elif kcode == SDLK_MINUS:
+                            if self.zeddown > 1:
+                                self.zeddown -= 1
+                        elif kcode == SDLK_EQUALS:
+                            if self.zeddown < self.gamedata.dim.z - 1:
+                                self.zeddown += 1
                         had_input()
 
                     elif ev.type == SDL_QUIT:
