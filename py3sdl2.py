@@ -1019,9 +1019,9 @@ def ap_data_args(ap, **kwargs):
             help="df-structures directory to get xml data from")
     ap.add_argument('-dfdir', metavar="../df_linux", default=os.path.join("..","df_linux"),
             help="df directory to get base tileset and raws from")
-    ap.add_argument('-std', metavar="raws/dir", default='fgraws-stdpage', help="core FG raws dir")
+    ap.add_argument('-std', metavar="raws/dir", default='raw/std', help="core FG raws dir")
     ap.add_argument('dfdump', metavar="some.dump", help="dump file name")
-    ap.add_argument('ext', metavar="raws/dir", nargs='*', default=['fgraws-stdpage'],
+    ap.add_argument('ext', metavar="raws/dir", nargs='*', default=[],
             help="extra FG raws dir to parse")
     ap.set_defaults(**kwargs)
     
