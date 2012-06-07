@@ -73,7 +73,7 @@ CONTROLS = """\
     Backspace:                  recenter map
     Keypad +/-:                 adjust animation FPS
     Keypad *:                   toggle reveal_all
-    Keypad /:                   toggle debug feedback mode
+    Keypad /, ~:                toggle debug feedback mode
     Left mouse button, Space:   toggle animation"""
 
 class GridShader(Shader0):
@@ -631,14 +631,14 @@ class Rednerer(object):
         finished = False
         panning = False
         
-        scrolldict = {  SDLK_LEFT: ( -1, 0),
-                        SDLK_RIGHT: ( 1, 0),
-                        SDLK_UP: ( 0, -1),
-                        SDLK_DOWN: ( 0, 1),
-                        SDLK_HOME: ( -1, -1),
-                        SDLK_PAGEUP: ( 1, -1),
-                        SDLK_END: ( -1, 1),
-                        SDLK_PAGEDOWN: ( 1, 1), }
+        scrolldict = {  SDLK_LEFT: ( 1, 0),
+                        SDLK_RIGHT: ( -1, 0),
+                        SDLK_UP: ( 0, 1),
+                        SDLK_DOWN: ( 0, -1),
+                        SDLK_HOME: ( 1, 1),
+                        SDLK_PAGEUP: ( -1, 1),
+                        SDLK_END: ( 1, -1),
+                        SDLK_PAGEDOWN: ( -1, -1), }
         
         def had_input():
             if not self.had_input:
@@ -662,6 +662,7 @@ class Rednerer(object):
             while not finished: # hang around in case fps is user-limited
                 while True:  # eat events
                     ev = sdlevents.poll_event(True)
+                    kmodstate = sdlkeyboard.get_mod_state()
                     if ev is None:
                         break
                     elif ev.type == SDL_KEYDOWN:
@@ -687,7 +688,7 @@ class Rednerer(object):
                         elif kcode == SDLK_COMMA  and ev.mod & KMOD_SHIFT:
                             self.zpan(1)
                         elif kcode in scrolldict:
-                            boost = 10 if ev.mod & 3 else 1
+                            boost = 10 if kmodstate & KMOD_SHIFT else 1
                             self.pan(Coord2(scrolldict[kcode][0] * boost * self.psz.x, 
                                 scrolldict[kcode][1] * boost * self.psz.y))
                         elif kcode == SDLK_BACKSPACE:
@@ -728,7 +729,6 @@ class Rednerer(object):
                             self.pan(Coord2(ev.motion.xrel, ev.motion.yrel))
                     elif ev.type == SDL_MOUSEWHEEL:
                         had_input()
-                        kmodstate = sdlkeyboard.get_mod_state()
                         amount = -ev.wheel.y
                         mpos = Coord2._make(sdlmouse.get_mouse_state()[1:])
                         if kmodstate & KMOD_CTRL:
