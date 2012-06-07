@@ -1104,6 +1104,11 @@ class KeyFrame(object):
                 blend = effect(blend)
                 fg, bg = colortab[blend]
                 mode = BM_CLASSIC
+            elif blend.upper() == 'MAT_FG':
+                blend = material.display_color
+                blend = effect(blend)
+                fg, bg = colortab[blend]
+                mode = BM_FGONLY
             else: # should be rgb stuff
                 fg, bg = parse_rgba(blend), 0
                 mode = BM_FGONLY

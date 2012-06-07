@@ -88,6 +88,52 @@ void decode_insn(in uint mat, in uint tile, in uint fudge, out uint mode, out ve
     bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
 }
 
+int check_a_floor(in ivec3 posn, inout uint mat, inout uint tile) {
+    uint ftile, fmat, btile, bmat, gamt, gmat, des;
+    
+    decode_tile(posn, fmat, ftile, bmat, btile, gmat, gamt, des);
+    
+    if ((tileflags[ftile] & TF_TRUEFLOOR) > 0u ) {
+        tile = ftile;
+        if ((tileflags[ftile] & TF_GRASS) > 0u) {
+            mat = gmat;
+            return 1; // prefer grass
+        } else {
+            mat = fmat;
+        }
+    }
+    return 0;
+}
+
+void fake_a_floor(in ivec3 posn, inout uint mat, inout uint tile) {
+    tile = 0u; mat = 0u;
+    
+    if (check_a_floor(posn+ivec3(0,1,0),  mat, tile) > 0) return; 
+    if (check_a_floor(posn+ivec3(0,-1,0), mat, tile) > 0) return;
+    if (check_a_floor(posn+ivec3(1,0,0),  mat, tile) > 0) return;
+    if (check_a_floor(posn+ivec3(-1,0,0), mat, tile) > 0) return;
+    
+    if (check_a_floor(posn+ivec3(1,1,0),  mat, tile) > 0) return;
+    if (check_a_floor(posn+ivec3(-1,1,0), mat, tile) > 0) return;
+    if (check_a_floor(posn+ivec3(-1,-1,0),mat, tile) > 0) return;
+    if (check_a_floor(posn+ivec3( 1,-1,0),mat, tile) > 0) return;
+    
+    /* here if we haven't found any grass floor nearby */
+    if (tile != 0u) {
+        /* but we found *some* floor, return it. */
+        return;
+    }
+    /* here if there ain't no floor around; invent one.
+       take the fl_mat? hmm? aww. 
+        TREE SHRUB SAPLING PEBBLES BOULDER STAIR_UP
+       those are the fakefloor tiles.
+       guess this needs some lookup table.
+    
+        in the meanwhile, just return zeroes.
+    */
+    return;
+}
+
 vec4 liquimount(in uint designation) {
     if ((designation & 7u) > 0u) {
         float amount = float(designation & 7u)/7.0; // normalized liquid amount
@@ -134,6 +180,10 @@ void main() {
     uint up_mat = 0u, up_tile = 0u; uint up_mode = BM_CODEDBAD;
     uint gr_mat = 0u, gr_amt = 0u;
     uint designation = 0u;
+    uint fake_mat = 0u, fake_tile = 0u;
+    
+    /* animation fudge factor to break the lockstep */
+    uint fudge = uint(map_posn.x + map_posn.y + map_posn.z);
        
     decode_tile(map_posn, fl_mat, fl_tile, up_mat, up_tile, gr_mat, gr_amt, designation);
     
@@ -146,12 +196,26 @@ void main() {
         fl_mat = up_mat;
     if ((fl_flags & TF_NONMAT) > 0u)
         fl_mat = BMAT_NONE;
-       
-    uint fudge = uint(map_posn.x + map_posn.y + map_posn.z);
-    
+
+#if 1
+    if ((fl_flags & TF_FAKEFLOOR) > 0u) {
+        fake_a_floor(map_posn, fake_mat, fake_tile);
+    }
+
+    if (fake_tile != 0u) {
+        // real tile gets decoded into up_* variables
+        decode_insn(fl_mat, fl_tile, fudge, up_mode, up_fg, up_bg);
+        // fake tile gets decoded into fl_* variables
+        decode_insn(fake_mat, fake_tile, fudge, fl_mode, fl_fg, fl_bg);
+    } else { // business as usual
+        decode_insn(fl_mat, fl_tile, fudge, fl_mode, fl_fg, fl_bg);
+    }
+#else
     decode_insn(fl_mat, fl_tile, fudge, fl_mode, fl_fg, fl_bg);
     
+#endif
+    // here do something if up_tile !=0: i.e. a building or something.
     
     liquicolor = liquimount(designation);
-    stuff = uvec4(fl_mode, 0, mouse_here(), hidden(designation));
+    stuff = uvec4(fl_mode, up_mode, mouse_here(), hidden(designation));
 }

@@ -234,8 +234,8 @@ class DebugPanel(HudTextPanel):
             "{trect}",
             "tile, mat, dispatch.xy {d[0][0]: 4d} {d[0][1]: 4d} {d[0][2]: 6d} {d[0][3]: 6d}",
             "fontref, mode, fg, bg  {d[1][0]: 4d} {d[1][1]: 4d} {d[1][2]:06x} {d[1][3]:06x}",
-            "cinfo                  {d[2][0]: 4d} {d[2][1]: 4d} {d[2][2]: 6d} {d[2][3]: 6d}",
-            "st, psz                {d[3][0]: 4d} {d[3][1]: 4d} {d[3][2]: 6d} {d[3][3]: 6d}",
+            "fl: idx, mode, fg, bg  {d[2][0]: 4d} {d[2][1]: 4d} {d[2][2]:06x} {d[2][3]:06x}",
+            "up: idx, mode, fg, bg  {d[3][0]: 4d} {d[3][1]: 4d} {d[3][2]:06x} {d[3][3]:06x}",
         )
         super(DebugPanel, self).__init__(font, strs, longest_str = "8"*(4*8+14), active = False)
     

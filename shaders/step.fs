@@ -112,6 +112,12 @@ vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 
     return rv;
 }
 
+uint rgba2rbgui(in vec4 c) {
+    return (uint(c.r*255)<<16u) + 
+            (uint(c.g*255)<<8u) + 
+            (uint(c.b*255));
+}
+
 void main() {
     uint fl_mode = stuff.x & 0xFFu;
     uint fl_cindex = stuff.x >> 8u;
@@ -138,9 +144,17 @@ void main() {
     }
 
     vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg, debug2, debug3);
-    if (up_mode != BM_NONE) {
-        uvec4 d2, d3;
-        vec4 up_color = blit_execute(pc, up_mode, up_cindex, up_fg, up_bg, d2, d3);
+    if (up_mode != BM_CODEDBAD) {
+        vec4 up_color = blit_execute(pc, up_mode, up_cindex, up_fg, up_bg, debug2, debug3);
+        debug2.x = fl_cindex;
+        debug2.y = fl_mode;
+        debug2.z = rgba2rbgui(fl_fg);
+        debug2.w = rgba2rbgui(fl_bg);
+        debug3.x = up_cindex;
+        debug3.y = up_mode;
+        debug3.z = rgba2rbgui(up_fg);
+        debug3.w = rgba2rbgui(up_bg);
+       
         color = mix(up_color, color, 1.0 - up_color.a);
     }
 
