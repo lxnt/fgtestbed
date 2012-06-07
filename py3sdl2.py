@@ -619,12 +619,23 @@ class EmaFilter(object):
         
         todo: convert this into a generator.
     """
-    def __init__(self, alpha = 0.01, seed = 16):
+    def __init__(self, alpha, nseed):
         self.alpha = alpha
-        self._value = seed
+        self._value = None
+        self.nseed = nseed
+        self.seeds = []
     
-    def value(self, val):
-        self._value = self.alpha*val + (1-self.alpha)*self._value
+    def update(self, val):
+        if self.nseed is not None:
+            self.seeds.append(val)
+            if len(self.seeds) == self.nseed:
+                self._value = sum(self.seeds)/len(self.seeds)
+                self.nseed = None
+        else:
+            self._value = self.alpha*val + (1-self.alpha)*self._value
+
+    def value(self, val=None):
+        self.update(val)
         return self._value
     
 
@@ -644,6 +655,8 @@ def glinfo():
         (    3, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS" ), # samplers in vert shader
         (   12, GL_MAX_VARYING_FLOATS, "GL_MAX_VARYING_FLOATS" ), # 4 varying_floats = 1 texture_coord?
         (    3, GL_MAX_TEXTURE_COORDS, "GL_MAX_TEXTURE_COORDS" ), # 1 texture_coord = 4 varying_floats?
+#        (   -3.0, GL_MIN_PROGRAM_TEXEL_OFFSET, "GL_MIN_PROGRAM_TEXEL_OFFSET" ), 
+#        (    3.0, GL_MAX_PROGRAM_TEXEL_OFFSET, "GL_MAX_PROGRAM_TEXEL_OFFSET" ), 
 #        (    3, GL_MAX_VERTEX_OUTPUT_COMPONENTS, "GL_MAX_VERTEX_OUTPUT_COMPONENTS" ), # 1 texture_coord = 4 varying_floats?
 #        (   -4, GL_POINT_SIZE_MIN, "GL_POINT_SIZE_MIN" ),
 #        (   32, GL_POINT_SIZE_MAX, "GL_POINT_SIZE_MAX" ),
@@ -664,7 +677,12 @@ def glinfo():
             
         for t in ints:
             try:
-                p = glGetInteger(t[1])
+                if isinstance(t[0], int):
+                    p = glGetInteger(t[1])
+                elif isinstance(t[0], float):
+                    p = glGetFloat(t[1])
+                else:
+                    raise WTFError
                 if (p<t[0]) or ((t[0]<0) and (p+t[0] >0)):
                     w = "** "
                 else:

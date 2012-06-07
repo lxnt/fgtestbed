@@ -36,8 +36,9 @@ distribution.
 """
 from __future__ import division
 
-import sys, time, math, struct, io, ctypes, zlib, ctypes, copy
+import sys, time, math, struct, io, ctypes, zlib, ctypes, copy, time
 import argparse, traceback, os, types, mmap, logging, logging.config
+import math
 
 from raw import MapObject, Designation
 from py3sdl2 import * 
@@ -130,7 +131,7 @@ class GridShader(Shader0):
 class RendererPanel(HudTextPanel):
     def __init__(self, font):
         strs = (
-            "gfps: {gfps:2.0f} afps: {anim_fps:02d} frame# {frame_no:03d}",
+            "gfps: {gfps:3.1f} afps: {anim_fps:02d} frame# {frame_no:03d}",
             "origin: {origin.x}:{origin.y}:{origin.z} grid: {grid.w}x{grid.h} map: {map.x}x{map.y}x{map.z}",
             "pszar: {pszar.x:.2f} {pszar.y:.2f} {pszar.z};  {psz.x}x{psz.y} px",
             "map_viewport: {viewport.x:02d} {viewport.y:02d} {viewport.w:d} {viewport.h:d}",
@@ -140,11 +141,14 @@ class RendererPanel(HudTextPanel):
         self.active = True
         dummy = Coord3(999,999,999)
         longest_str = strs[1].format(origin=dummy, grid=Size2(999,999), map=dummy)
+        self.rtime = EmaFilter(alpha=0.05, nseed=5)
 
         super(RendererPanel, self).__init__(font, strs, longest_str)
     
     def update(self, win, map_viewport, show_hidden, **kwargs):
         self._data = kwargs
+        rtime = self.rtime.value(kwargs['loop_time'])
+        self._data['gfps'] = 1/rtime if rtime else 0
         self._data['viewport'] = map_viewport
         self._data['showhidden'] = '[show_hidden]' if show_hidden else '             '
         self._surface_dirty = True
@@ -303,8 +307,8 @@ class Rednerer(object):
         self.min_psz = 3
         self.max_psz = 1024
         
-        self.fps = EmaFilter()
-        self.last_frame_time = 16 # milliseconds
+        self.last_render_time = 10
+        self.last_hud_time = 10
         
         self.had_input = False
         self.show_hidden = True
@@ -542,7 +546,7 @@ class Rednerer(object):
 
     def render(self, frame_no):
         bgc = GLColor( 0.0, 0.5, 0.0, 1 )
-        tick = sdltimer.get_ticks()
+        t_render_enter = time.clock()
         
         win_mouse_pos = Coord2._make(sdlmouse.get_mouse_state()[1:])
         fbo_mouse_pos = self.win2glfb(win_mouse_pos)
@@ -551,7 +555,7 @@ class Rednerer(object):
         map_mouse_pos = Coord3(self.render_origin.x + grid_mouse_pos.x, 
             self.render_origin.y + grid_mouse_pos.y, self.render_origin.z)
         
-        mc = abs ( (tick % 1000)/500.0 - 1)
+        mc = abs( 2*(t_render_enter - math.floor(t_render_enter)) - 1)
         mouse_color = ( mc, mc, mc, 1.0)
         
         if self.hp_debug.active:
@@ -586,10 +590,14 @@ class Rednerer(object):
                     hidden = self.show_hidden)
 
         self.fbo.blit(self.map_viewport)
+        
+        t_hud_start = time.clock()
         panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat, self.hp_debug ]
 
         self.hp_renderer.update(self.winsize, self.map_viewport,
-            gfps = self.fps.value(self.last_render_time), anim_fps = self.anim_fps, frame_no = frame_no,
+            hud_time = self.last_hud_time,
+            loop_time = self.last_loop_time,
+            anim_fps = self.anim_fps, frame_no = frame_no,
             origin = self.render_origin, grid = self.grid.size, map = self.gamedata.dim,
             pszar = self.Pszar, psz = self.psz, 
             winsize = self.winsize, fbosize = self.fbo.size,
@@ -600,8 +608,10 @@ class Rednerer(object):
         self.hp_cheat.update(self.winsize)
         self.hud.reshape(self.winsize)
         self.hud.render(panels)
+        self.last_hud_time = time.clock() - t_hud_start
+        
         sdl_flip(self.window)
-        return sdltimer.get_ticks() - tick
+        self.last_render_time = time.clock() - t_render_enter
         
     def zpan(self, delta):
         z = self.render_origin.z + delta
@@ -613,11 +623,10 @@ class Rednerer(object):
             
     def loop(self, choke):
         frame_no = 0
-        last_render_ts = 0
-        render_choke = 1000.0/choke if choke > 0 else 0 # ala G_FPS_CAP but in ticks
+        last_loop_ts = last_animflip_ts = time.clock() - 0.1
         
-        last_animflip_ts = 0
-        anim_period = 1000.0 / self.anim_fps
+        render_choke = 1/choke if choke > 0 else 0 # ala G_FPS_CAP 
+        anim_period = 1/self.anim_fps
                 
         paused = False
         finished = False
@@ -638,18 +647,18 @@ class Rednerer(object):
                 self.hp_cheat.active = False
         
         while not finished:
-            now = sdltimer.get_ticks()
-            self.last_render_time = now - last_render_ts
-            last_render_ts = now
-
+            loop_start = time.clock()
+            self.last_loop_time = loop_start - last_loop_ts
+            last_loop_ts = loop_start
+            
             if not paused:
-                if now - last_animflip_ts > anim_period:
+                if loop_start - last_animflip_ts > anim_period:
                     frame_no += 1
-                    last_animflip_ts = now
+                    last_animflip_ts = loop_start
                     if frame_no > self.gamedata.maxframes-1:
                         frame_no = 0
-            
-            render_time = self.render(frame_no)
+
+            self.render(frame_no)
             
             while not finished: # hang around in case fps is user-limited
                 while True:  # eat events
@@ -733,10 +742,11 @@ class Rednerer(object):
                         else:
                             self.zpan(1 * amount)
 
-                elapsed_ticks = sdltimer.get_ticks() - last_render_ts
-                if elapsed_ticks > render_choke:
+                elapsed_time = time.clock() - last_loop_ts
+                if elapsed_time > render_choke:
                     break
-                sdltimer.delay(8)
+                time.sleep(1/60)
+                
     def fini(self):
         # somehow kill entire gl context
         pass
