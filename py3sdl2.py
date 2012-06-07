@@ -32,10 +32,9 @@ import os, os.path, sys, collections, struct, time, ctypes, mmap
 import logging, logging.config, argparse
 
 from collections import namedtuple
-sys.path.append('/home/lxnt/00DFGL/sdlhg/prefix/lib/python3.2/site-packages/')
 
 import pygame2
-pygame2.set_dll_path('/home/lxnt/00DFGL/sdlhg/prefix/lib/')
+pygame2.set_dll_path(os.environ.get('LIBDIR', ''))
 
 import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
@@ -1015,7 +1014,7 @@ def ap_render_args(ap, **kwargs):
     ap.set_defaults(**kwargs)
 
 def ap_data_args(ap, **kwargs):
-    ap.add_argument('-apidir', metavar="../somedir", default=os.path.join("..","df-structures"),
+    ap.add_argument('-apidir', metavar="./df-structures", default="df-structures",
             help="df-structures directory to get xml data from")
     ap.add_argument('-dfdir', metavar="../df_linux", default=os.path.join("..","df_linux"),
             help="df directory to get base tileset and raws from")
