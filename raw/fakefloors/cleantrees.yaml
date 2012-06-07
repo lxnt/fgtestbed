@@ -1,0 +1,155 @@
+---
+
+celpages:
+    cleantrees:
+        file: PhoebusCleanTrees.png
+        cel-dim: [16,16]
+        page-dim: [16,16]
+        defs:
+            broadleaf_a: [5,0]
+            broadleaf_b: [6,0]
+            shrub_a: [7,0]
+            shrub_b: [2,1]
+            timber: [6,1]
+            conifer_a: [7,1]
+            conifer_b: [8,1]
+            shroom_sapling: [13,1]
+            dead_fallen_north: [15,15]
+            dead_fallen_south: [2,4]
+            dead_fallen_east: [3,4]
+            dead_fallen_west: [1,4]
+            shroom_a: [1,8]
+            shroom_b: [2,8]
+            sapling_a: [3,9]
+            cactus: [6,10]
+            dead_sapling: [6,11] # or something
+            palm_a: [2,14]
+            sapling_b: [7,14]
+            boulder_a: [12,14]
+            boulder_b: [4,4]
+            palm_b: [4,15]
+            shrub_b: [12,15]
+            block: [14,15]
+            dead_upright: [15,15]
+
+tilesets:
+    boulders:
+        StoneBoulder:
+            blit: [cleantrees,boulder_a]
+            blend: mat_fg
+        MineralBoulder:
+            blit: [cleantrees,boulder_b]
+            blend: mat_fg
+
+materialsets:
+-   expr: [nonemat,mat.name,eq,builtin,mat.klass,eq,and]
+    name: nonmat
+    tiles:
+        Driftwood:
+          - frame: 0
+            blit: [cleantrees, dead_fallen_east]
+            blend: 0x808000ff
+          - frame: 6
+            blit: [cleantrees, dead_fallen_south]
+            blend: 0x808000ff
+          - frame: 12
+            blit: [cleantrees, dead_fallen_west]
+            blend: 0x808000ff
+          - frame: 18
+            blit: [cleantrees, dead_fallen_north]
+            blend: 0x808000ff
+          - frame: 24
+
+-   expr: [ is_gem,mat,in,not,metamorphic,mat,in,sedimentary,mat,in,or,
+            igneous_intrusive,mat,in,or,igneous_extrusive,mat,in,or,and ]
+    tilesets: [boulders]
+-   expr: [ is_gem,mat,in,not,environment_spec,mat,in,environment,mat,in,or,and]
+    tilesets: [boulders]
+
+---
+
+tilesets:
+    broadleaf_a:
+        Tree:
+            blit: [cleantrees,broadleaf_a]
+            blend: '0b0'
+        Sapling:
+            blit: [cleantrees,sapling_a]
+            blend: '0D0'
+        TreeDead:
+            blit: [cleantrees,dead_upright]
+            blend: 'AA0'
+        ShrubDead:
+            blit: [cleantrees,dead_sapling]
+            blend: 'AA0'
+    broadleaf_b:
+        Tree:
+            blit: [cleantrees,broadleaf_b]
+            blend: '0B0'
+        Sapling:
+            blit: [cleantrees,sapling_b]
+            blend: '0D0'
+        TreeDead:
+            blit: [cleantrees,dead_upright]
+            blend: 'AA0'
+        ShrubDead:
+            blit: [cleantrees,dead_sapling]
+            blend: 'AA0'
+    conifer_a:
+        Tree:
+            blit: [cleantrees,conifer_a]
+            blend: '080'
+        Sapling:
+            blit: [cleantrees,sapling_b]
+            blend: '0B0'
+        TreeDead:
+            blit: [cleantrees,dead_upright]
+            blend: '880'
+        SaplingDead:
+            blit: [cleantrees,dead_sapling]
+            blend: '880'
+    conifer_b:
+        Tree:
+            blit: [cleantrees,conifer_b]
+            blend: '080'
+        Sapling:
+            blit: [cleantrees,sapling_b]
+            blend: '0B0'
+        TreeDead:
+            blit: [cleantrees,dead_upright]
+            blend: '880'
+        SaplingDead:
+            blit: [cleantrees,dead_sapling]
+            blend: '880'
+
+# here we can just select trees having [TILE:6]
+# but that's cheating, not to mention this is
+# highly mod-dependent. 
+# So for now we just select trees by name.
+#
+# broadleaf_a: (phoebus tile 5) alder birch mangrove acacia maple 
+# broadleaf_b: (tile 6) chestnut ash oak mahogany
+# conifer_a: (tile 23)  cedar glumprong feather tree highwood
+# conifer_b: (tile 24) pine larch 
+
+materialsets:
+-   expr: [mn, alder, eq,
+            mn,birch,eq,or,
+            mn,mangrove,eq,or,
+            mn,acacia,eq,or,
+            mn,maple,eq,or,
+            mpk,plant,eq,and,
+            mk,structural,eq,and ]
+    tilesets: [broadleaf_a]
+-   expr: [ mn,chestnut,eq,mn,ash,eq,or,mn,oak,eq,or,mn,mahogany,eq,
+            or,mpk,plant,eq,and,mk,structural,eq,and ]
+    tilesets: [broadleaf_b]
+-   expr: [ mn,cedar,eq,mn,glumprong,eq,or,mn,feather tree,eq,or,mn,
+            highwood,eq,or,mpk,plant,eq,and,mk,structural,eq,and ]
+    tilesets: [conifer_a]
+-   expr: [ mn,pine,eq,mn,larch,eq,or,mpk,plant,eq,and,mk,structural,eq,and ]
+    tilesets: [conifer_b]
+
+
+
+
