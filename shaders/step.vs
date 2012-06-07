@@ -9,12 +9,17 @@
 #define BM_OVERSCAN     254u
 #define BM_CODEDBAD     255u   // filler insn
 
+/* tile flags */
 #define TF_GRASS        1u
 #define TF_FAKEFLOOR    2u
 #define TF_TRUEFLOOR    4u
 #define TF_VOID         8u
 #define TF_UNKNOWN     16u
 #define TF_PLANT       32u
+#define TF_NONMAT      64u
+
+/* builtin materials */
+#define BMAT_NONE               0u
 
 #define TILETYPECOUNT   699     // tile types
 
@@ -30,7 +35,7 @@ uniform ivec2 gridsize;
 uniform  vec3 pszar;
 uniform ivec2 mouse_pos;
 uniform  int  show_hidden;
-uniform  int frame_no;
+uniform uint  frame_no;
 uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 
 in ivec2 position;                      // tiles relative to the render_origin; df cs.
@@ -38,6 +43,7 @@ in ivec2 position;                      // tiles relative to the render_origin; 
 flat out uvec4 stuff;      		// up_mode, fl_mode, mouse, hidden
 flat out  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 flat out  vec4 fl_fg, fl_bg; 	        // floor or the only blit
+flat out  vec4 up_fg, up_bg; 	        // object or none blit
 
 flat out uvec4 debug0;
 flat out uvec4 debug1;
@@ -59,7 +65,7 @@ void decode_tile(in ivec3 posn,
     des   = vc.a;
 }
 
-void decode_insn(in uint mat, in uint tile, out uint mode, out vec4 fg, out vec4 bg) {
+void decode_insn(in uint mat, in uint tile, in uint fudge, out uint mode, out vec4 fg, out vec4 bg) {
     mode = BM_CODEDBAD;
     fg = vec4(1,0,0,1);
     bg = vec4(0,0,0,0);
@@ -68,7 +74,11 @@ void decode_insn(in uint mat, in uint tile, out uint mode, out vec4 fg, out vec4
     
     debug0 = uvec4(mat, tile, addr.x, addr.y);
     
-    addr.z = uint(frame_no);
+    uint framecount = addr.x >> 8u;
+    addr.x = addr.x & 0xffu;
+
+    addr.z = (frame_no + fudge) % framecount;
+    
     uvec4 insn = texelFetch(blitcode, ivec3(addr.xyz), 0);
     
     debug1 = uvec4(insn.x >>8u, insn.x & 0xffu, insn.z>>8u, insn.w>>8u);
@@ -134,8 +144,12 @@ void main() {
         fl_mat = gr_mat;
     if ((fl_flags & TF_PLANT) > 0u)
         fl_mat = up_mat;
+    if ((fl_flags & TF_NONMAT) > 0u)
+        fl_mat = BMAT_NONE;
+       
+    uint fudge = uint(map_posn.x + map_posn.y + map_posn.z);
     
-    decode_insn(fl_mat, fl_tile, fl_mode, fl_fg, fl_bg);
+    decode_insn(fl_mat, fl_tile, fudge, fl_mode, fl_fg, fl_bg);
     
     
     liquicolor = liquimount(designation);

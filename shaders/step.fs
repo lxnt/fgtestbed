@@ -20,6 +20,7 @@ uniform int debug_active;
 flat in uvec4 stuff;      		// up_mode, fl_mode, mouse, hidden
 flat in  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 flat in  vec4 fl_fg, fl_bg; 	        // floor or the only blit
+flat in  vec4 up_fg, up_bg; 	        // object or none blit
 
 flat in uvec4 debug0;
 flat in uvec4 debug1;
@@ -81,8 +82,8 @@ vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 
     // tile size in font texture normalized coordinates
     vec2 tilesizeN = vec2(float(cinfo.z)/float(fonsz.x), float(cinfo.w)/float(fonsz.y));
     // offset to the tile in font texture normalized coordinates
-    vec2 offsetN = vec2(float(cinfo.x) / float(fonsz.x), float(cinfo.y) / float(fonsz.y));
-    // finally, the texture coordinated for the fragment
+    vec2 offsetN = vec2(float(cinfo.x)/float(fonsz.x), float(cinfo.y)/float(fonsz.y));
+    // finally, the texture coordinates for the fragment
     vec2 texcoords = offsetN + tilesizeN * pc;
     
     vec4 tile_color = textureLod(font, texcoords, 0);
@@ -91,7 +92,7 @@ vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 
     switch (int(mode)) {
         case int(BM_FGONLY):
             rv = fg * tile_color;
-            rv.a = 1.0;
+            rv.a = tile_color.a;
             break;
         case int(BM_CLASSIC):
             rv = mix(tile_color * fg, bg, 1.0 - tile_color.a);
@@ -137,9 +138,13 @@ void main() {
     }
 
     vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg, debug2, debug3);
+    if (up_mode != BM_NONE) {
+        uvec4 d2, d3;
+        vec4 up_color = blit_execute(pc, up_mode, up_cindex, up_fg, up_bg, d2, d3);
+        color = mix(up_color, color, 1.0 - up_color.a);
+    }
 
     if (debug_active > 0) {
-        debug3.w = uint(color.a * 255.0);
         frag = debug_output(debug0, debug1, debug2, debug3);
         return;
     }

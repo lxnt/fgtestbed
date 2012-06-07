@@ -1,19 +1,59 @@
 #
+#
 # Terminology.
 # ============
 #   TILE refers to and only to logical tiles the map is composed from,
 #        with the exception of TILE_PAGE which is deemed same as CEL_PAGE.
 #        These are walls, floors, open space, etc.
-#	 Tile names are taken from df/tiletype.h (xml/df.tile-types.xml)
+#	 Tile names are from df-structures/df.tile-types.xml.
 #
-#   CEL refers to and only to a graphical representation, be it a single
+#   CEL  refers to and only to a graphical representation, be it a single
 #        image or an animated sequence.
 # 
+#  'std' is the name of predefined 16x16 celpage from the init.txt.
 #
-# 'std' is the name of predefined 16x16 celpage
+# All literals are case-insensitive.
 #
-# Cel defn is as follows:
-# =======================
+#
+# Overview.
+# =========
+#
+# This renderer works by associating (material_id,tile_id) pairs from
+# the ingame map with a patch in the texture album. The texture album
+# is a single texture (image), which is generated at startup 
+# by combining all used (in this invocation) graphics. This includes
+# the standard celpage (tileset in wiki parlance; GRAPHICS_FONT in
+# the init.txt), and any celpages referenced in any additional fgraw
+# dirs (need a good name for those).
+#
+# This association is a multistage one. For example, if you wish to 
+# make a birch tree be drawn with a particular image (cel), you first 
+# need to define a tileset that would contain the 'Tree' tile and 
+# declare that tile to be drawn with your favourite cel, then you need
+# to declare a materialset that would include the 'Plant, Birch, Structural' 
+# material and refer to the abovedeclared tileset, so that tiles mentioned
+# in it will be drawn as it defines if they (tiles) happen to be of one of 
+# the materials the materialset includes.
+#
+# This convoluted and unintuitive scheme is here to ensure that both vanilla
+# graphics and standard tilesets (as in Mayday's or Phoebus') are drawn 
+# without extra work and that incremental modifications (as opposed to creating
+# a total conversion of all DF graphics, defining all possible material-tile
+# combinations) are possible and quite easy.
+#
+#
+# Tileset definition.
+# ===================
+#
+# A tileset is a mapping, where the keys are standard tile names, 
+# and the values are either a list of cels, or a mapping defining a single cel.
+# When buildings and creatures 
+# get implemented, multiple cels will be used to define how they are to be drawn
+# in their various states.
+#
+#
+# Cel definition.
+# ===============
 #
 # Short variety contains only one set of blit, blend|effect keys. 
 # Such set in fact is a single and the only keyframe.
@@ -38,25 +78,28 @@
 # Blend color gets linearly interpolated for each frame in between, 
 # for both fore and background colors. Blit is replicated from this frame.
 #
-# A final dictionary in the sequence that contains on the 'no' key 
-# signals a delayed loop back to the frame 0. This is to be used when 
-# there's a need to pause at the last frame for some time or a glow 
-# effect is present.
+# A final item (mapping, whatever) in the sequence that contains
+# only the 'no' key signals a delayed loop back to the frame 0. 
+# This is to be used when there's a need to pause at the last frame 
+# for some time or a glow effect is present.
 #
 #
 # Blit sequences and their meaning:
-#  <pagename>,<celdefname>  - refers to an alias defined in the tilepage
-#  <pagename>,<index>       - cel by index
-#  <pagename>,<s>,<t>       - cel by column, row
-#  mat[,{<def>}]            - get cel from material raws
-#  none                     - don't blit anything 
-#                             (same as omitting [blit] for the keyframe)
+#  
+#   <pagename>,<celdefname>   - refers to an alias defined in the tilepage
+#   <pagename>,<index>        - cel by index
+#   <pagename>,<s>,<t>        - cel by column, row
+#    mat[,{<def>}]            - get cel from material raws
+#    none                     - don't blit anything 
+#                              (same as omitting [blit] for the keyframe)
 #
-# Blend sequences and their meaning:
-#  One of 'rrggbbaa', 'rgba', 'rrggbb', 'rgb' - mix with this color in hex 
-#  'asis', ~  - no blending at all
-#  'mat' or omitted - take material display_color, implies fg/bg blending
-# 
+# Blend values, sequences and their meaning:
+#
+#  'rrggbbaa', 'rgba', 'rrggbb', 'rgb' - hex color, BM_ASIS mode
+#   sequence of two of the above       - BM_CLASSIC mode
+#  'asis', ~                           - BM_ASIS mode (no blending)
+#  'mat' or omitted                    - take material color, 
+#                                        BM_CLASSIC_MODE
 #
 # Binding cels to tiles and materials.
 # ====================================
@@ -83,7 +126,7 @@
 #  ~selector-expression~:
 #  ----------------------
 #
-#    A simple expression in reverse polish notation (stoned-yoda-speak).
+#    A simple expression in reverse polish notation (stoned~yoda~speak).
 #    It must compute to a boolean value or consist of a single keyword 'none'.
 #
 # Operators:
@@ -154,7 +197,7 @@ materialsets:
 -   expr: [wood,mat.klass,eq]
     tilesets: [constructed]
     buildings: true 
--   expr: [soap,mat.klass,eq]   
+-   expr: [soap,mat.name,eq,builtin,mat.klass,eq,and]
     tilesets: [constructed]
     buildings: true 
 -   expr: [is_gem,mat,in]
@@ -195,7 +238,8 @@ tilesets:
         Waterfall:
 
 materialsets:
--   expr: ~
-    tilesets: [nonmat] 
+-   expr: [nonemat,mat.name,eq,builtin,mat.klass,eq,and]
+    tilesets: [nonmat]
+    name: nonmat
 
 

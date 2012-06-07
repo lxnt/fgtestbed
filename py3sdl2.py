@@ -43,7 +43,7 @@ import pygame2.sdl.mouse as sdlmouse
 import pygame2.sdl.video as sdlvideo
 import pygame2.sdl.surface as sdlsurface
 import pygame2.sdl.pixels as sdlpixels
-
+import pygame2.sdl.rwops as sdlrwops
 from pygame2.sdl.keycode import *
 from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
@@ -787,10 +787,14 @@ class rgba_surface(object):
     _sdl_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
     _gl_fmt = GL_RGBA
     
-    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None):
+    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, flike = None):
         self.do_free = True
         if isinstance(filename, str):
-            self._surf = image.load(filename.encode('utf-8'))
+            if flike is not None:
+                rwops = sdlrwops.rw_from_object(flike)
+                self._surf = image.load_rw(rwops, 1)
+            else:
+                self._surf = image.load(filename.encode('utf-8'))
         elif isinstance(filename, bytes):
             self._surf = image.load(filename)
         elif isinstance(w, int) and isinstance(h, int):
@@ -952,20 +956,23 @@ def logconfig(info = None, calltrace = None):
         'loggers': {
             'root': { 'level': 'INFO', 'handlers': ['console'] },
             'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'], 'propagate': 0 },
-            'fgt': { 'level': 'INFO' },
-            'fgt.raws': { 'level': 'DEBUG' },
-            'fgt.raws.rpn.trace': {'level': 'ERROR' },
-            'fgt.raws.TSParser':  {'level': 'ERROR' },
-            'fgt.raws.ObjectHandler': {'level': 'ERROR' },
-            'fgt.raws.InitParser': {'level': 'ERROR' },
-            'fgt.raws.pageman.get': {'level': 'ERROR' },
-            'fgt.shader': { 'level': 'WARN' },
-            'fgt.shader.locs': { 'level': 'WARN' },
-            'fgt.pan': { 'level': 'WARN' },
-            'fgt.zoom': { 'level': 'WARN' },
-            'fgt.reshape': { 'level': 'WARN' },
-            'fgt.glinfo': { 'level': 'WARN' },
-            'fgt.glinfo.extensions': { 'level': 'WARN' },
+            'fgt':                      { 'level': 'INFO' },
+            'fgt.raws':                 { 'level': 'DEBUG' },
+            'fgt.raws.rpn.trace':       { 'level': 'WARN' },
+            'fgt.raws.TSParser':        { 'level': 'WARN' },
+            'fgt.raws.ObjectHandler':   { 'level': 'WARN' },
+            'fgt.raws.InitParser':      { 'level': 'WARN' },
+            'fgt.raws.pageman.get':     { 'level': 'WARN' },
+            'fgt.raws.InflateFrameseq': { 'level': 'DEBUG' },
+            'fgt.raws.MaterialSet':     { 'level': 'WARN' },
+            'fgt.raws.RawsCart.compile':{ 'level': 'DEBUG' },
+            'fgt.shader':               { 'level': 'WARN' },
+            'fgt.shader.locs':          { 'level': 'WARN' },
+            'fgt.pan':                  { 'level': 'WARN' },
+            'fgt.zoom':                 { 'level': 'WARN' },
+            'fgt.reshape':              { 'level': 'WARN' },
+            'fgt.glinfo':               { 'level': 'WARN' },
+            'fgt.glinfo.extensions':    { 'level': 'WARN' },
         },
     }
     if calltrace is not None:
@@ -990,15 +997,14 @@ def ap_render_args(ap, **kwargs):
     ap.set_defaults(**kwargs)
 
 def ap_data_args(ap, **kwargs):
-    ap.add_argument('-cutoff', metavar="frameno", type=int, default=-1, 
-            help="frame number to cut animation at")    
     ap.add_argument('-apidir', metavar="../somedir", default=os.path.join("..","df-structures"),
             help="df-structures directory to get xml data from")
     ap.add_argument('-dfdir', metavar="../df_linux", default=os.path.join("..","df_linux"),
             help="df directory to get base tileset and raws from")
+    ap.add_argument('-std', metavar="raws/dir", default='fgraws-stdpage', help="core FG raws dir")
     ap.add_argument('dfdump', metavar="some.dump", help="dump file name")
-    ap.add_argument('rawsdir', metavar="raws/dir", nargs='*', default=['fgraws-stdpage'],
-            help="FG raws dir to parse")    
+    ap.add_argument('ext', metavar="raws/dir", nargs='*', default=['fgraws-stdpage'],
+            help="extra FG raws dir to parse")
     ap.set_defaults(**kwargs)
     
 def main():

@@ -93,7 +93,7 @@ class GridShader(Shader0):
         glUniform3i(self.uloc[b"origin"], *render_origin)
         glUniform3f(self.uloc[b'pszar'], *pszar)
         
-        glUniform1i(self.uloc[b'frame_no'], frame_no)
+        glUniform1ui(self.uloc[b'frame_no'], frame_no)
         glUniform1f(self.uloc[b"darken"], darken)        
         glUniform1i(self.uloc[b"show_hidden"], show_hidden)
         glUniform1i(self.uloc[b'debug_active'], debug_active)
@@ -612,7 +612,6 @@ class Rednerer(object):
         self.render_origin = self.render_origin._replace(z=z)
             
     def loop(self, choke):
-        last_frame = self.gamedata.codedepth - 1
         frame_no = 0
         last_render_ts = 0
         render_choke = 1000.0/choke if choke > 0 else 0 # ala G_FPS_CAP but in ticks
@@ -647,7 +646,7 @@ class Rednerer(object):
                 if now - last_animflip_ts > anim_period:
                     frame_no += 1
                     last_animflip_ts = now
-                    if frame_no > last_frame:
+                    if frame_no > self.gamedata.maxframes-1:
                         frame_no = 0
             
             render_time = self.render(frame_no)
@@ -754,8 +753,13 @@ def main():
     window, context = sdl_init(fwdcore=True)
     glinfo()
     
-    mo = MapObject(pa.dfdir, pa.rawsdir, pa.apidir)
+    mo = MapObject(     
+        dfprefix = pa.dfdir,
+        fgraws = [ pa.std ] + pa.ext,
+        apidir = pa.apidir,
+        dump_dir = None)
     mo.use_dump(pa.dfdump)
+    
     rednr = Rednerer(window, pa.ss, mo, pa.psize, pa.par, pa.zeddown, pa.afps)
     rednr.loop(pa.choke)
     rednr.fini()
