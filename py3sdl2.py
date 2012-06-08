@@ -914,22 +914,25 @@ def sdl_fini():
     sdl.quit()
 
 def findafont(subnames = []):
-    stuff = subprocess.check_output("fc-list : style family file".split())
+    stuff = subprocess.check_output('fc-list : -f %{fullname}:%{style}:%{file}\n'.split(' '))
     leest = []
     for l in stuff.decode('utf-8').split("\n"):
         try:
-            path, fam, style = l.split(':')
+            fam, style, path = l.split(':')
             leest.append((path, fam, style))
         except ValueError:
             pass
     for subname in subnames:
         for path, fam, style in leest:
+            if 'italic' in style.lower() or 'oblique' in style.lower():
+                continue
             if subname.lower() in fam.lower():
-                print(path, fam, subname)
+                #print("'{}' fam='{}' style='{}' '{}'".format(subname.lower(), fam.lower(), style, "returning"))
                 return ( path, subname)
-            else:
-                print(subname.lower(), fam.lower(), style, "fail")
-    return (path, None)
+            #else:
+                #print("'{}' fam='{}' style='{}' '{}'".format(subname.lower(), fam.lower(), style, "fail"))
+    raise Exception("no font found for '{}'".format(repr(subnames)))
+
 
 def a_mono_font(pref = None, size = 23):
     if pref is None:
@@ -1043,7 +1046,7 @@ def ap_render_args(ap, **kwargs):
     ap.add_argument('-glinfo', metavar="exts", nargs='?', type=str, const='noexts',
             help="log GL caps and possibly extensions")
     ap.add_argument('-ss', metavar='sname', help='shader set name', default='step')
-    ap.add_argument('-hudfont', metavar='family', help='font family substring', default=None)
+    ap.add_argument('-hudfont', metavar='family[,pt]', help='font family substring[,size]', default=None)
     ap.set_defaults(**kwargs)
 
 def ap_data_args(ap, **kwargs):
