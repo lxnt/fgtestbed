@@ -165,12 +165,7 @@
 #  have any materials associated with them, like OpenSpace, 
 #  Void, EeriePit and the like.
 #
-#
-# Buildings definition: 
-# =====================
-#
-#       see buildings.txt
-#
+
 ---
 materialsets:
 -   expr: [soil,mat,in,soil_ocean,mat,in,or]

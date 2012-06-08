@@ -7,45 +7,71 @@ wotsit?
 The prototype is written in Python and works on custom-format dumps of DF map data.
 
 The purpose of this prototype is to design and test rendering methods and graphic
-definition format. 
+definition format.
 
 After this is done, the renderer will be gradually rewritten in C++ and merged to the libgraphics code to become PRINT_MODE:FULL_GRAPHICS. 
-
-At first I plan to merge only map drawing code and draw it instead the DF's map window, leaving the rest of the interface intact. 
-
-When this works acceptably, it would be possible to begin replacing most critical parts of DF's interface with rewritten ones, dig designation, K and V views and unit list being both the most notorious and relatively simple to implement.
 
 What it uses
 ------------
 
-On the system site, fgtestbed requires OpenGL 3.0/GLSL 1.30 capable hardware and drivers, Python 3.2, trunk PyOpenGL and pgreloaded are the dependencies.
+On the system site, fgtestbed requires OpenGL 3.0/GLSL 1.30 capable hardware and drivers.
 
-On the Dwarf Fortress side, it requires *some* installation of version 34.10. 
+It is known to not work with AMD/ATI Catalyst 12.4.
+
+Python 3.2, python3-lxml, python3-yaml, trunk PyOpenGL, pgreloaded libSDL 2.0, SDL_image and SDL_ttf are the dependencies. 
+
+Precompiled binaries for the SDL family, known-working PyOpenGL and pgreloaded are provided as a separate download `here <http://dffd.wimbli.com/file.php?id=6445>`__ (linut 64-bit only).
+
+On the Dwarf Fortress side, it requires *some* installation of version 34.10 or 34.11.
 Standard and custom tile sets and graphics sets are supported. 
 
-A special version of print_mode:shader renderer is required for generating map dumps. You can get it `here <http://dffd.wimbli.com/file.php?id=5763>`_ (linux only). When running DF with it, press F12 to generate dump or F11 to dump and quit. 
-Resulting file is called 'fugr.dump'. 
+Map dumps are generated using a version of libgraphics.so with dumping code integrated. You can get it `here <http://dffd.wimbli.com/file.php?id=6210>`__ (linux 34.11 only). When running DF with it, press F12 to generate dump or F11 to dump and quit. Resulting file is called 'fugr.dump'. 
 
 
 Graphics raws format
 --------------------
 
-Is documented in raws files themselves. Please see fgraws-stdpage/proto.txt.
+Is documented in raws files themselves. Please see `raws/std/proto.yaml <https://github.com/lxnt/fgtestbed/blob/master/raw/std/proto.yaml>`__.
 
-Image data itself is supplied just like existing graphic sets, with CEL_PAGE tokens (aka TILE_PAGE).
+Overall fg-raws format is `YAML <http://yaml.org>`__.
 
 Launching
 ---------
 
 On linux, do it like this::
 
-  ./fgtestbed.py ../df_linux ../df_linux/fugr.dump fgraws-stdpage
+  ./fgt ../df_linux ../df_linux/fugr.dump raw/fakefloors
 
-Currently it is recommended to copy and modify the fgraws-stdpage directory.
+Where ../df_linux is the path to your df installation, ../df_linux/fugr.dump is a path to a map dump (there are some supplied in precompiled binaries archive) and raw/fakefloors is a path to fg-raws directory containing a "mod" demonstrating floors drawn under trees, boulders, and animated driftwood.
+
+If you feel like experimenting with fg-raws themselves, create a directory and put some yaml in there.
+Then supply it at the end of the above command line. Model it based on supplied yaml files. The code parses directories of yaml files in the order listed (first and implicitly goes the raw/std directory), definitions from later ones overriding the former ones. PNG file paths are relative to the directory they are referenced in. Cel page references are (to be) limited to a single raws directory, so you should not rely on any other directories being parsed earlier (or ever). The only exception is the 'std' celpage which refers to the init.txt-defined standard tileset.
 
 Rest of command-line options can be viewed with::
 
-  ./fgtestbed.py -h
+  ./fgt -h
+
+Keeping current
+---------------
+
+To keep track of latest developments, clone the git repository::
+
+  git clone https://github.com/lxnt/fgtestbed
+  cd fgtestbed
+  git submodule init
+  git submodule update
+  
+then move in the lib and dump directories from the precompiled binary archive.
+
+After that do::
+
+  cd fgtestbed
+  git pull
+  git submodule update
+  
+to fetch any changes.
+
+
 
 Dump format
 -----------
