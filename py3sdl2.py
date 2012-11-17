@@ -43,6 +43,7 @@ import pygame2.sdl.video as sdlvideo
 import pygame2.sdl.surface as sdlsurface
 import pygame2.sdl.pixels as sdlpixels
 import pygame2.sdl.rwops as sdlrwops
+import pygame2.sdl.hints as sdlhints
 from pygame2.sdl.keycode import *
 from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
@@ -702,11 +703,10 @@ def glcalltrace(s):
     s = "{0} {1} {0}".format("*" * 16, s)
     logging.getLogger('OpenGL.calltrace' ).info(s)
 def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=False, fwdcore=False):
-    sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
-    posn = (sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY, sdlvideo.SDL_WINDOWPOS_UNDEFINED_DISPLAY)
-    posn = (0, 0)
     log = logging.getLogger('fgt.sdl_init')
-
+    sdlhints.set_hint(SDL_HINT_RENDER_DRIVER, 'software') # do not need no renderer
+    sdlhints.set_hint(SDL_HINT_FRAMEBUFFER_ACCELERATION, '0') # do not need no window surface
+    sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
     cflags = 0
     cmask = 0
     if fwdcore:
