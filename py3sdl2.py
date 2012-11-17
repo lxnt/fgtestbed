@@ -48,8 +48,8 @@ from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
 from pygame2.sdl.video import SDL_Surface
 
-import pygame2.ttf as ttf
-import pygame2.image as image
+import pygame2.sdlttf as ttf
+import pygame2.sdlimage as image
 
 import OpenGL
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
@@ -811,7 +811,7 @@ class rgba_surface(object):
                 rwops = sdlrwops.rw_from_object(flike)
                 self._surf = image.load_rw(rwops, 1)
             else:
-                self._surf = image.load(filename.encode('utf-8'))
+                self._surf = image.load(filename)
         elif isinstance(filename, bytes):
             self._surf = image.load(filename)
         elif isinstance(w, int) and isinstance(h, int):
@@ -945,7 +945,7 @@ def a_mono_font(pref = None, size = 23):
         pref = [ pref ]
     ttfname, unused = findafont(pref)
     print(ttfname)
-    return ttf.open_font(ttfname.encode('utf-8'), size)
+    return ttf.open_font(ttfname, size)
 
 
 def loop(window, bg_color, fbo_color, grid, hud, panels, choke):

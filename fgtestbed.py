@@ -60,7 +60,7 @@ from pygame2.sdl.keycode import *
 from sdlenums import * # all of enums except key/scan codes.
 
 from collections import namedtuple
-import pygame2.ttf as ttf
+import pygame2.sdlttf as ttf
 CONTROLS = """\
     F1:                         toggle this text
     Esc:                        quit

@@ -148,7 +148,7 @@ from pygame2.sdl.video import SDL_GL_CONTEXT_FLAGS
 from pygame2.sdl.video import SDL_GL_CONTEXT_PROFILE_MASK     
 from pygame2.sdl.video import SDL_GL_CONTEXT_PROFILE_CORE           
 from pygame2.sdl.video import SDL_GL_CONTEXT_PROFILE_COMPATIBILITY  
-from pygame2.sdl.video import SDL_GL_CONTEXT_PROFILE_ES2            
+#from pygame2.sdl.video import SDL_GL_CONTEXT_PROFILE_ES2            
 from pygame2.sdl.video import SDL_GL_CONTEXT_DEBUG_FLAG              
 from pygame2.sdl.video import SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG 
 from pygame2.sdl.video import SDL_GL_CONTEXT_ROBUST_ACCESS_FLAG      
@@ -426,7 +426,7 @@ __all__ = [
     "SDL_GL_CONTEXT_PROFILE_MASK", 
     "SDL_GL_CONTEXT_PROFILE_CORE", 
     "SDL_GL_CONTEXT_PROFILE_COMPATIBILITY", 
-    "SDL_GL_CONTEXT_PROFILE_ES2", 
+#    "SDL_GL_CONTEXT_PROFILE_ES2", 
     "SDL_GL_CONTEXT_DEBUG_FLAG", 
     "SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG", 
     "SDL_GL_CONTEXT_ROBUST_ACCESS_FLAG", 
