@@ -52,6 +52,7 @@ import pygame2.sdlttf as ttf
 import pygame2.sdlimage as image
 
 import OpenGL
+OpenGL.ERROR_CHECKING_GLSL = False
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
 OpenGL.FULL_LOGGING = 'GLTRACE' in os.environ
 OpenGL.ERROR_ON_COPY = True
@@ -295,7 +296,11 @@ class Shader0(object):
         log = logging.getLogger('fgt.shader')
         rv = glCreateShader(stype)
         glShaderSource(rv, lines)
-        glCompileShader(rv)
+        log.info("glCompileShader: {}".format(glCompileShader._alternatives))
+        try:
+            glCompileShader(rv)
+        except GLError:
+            result = GL_FALSE
         result = glGetShaderiv(rv, GL_COMPILE_STATUS)
         nfo = glGetShaderInfoLog(rv)
         if result == GL_TRUE:
@@ -1007,7 +1012,9 @@ def logconfig(info = None, calltrace = None):
         },
         'loggers': {
             'root': { 'level': 'INFO', 'handlers': ['console'] },
+            'OpenGL': { 'level': 'INFO' },
             'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'], 'propagate': 0 },
+            'OpenGL.extensions':        { 'level': 'INFO' },
             'fgt':                      { 'level': 'INFO' },
             'fgt.raws':                 { 'level': 'DEBUG' },
             'fgt.raws.rpn.trace':       { 'level': 'WARN' },
@@ -1018,7 +1025,7 @@ def logconfig(info = None, calltrace = None):
             'fgt.raws.InflateFrameseq': { 'level': 'DEBUG' },
             'fgt.raws.MaterialSet':     { 'level': 'WARN' },
             'fgt.raws.RawsCart.compile':{ 'level': 'DEBUG' },
-            'fgt.shader':               { 'level': 'WARN' },
+            'fgt.shader':               { 'level': 'INFO' },
             'fgt.shader.locs':          { 'level': 'WARN' },
             'fgt.pan':                  { 'level': 'WARN' },
             'fgt.zoom':                 { 'level': 'WARN' },
@@ -1029,7 +1036,10 @@ def logconfig(info = None, calltrace = None):
     }
     if calltrace is not None:
         lcfg['loggers']['OpenGL.calltrace']['level'] = 'INFO'
-        lcfg['handlers']['calltrace']['stream'] = open(calltrace, 'w')
+        if calltrace != 'stderr':
+            lcfg['handlers']['calltrace']['stream'] = open(calltrace, 'w')
+        else:
+            del lcfg['loggers']['OpenGL.calltrace']['propagate']
         
     if info is not None:
         lcfg['loggers']['fgt.glinfo']['level'] = 'INFO'
