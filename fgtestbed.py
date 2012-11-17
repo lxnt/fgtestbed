@@ -415,6 +415,8 @@ class Rednerer(object):
             self.map_viewport = self.map_viewport._replace(w = self.window._w, h = self.window._h)
         elif zoom:
             psz, zoompoint = zoom
+            pre_zp = self.win2dffb(zoompoint)
+            self.Pszar = self.Pszar._replace(z = psz)
         else:
             raise RuntimeError("reshape(None, None)")
 
