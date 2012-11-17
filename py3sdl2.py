@@ -74,7 +74,7 @@ __all__ = """sdl_init sdl_flip sdl_offscreen_init
 logconfig ap_data_args ap_render_args a_mono_font
 rgba_surface bar2voidp mmap2voidp CArray
 glinfo upload_tex2d upload_tex2da gldumplog glcalltrace dump_tex2da texparams
-Shader0 VAO0
+Shader0 VAO0 VertexAttr
 HudTextPanel Hud
 GridVAO DumbGridShader
 Rect Coord2 Coord3 Size2 Size3 GLColor
