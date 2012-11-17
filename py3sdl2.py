@@ -244,10 +244,10 @@ class Shader0(object):
         Vertex attribute number 0 is always named 'position'.
                 
     """
+    aloc = { b'position': 0 }
     def __init__(self, sname=None, sdir = 'shaders'):
         log_locs = logging.getLogger('fgt.shader.locs').info
         
-        self.aloc = { b'position': 0 }
         self.uloc = collections.defaultdict(lambda:-1)
         if sname is None:
             sname = self.sname
