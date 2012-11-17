@@ -974,9 +974,8 @@ def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
                     grid.reshape(sz)
                     hud.reshape(sz)
             elif event.type == sdlevents.SDL_MOUSEBUTTONDOWN:
-                if event.button.button == sdlmouse.SDL_BUTTON_LEFT and event.button.state == sdlevents.SDL_PRESSED:
-                    for s in stuff:
-                        s.click((event.button.x, event.button.y))
+                return
+
         glcalltrace("frame")
         glClearColor(*bg_color)
         glClear(GL_COLOR_BUFFER_BIT)

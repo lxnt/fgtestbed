@@ -12,6 +12,5 @@ void main() {
     if ((pc.x*pszar.z < 2) || (pc.y*pszar.z < 2))
         frag = vec4(1,1,1,1);
     else
-        frag = vec4(gl_PointCoord.st, 0, 1);
-    //frag = vec4(0.75, 0.5, 0.25, 1);
+        frag = vec4(gl_PointCoord.xy, 0, 1);
 }
