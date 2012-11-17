@@ -407,20 +407,14 @@ class Rednerer(object):
         log = logging.getLogger("fgt.reshape")
         """ resize or zoom """
         if winsize is not None: # a resize
-            pan = Coord2(( self.winsize.w - winsize.w ) // 2,
-                          (self.winsize.h - winsize.h ) // 2 )
+            if zoom:
+                raise RuntimeError("reshape(!None, !None)")
+            pan = Coord2(( self.winsize.w - winsize.w ) // -2,
+                          (self.winsize.h - winsize.h ) // -2 )
             self.winsize = winsize
             self.map_viewport = self.map_viewport._replace(w = self.window._w, h = self.window._h)
         elif zoom:
             psz, zoompoint = zoom
-            # the zoompoint is the point in window coordinates where
-            # the zoom event took place.
-            # to keep the zoompoint stationary wrt the window,
-            # we calculate fractional tile coordinates of it pre-zoom
-            # and post-zoom.
-            
-            pre_zp = self.win2dffb(zoompoint)
-            self.Pszar = self.Pszar._replace(z = psz)
         else:
             raise RuntimeError("reshape(None, None)")
 
@@ -436,11 +430,9 @@ class Rednerer(object):
         self.fbo.resize(Size2(gridsz.w*psz.x, gridsz.h*psz.y))
 
         if zoom:
-            # now convert post_zp back to window coordinates
-            # pan amount would be the difference between zoompoint and this.
             zoompoint_after_zoom = self.dffb2win(pre_zp)
-            pan = Coord2(zoompoint_after_zoom.x - zoompoint.x, 
-                         zoompoint_after_zoom.y - zoompoint.y)
+            pan = Coord2( - (zoompoint_after_zoom.x - zoompoint.x),
+                          - (zoompoint_after_zoom.y - zoompoint.y))
 
         # try to keep the map from panning
         self.pan(pan)
