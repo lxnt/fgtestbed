@@ -49,7 +49,7 @@ buildings:
     TradeDepot:
 
     Weapon:
-    Weaponrack:
+    Weaponrack: { cel: [11,14] }
     Wagon:
     WaterWheel:
     Well: { cel: [std,9,0] }
