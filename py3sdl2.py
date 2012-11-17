@@ -34,7 +34,7 @@ import logging, logging.config, argparse, subprocess
 from collections import namedtuple
 
 import pygame2
-pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
+#pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
 
 import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
@@ -48,9 +48,7 @@ from pygame2.sdl.keycode import *
 from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
 from pygame2.sdl.video import SDL_Surface
-
-import pygame2.sdlttf as ttf
-import pygame2.sdlimage as image
+from pygame2 import sdlttf, sdlimage
 
 import OpenGL
 OpenGL.ERROR_CHECKING_GLSL = False
@@ -464,13 +462,13 @@ class HudTextPanel(object):
         if longest_str is None:
             longest_str_px = 0
             for s in strs:
-                sz = ttf.size(self.font, s)[0]
+                sz = sdlttf.size(self.font, s)[0]
                 if sz > longest_str_px:
                    longest_str_px = sz
         else:
-            longest_str_px = ttf.size(self.font, longest_str)[0]
+            longest_str_px = sdlttf.size(self.font, longest_str)[0]
         width = 2*self.padding + longest_str_px
-        self.ystep = ttf.font_line_skip(self.font)
+        self.ystep = sdlttf.font_line_skip(self.font)
         height = 2*self.padding + self.ystep * len(strs)
         self.surface = rgba_surface(width, height)
         self._surface_dirty = True
@@ -502,7 +500,7 @@ class HudTextPanel(object):
             if len(s) > 0:
                 if isinstance(self.data, dict):
                     s = s.format(**self.data)
-                strsurf = ttf.render_blended(self.font, s, SDL_Color())
+                strsurf = sdlttf.render_blended(self.font, s, SDL_Color())
                 # since we render with white, we can set the pixelformat
                 # to anything that starts with 'A' and has the same bpp and amask,
                 # thus avoiding extra blit cost
@@ -760,8 +758,8 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glDisable(GL_DEPTH_TEST)
     
-    ttf.init()
-    image.init()
+    sdlttf.init()
+    sdlimage.init()
     return window, context
 
 def gldumplog(header = '', logger = None):
@@ -803,7 +801,7 @@ def gldumplog(header = '', logger = None):
 def sdl_offscreen_init():
     """ just init sdl core and the SDL_image lib (raw.py standalone run)"""
     sdl.init(0)
-    image.init()
+    sdlimage.init()
 
 class rgba_surface(object):
     """ a plain RGBA32 surface w/o any blending on blits 
@@ -820,11 +818,11 @@ class rgba_surface(object):
         if isinstance(filename, str):
             if flike is not None:
                 rwops = sdlrwops.rw_from_object(flike)
-                self._surf = image.load_rw(rwops, 1)
+                self._surf = sdlimage.load_rw(rwops, 1)
             else:
-                self._surf = image.load(filename)
+                self._surf = sdlimage.load(filename)
         elif isinstance(filename, bytes):
-            self._surf = image.load(filename)
+            self._surf = sdlimage.load(filename)
         elif isinstance(w, int) and isinstance(h, int):
             masks = list(sdlpixels.pixelformat_enum_to_masks(self._sdl_fmt))
             bpp = masks.pop(0)
@@ -920,8 +918,8 @@ def sdl_flip(window):
     sdlvideo.gl_swap_window(window)
 
 def sdl_fini():
-    image.quit()
-    ttf.quit()
+    sdlimage.quit()
+    sdlttf.quit()
     sdl.quit()
 
 def findafont(subnames = []):
@@ -952,7 +950,7 @@ def a_mono_font(pref = None, size = 23):
     else:
         pref = [ pref ]
     ttfname, unused = findafont(pref)
-    return ttf.open_font(ttfname, size)
+    return sdlttf.open_font(ttfname, size)
 
 
 def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
