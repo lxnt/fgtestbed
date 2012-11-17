@@ -1,8 +1,8 @@
 #!/bin/sh
 
 export FGTDIR=`dirname $0`
-export LIBDIR="${FGTDIR}/lib"
-export PYTHONPATH="${LIBDIR}/python3.2/site-packages/"
+export PGLIBDIR="${FGTDIR}/lib"
+export PYTHONPATH="${PGLIBDIR}/python3.2/site-packages/"
 
 $FGTDIR/fgtestbed.py "$@"
 
