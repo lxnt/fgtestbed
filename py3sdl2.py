@@ -938,10 +938,7 @@ def findafont(subnames = []):
             if 'italic' in style.lower() or 'oblique' in style.lower():
                 continue
             if subname.lower() in fam.lower():
-                #print("'{}' fam='{}' style='{}' '{}'".format(subname.lower(), fam.lower(), style, "returning"))
                 return ( path, subname)
-            #else:
-                #print("'{}' fam='{}' style='{}' '{}'".format(subname.lower(), fam.lower(), style, "fail"))
     raise Exception("no font found for '{}'".format(repr(subnames)))
 
 
@@ -955,7 +952,6 @@ def a_mono_font(pref = None, size = 23):
     else:
         pref = [ pref ]
     ttfname, unused = findafont(pref)
-    print(ttfname)
     return ttf.open_font(ttfname, size)
 
 
