@@ -133,8 +133,11 @@ tilesets:
 # conifer_b: (tile 24) pine larch 
 
 materialsets:
--   expr: [ alder, birch, mangrove, acacia, maple, mn, instack,
-            mpk,plant,eq,and,mk,structural,eq,and ]
+-   expr: [ alder, birch, mangrove, acacia, maple, mat.name, instack,
+            plant, mat.parent.klass, eq,
+            and,
+            structural, mat.klass, eq,
+            and ]
     tilesets: [broadleaf_a]
 -   expr: [ chestnut, ash, oak, mahogany, mn, instack,
             mpk,plant,eq,and,mk,structural,eq,and ]
