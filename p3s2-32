@@ -1,0 +1,10 @@
+#!/bin/sh
+
+export FGTDIR=`dirname $0`
+export PGLIBDIR="/home/lxnt/00DFGL/prefix32/lib"
+export PYTHONPATH="${PGLIBDIR}/python3.2/site-packages/"
+
+$FGTDIR/py3sdl2.py "$@"
+
+
+
