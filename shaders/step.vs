@@ -36,7 +36,6 @@ uniform  vec3 pszar;
 uniform ivec2 mouse_pos;
 uniform  int  show_hidden;
 uniform uint  frame_no;
-uniform ivec4 txsz;               // { w_tiles, h_tiles, max_tile_w, max_tile_h } <- font texture params.
 
 in ivec2 position;                      // tiles relative to the render_origin; df cs.
 
