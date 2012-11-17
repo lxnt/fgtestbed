@@ -742,11 +742,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
     context = sdlvideo.gl_create_context(window)
     gldumplog("just after context", logger=log) # this catches PyOpenGL's try: glGetString() except: glGetStringiv() unsanity
     for attr, name, val, glenum in gl_attrs:
-        if glenum is None:
-            got = sdlvideo.gl_get_attribute(attr)
-        else:
-            continue # GL_FRAMEBUFFER_ATTACHMENT_*_SIZE fail for some reason
-            got = glGetInteger(glenum)
+        got = sdlvideo.gl_get_attribute(attr)
         log.info("{} requested {} got {}".format(name, val, got))
     
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE)
