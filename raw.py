@@ -1200,6 +1200,7 @@ class RpnExpr(object):
             'or':               (2, lambda a, b: a  or b),
             'eq':               (2, lambda a, b: a  == b),
             'in':               (2, lambda a, b: a  in b),
+            'instack':          (None, None),
             'mat':              (0, lambda: self.mat),
             'mat.klass':        (0, lambda: self.mat.klass ),
             'mat.name':         (0, lambda: self.mat.name ),
@@ -1258,7 +1259,6 @@ class RpnExpr(object):
                     if op in ('mat.parent', 'mat.parent.klass', 'mp', 'mpk'):
                         return False  # mat has no parent = no match
                     raise
-                    
             elif arity == 1:
                 a = pop()
                 push(foo(a))
@@ -1266,6 +1266,9 @@ class RpnExpr(object):
                 b = pop()
                 a = pop()
                 push(foo(a, b))
+            elif arity is None:
+                key = pop()
+                stack = [ key in stack ]
 
         self.mat = None
         if len(stack) != 1:

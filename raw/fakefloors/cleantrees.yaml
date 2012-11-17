@@ -133,21 +133,17 @@ tilesets:
 # conifer_b: (tile 24) pine larch 
 
 materialsets:
--   expr: [mn, alder, eq,
-            mn,birch,eq,or,
-            mn,mangrove,eq,or,
-            mn,acacia,eq,or,
-            mn,maple,eq,or,
-            mpk,plant,eq,and,
-            mk,structural,eq,and ]
+-   expr: [ alder, birch, mangrove, acacia, maple, mn, instack,
+            mpk,plant,eq,and,mk,structural,eq,and ]
     tilesets: [broadleaf_a]
--   expr: [ mn,chestnut,eq,mn,ash,eq,or,mn,oak,eq,or,mn,mahogany,eq,
-            or,mpk,plant,eq,and,mk,structural,eq,and ]
+-   expr: [ chestnut, ash, oak, mahogany, mn, instack,
+            mpk,plant,eq,and,mk,structural,eq,and ]
     tilesets: [broadleaf_b]
--   expr: [ mn,cedar,eq,mn,glumprong,eq,or,mn,feather tree,eq,or,mn,
-            highwood,eq,or,mpk,plant,eq,and,mk,structural,eq,and ]
+-   expr: [ cedar, glumprong, feather tree, highwood, mn, instack,
+            mpk,plant,eq,and,mk,structural,eq,and ]
     tilesets: [conifer_a]
--   expr: [ mn,pine,eq,mn,larch,eq,or,mpk,plant,eq,and,mk,structural,eq,and ]
+-   expr: [ pine, larch, mn, instack, 
+            mpk, plant, eq, and, mk, structural, eq, and ]
     tilesets: [conifer_b]
 
 
