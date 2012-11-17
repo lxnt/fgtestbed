@@ -149,7 +149,7 @@ class RendererPanel(HudTextPanel):
     def update(self, win, map_viewport, show_hidden, **kwargs):
         self._data = kwargs
         rtime = self.rtime.value(kwargs['loop_time'])
-        self._data['gfps'] = 1/rtime if rtime else 0
+        self._data['gfps'] = 1000/rtime if rtime else 0
         self._data['viewport'] = map_viewport
         self._data['showhidden'] = '[show_hidden]' if show_hidden else '             '
         self._surface_dirty = True
@@ -616,10 +616,10 @@ class Rednerer(object):
             
     def loop(self, choke):
         frame_no = 0
-        last_loop_ts = last_animflip_ts = time.clock() - 0.1
+        last_loop_ts = last_animflip_ts = sdltimer.get_ticks() - 1
         
-        render_choke = 1/choke if choke > 0 else 0 # ala G_FPS_CAP 
-        anim_period = 1/self.anim_fps
+        render_choke = 1000/choke if choke > 0 else 0 # ala G_FPS_CAP 
+        anim_period = 1000/self.anim_fps
                 
         paused = False
         finished = False
@@ -640,7 +640,7 @@ class Rednerer(object):
                 self.hp_cheat.active = False
         
         while not finished:
-            loop_start = time.clock()
+            loop_start = sdltimer.get_ticks()
             self.last_loop_time = loop_start - last_loop_ts
             last_loop_ts = loop_start
             
@@ -741,10 +741,10 @@ class Rednerer(object):
                         else:
                             self.zpan(1 * amount)
 
-                elapsed_time = time.clock() - last_loop_ts
+                elapsed_time = sdltimer.get_ticks() - last_loop_ts
                 if elapsed_time > render_choke:
                     break
-                time.sleep(1/60)
+                sdltimer.delay(10)
                 
     def fini(self):
         # somehow kill entire gl context
