@@ -48,15 +48,11 @@ flat out  vec4 up_fg, up_bg; 	        // object or none blit
 flat out uvec4 debug0;
 flat out uvec4 debug1;
 
-void decode_tile(in ivec3 posn, in ivec2 offset, 
+void decode_tile(const in uvec4 vc,
                  out uint fmat, out uint ftile,
                  out uint umat, out uint utile, 
                  out uint gmat, out uint gamt, 
                  out uint des) {
-    
-    //uvec4 vc = texelFetch(screen, posn, 0);
-    uvec4 vc = texelFetchOffset(screen, posn, 0, offset);
-
     
     fmat  = vc.r >> 16u;
     ftile = vc.r & 65535u;
@@ -90,10 +86,10 @@ void decode_insn(in uint mat, in uint tile, in uint fudge, out uint mode, out ve
     bg = vec4(insn.w>>24u, (insn.w>>16u ) &0xffu, (insn.w>>8u ) &0xffu, insn.w & 0xffu) / 256.0;
 }
 
-int check_a_floor(in ivec3 posn, in ivec2 offset, inout uint mat, inout uint tile) {
+int check_a_floor(const in uvec4 vc, inout uint mat, inout uint tile) {
     uint ftile, fmat, btile, bmat, gamt, gmat, des;
     
-    decode_tile(posn, offset, fmat, ftile, bmat, btile, gmat, gamt, des);
+    decode_tile(vc, fmat, ftile, bmat, btile, gmat, gamt, des);
     
     if ((tileflags[ftile] & TF_TRUEFLOOR) > 0u ) {
         tile = ftile;
@@ -107,18 +103,43 @@ int check_a_floor(in ivec3 posn, in ivec2 offset, inout uint mat, inout uint til
     return 0;
 }
 
+const ivec2 fafl_0p = ivec2(0,1);
+const ivec2 fafl_0m = ivec2(0,-1);
+const ivec2 fafl_p0 = ivec2(1,0);
+const ivec2 fafl_m0 = ivec2(-1,0);
+const ivec2 fafl_pp = ivec2(1,1);
+const ivec2 fafl_mp = ivec2(-1,1);
+const ivec2 fafl_mm = ivec2(-1,-1);
+const ivec2 fafl_pm = ivec2(1,-1);
+
+
 void fake_a_floor(in ivec3 posn, inout uint mat, inout uint tile) {
     tile = 0u; mat = 0u;
     
-    if (check_a_floor(posn, ivec2(0,1),  mat, tile) > 0) return; 
-    if (check_a_floor(posn, ivec2(0,-1), mat, tile) > 0) return;
-    if (check_a_floor(posn, ivec2(1,0),  mat, tile) > 0) return;
-    if (check_a_floor(posn, ivec2(-1,0), mat, tile) > 0) return;
-    
-    if (check_a_floor(posn, ivec2(1,1),  mat, tile) > 0) return;
-    if (check_a_floor(posn, ivec2(-1,1), mat, tile) > 0) return;
-    if (check_a_floor(posn, ivec2(-1,-1),mat, tile) > 0) return;
-    if (check_a_floor(posn, ivec2( 1,-1),mat, tile) > 0) return;
+    uvec4 vc = texelFetchOffset(screen, posn, 0, fafl_0p);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_0m);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_p0);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_m0);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_pp);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_mp);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_pm);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
+    vc = texelFetchOffset(screen, posn, 0, fafl_mm);
+    if (check_a_floor(vc,  mat, tile) > 0) return;
+
     
     /* here if we haven't found any grass floor nearby */
     if (tile != 0u) {
@@ -187,7 +208,7 @@ void main() {
     /* animation fudge factor to break the lockstep */
     uint fudge = uint(map_posn.x * map_posn.y * map_posn.z);
        
-    decode_tile(map_posn, ivec2(0,0), fl_mat, fl_tile, up_mat, up_tile, gr_mat, gr_amt, designation);
+    decode_tile(texelFetch(screen, map_posn, 0), fl_mat, fl_tile, up_mat, up_tile, gr_mat, gr_amt, designation);
     
     uint fl_flags = tileflags[fl_tile];
     uint up_flags = tileflags[up_tile];
