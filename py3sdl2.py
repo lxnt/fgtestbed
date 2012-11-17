@@ -709,6 +709,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
     sdl.init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_NOPARACHUTE)
     cflags = 0
     cmask = 0
+    fwdcore = False # mesa doesn't support it :(
     if fwdcore:
         cflags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG
         cmask |= SDL_GL_CONTEXT_PROFILE_CORE
@@ -718,33 +719,42 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
         cflags |= SDL_GL_CONTEXT_DEBUG_FLAG
     
     gl_attrs = (
-        (SDL_GL_RED_SIZE, "SDL_GL_RED_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE),
-        (SDL_GL_GREEN_SIZE, "SDL_GL_GREEN_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE),
-        (SDL_GL_BLUE_SIZE, "SDL_GL_BLUE_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE),
-        (SDL_GL_ALPHA_SIZE, "SDL_GL_ALPHA_SIZE", 8, GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE),
-        (SDL_GL_DEPTH_SIZE, "SDL_GL_DEPTH_SIZE", 0, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE),
-        (SDL_GL_STENCIL_SIZE, "SDL_GL_STENCIL_SIZE", 0, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE),
-        (SDL_GL_DOUBLEBUFFER, "SDL_GL_DOUBLEBUFFER", 1, None),
-        (SDL_GL_CONTEXT_MAJOR_VERSION, "SDL_GL_CONTEXT_MAJOR_VERSION", 3, None),
-        (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 0, None),
-        (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", cmask, None),
-        (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", cflags, None),
+        (SDL_GL_RED_SIZE, "SDL_GL_RED_SIZE", 8),
+        (SDL_GL_GREEN_SIZE, "SDL_GL_GREEN_SIZE", 8),
+        (SDL_GL_BLUE_SIZE, "SDL_GL_BLUE_SIZE", 8),
+        (SDL_GL_ALPHA_SIZE, "SDL_GL_ALPHA_SIZE", 8),
+        (SDL_GL_DEPTH_SIZE, "SDL_GL_DEPTH_SIZE", 0),
+        (SDL_GL_STENCIL_SIZE, "SDL_GL_STENCIL_SIZE", 0),
+        (SDL_GL_DOUBLEBUFFER, "SDL_GL_DOUBLEBUFFER", 1),
+        (SDL_GL_CONTEXT_MAJOR_VERSION, "SDL_GL_CONTEXT_MAJOR_VERSION", 3),
+        (SDL_GL_CONTEXT_MINOR_VERSION, "SDL_GL_CONTEXT_MINOR_VERSION", 0),
+        (SDL_GL_CONTEXT_PROFILE_MASK, "SDL_GL_CONTEXT_PROFILE_MASK", cmask),
+        (SDL_GL_CONTEXT_FLAGS, "SDL_GL_CONTEXT_FLAGS", cflags),
     )
 
-    for attr, name, val, unused in gl_attrs:
-        log.debug("requesting {}={}".format(name, val))
+    for attr, name, val in gl_attrs:
+        log.debug("requesting {} [{}] = {}".format(name, attr, val))
         sdlvideo.gl_set_attribute(attr, val)
 
-    window = sdlvideo.create_window(title, posn[0], posn[1], size[0], size[1], 
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)
+    window = sdlvideo.create_window(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
+        size[0], size[1], SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)
     if icon:
         sdlvideo.set_window_icon(window, icon)
     context = sdlvideo.gl_create_context(window)
     gldumplog("just after context", logger=log) # this catches PyOpenGL's try: glGetString() except: glGetStringiv() unsanity
-    for attr, name, val, glenum in gl_attrs:
+    for attr, name, val in gl_attrs:
         got = sdlvideo.gl_get_attribute(attr)
         log.info("{} requested {} got {}".format(name, val, got))
     
+    log.info("glGet: vers = {}.{} flags={}  " .format(
+        glGetInteger(GL_MAJOR_VERSION),
+        glGetInteger(GL_MINOR_VERSION),
+        glGetInteger(GL_CONTEXT_FLAGS)
+    ))
+
+    if not fwdcore:
+        glEnable(GL_POINT_SPRITE)
+
     glEnable(GL_VERTEX_PROGRAM_POINT_SIZE)
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
