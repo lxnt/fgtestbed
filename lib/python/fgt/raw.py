@@ -1402,6 +1402,8 @@ class RawsCart(object):
         self.pngs = ci_dict()
 
     def add_yaml(self, path, flike):
+        log = logging.getLogger("fgt.raws.RawsCart.add_yaml")
+        log.info("{}".format(path))
         mset_n = 0
         for fd in yaml.safe_load_all(flike):
             for k, v in fd.items():
@@ -1429,6 +1431,8 @@ class RawsCart(object):
                     continue # not ready for'em yet
 
     def add_png(self, path, flike):
+        log = logging.getLogger("fgt.raws.RawsCart.add_png")
+        log.info("{}".format(path))
         self.pngs[path] = flike
         
     def compile(self, materials, colortab):
@@ -1436,6 +1440,7 @@ class RawsCart(object):
         # instantiate celpages
         for name, data, path in self.celpagedefs.values():
             self.celpages.append(CelPage(name, data, path, self.pngs[data['file']]))
+            log.info("celpage {} added; path={}".format(name, path))
         
         # populate materialsets with tiles from tilesets
         # and matching materials.
