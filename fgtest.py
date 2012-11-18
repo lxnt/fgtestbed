@@ -47,11 +47,11 @@ import fgt.gui
 
 def main():
     fgt.config(description = 'full-graphics renderer testbed')
-    fgt.config.add_render_args(psize=96, par=0.8, ss='step', choke=2, hudfont=',18')
+    fgt.config.add_render_args()
+    fgt.config.add_data_args()
     fgt.config.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     fgt.config.add_argument('-zeddown', metavar='zlevels', type=int, 
             help="number of z-levels to draw below current", default=4)
-    fgt.config.add_data_args()
     fgt.config.parse_args()
     
     window, context = fgt.gl.sdl_init()
