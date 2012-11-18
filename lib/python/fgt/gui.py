@@ -121,7 +121,7 @@ class GridShader(Shader0):
         self.validate()
         
 class RendererPanel(HudTextPanel):
-    def __init__(self, font):
+    def __init__(self):
         strs = (
             "gfps: {gfps:3.1f} afps: {anim_fps:02d} frame# {frame_no:03d} zeddown={zeddown:02d}",
             "origin: {origin.x}:{origin.y}:{origin.z} grid: {grid.w}x{grid.h} map: {map.x}x{map.y}x{map.z}",
@@ -135,7 +135,7 @@ class RendererPanel(HudTextPanel):
         longest_str = strs[1].format(origin=dummy, grid=Size2(999,999), map=dummy)
         self.rtime = EmaFilter(alpha=0.05, nseed=5)
 
-        super(RendererPanel, self).__init__(font, strs, longest_str)
+        super(RendererPanel, self).__init__(strs, longest_str)
     
     def update(self, win, map_viewport, show_hidden, **kwargs):
         self._data = kwargs
@@ -153,7 +153,7 @@ class RendererPanel(HudTextPanel):
         return self._data
 
 class MousePanel(HudTextPanel):
-    def __init__(self, font):
+    def __init__(self):
         # maxlen of vanilla matname is 22.
         # maxlen of tile-type is 25
         strs = (
@@ -174,7 +174,7 @@ class MousePanel(HudTextPanel):
         longest_str = "m"*44
         
         self._data = {}
-        super(MousePanel, self).__init__(font, strs, longest_str, active = False)
+        super(MousePanel, self).__init__(strs, longest_str, active = False)
 
     def update(self, win, renderer_panel, renderer, win_mouse_pos, 
                 fbo_mouse_pos, grid_mouse_pos,grid_mouse_pos_f, map_mouse_pos):
@@ -215,17 +215,17 @@ class MousePanel(HudTextPanel):
         return self._data
 
 class CheatPanel(HudTextPanel):
-    def __init__(self, font):
+    def __init__(self):
         strs = [x.strip() for x in CONTROLS.split("\n")]
         self.active = True
-        super(CheatPanel, self).__init__(font, strs, longest_str = None)
+        super(CheatPanel, self).__init__(strs, longest_str = None)
 
     def update(self, win):
         # center in the window
         self.moveto(Coord2((win.w - self.rect.w)//2, (win.h - self.rect.h)//2))
 
 class DebugPanel(HudTextPanel):
-    def __init__(self, font):
+    def __init__(self):
         strs = (
             "{trect}",
             "tile, mat, dispatch.xy {d[0][0]: 4d} {d[0][1]: 4d} {d[0][2]: 6d} {d[0][3]: 6d}",
@@ -233,7 +233,7 @@ class DebugPanel(HudTextPanel):
             "fl: idx, mode, fg, bg  {d[2][0]: 4d} {d[2][1]: 4d} {d[2][2]:06x} {d[2][3]:06x}",
             "up: idx, mode, fg, bg  {d[3][0]: 4d} {d[3][1]: 4d} {d[3][2]:06x} {d[3][3]:06x}",
         )
-        super(DebugPanel, self).__init__(font, strs, longest_str = "8"*(4*8+14), active = False)
+        super(DebugPanel, self).__init__(strs, longest_str = "8"*(4*8+14), active = False)
     
     def update(self, win, pixels, psz, trect):
         d = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
@@ -275,7 +275,7 @@ class Rednerer(object):
     # guarantees that all visible tiles are drawn.
 
     def __init__(self, window, shaderset, gamedata, 
-                 psize, par, zeddown, anim_fps, hudfont):
+                 psize, par, zeddown, anim_fps):
         log = logging.getLogger('fgt.renderer.init')
 
         self.window = window
@@ -298,10 +298,10 @@ class Rednerer(object):
         self.had_input = False
         self.show_hidden = False
         
-        self.hp_renderer = RendererPanel(hudfont) 
-        self.hp_mouse = MousePanel(hudfont)
-        self.hp_cheat = CheatPanel(hudfont)
-        self.hp_debug = DebugPanel(hudfont)
+        self.hp_renderer = RendererPanel() 
+        self.hp_mouse = MousePanel()
+        self.hp_cheat = CheatPanel()
+        self.hp_debug = DebugPanel()
         self.hp_debug.active = False
         
         self.render_origin = gamedata.window

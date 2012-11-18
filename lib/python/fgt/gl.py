@@ -420,11 +420,11 @@ class HudShader(Shader0):
         glUniform4f(self.uloc[b"bg"], *panel.bg)
 
 class HudTextPanel(object):
-    def __init__(self, font, strs, longest_str = None, active = True):
+    def __init__(self, strs, longest_str = None, active = True, font = None):
         self.fg = GLColor(1, 1, 1, 1)
         self.bg = GLColor(0, 0, 0, 0.68)
         self._texture_name = glGenTextures(1)
-        self.font = font
+        self.font = font if font else a_mono_font(fgt.config.hudfont)
         self.padding = 8
         self.margin = 8 
         self.strings = strs
@@ -908,17 +908,17 @@ def findafont(subnames = []):
             if 'italic' in style.lower() or 'oblique' in style.lower():
                 continue
             if subname.lower() in fam.lower():
-                return ( path, subname)
+                return ( path, subname )
     raise Exception("no font found for '{}'".format(repr(subnames)))
 
-
 def a_mono_font(pref = None, size = 23):
+    monoes = ['ntu mono', 'vu sans mono', 'ion mono', 'reemono', 'bus mono', 'mono', ]
     if pref is None:
-        pref = ['ntu mono', 'vu sans mono', 'ion mono', 'reemono', 'bus mono', 'mono', ]
+        pref = monoes
     elif ',' in pref:
         pref, size =  pref.split(',')
         size = int(size)
-        pref = [ pref ]
+        pref = [ pref ] if pref else monoes
     else:
         pref = [ pref ]
     ttfname, unused = findafont(pref)
