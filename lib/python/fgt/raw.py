@@ -42,8 +42,8 @@ def lcm_seq(ible):
         rv = lcm(rv, i)
     return rv
 
-from py3sdl2 import *
-from tokensets import *
+from fgt.gl import *
+from fgt.tokensets import *
 
 # tileflags:
 TF_GRASS = 1

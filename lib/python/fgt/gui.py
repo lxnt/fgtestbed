@@ -25,14 +25,16 @@ must not be misrepresented as being the original software.
 distribution.
 
 """
+
 from __future__ import division
 
 import sys, time, math, struct, io, ctypes, zlib, ctypes, copy, time
 import argparse, traceback, os, types, mmap, logging, logging.config
 import math
+from collections import namedtuple
 
-from raw import MapObject, Designation
-from py3sdl2 import * 
+from fgt.raw import Designation
+from fgt.gl import * 
 
 from OpenGL.GL import *
 from OpenGL.GL.ARB.texture_rg import *
@@ -46,12 +48,10 @@ import pygame2.sdl.video as sdlvideo
 import pygame2.sdl.surface as sdlsurface
 import pygame2.sdl.pixels as sdlpixels
 import pygame2.sdl.timer as sdltimer
-
-from pygame2.sdl.keycode import *
-from sdlenums import * # all of enums except key/scan codes.
-
-from collections import namedtuple
 import pygame2.sdlttf as ttf
+from pygame2.sdl.keycode import *
+from fgt.sdlenums import *
+
 CONTROLS = """\
     F1:                         toggle this text
     Esc:                        quit
