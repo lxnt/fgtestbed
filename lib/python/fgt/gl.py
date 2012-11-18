@@ -117,7 +117,10 @@ class CArray(object):
             ", y-inverted" if self.inverty else "",
             self.w*self.h*self.d*self.dt.size >>10)
 
-    def memset(self, c=0):
+    def bzero(self):
+        self.memset(0)
+
+    def memset(self, c):
         ctypes.memset(self.ptr, c, self.w*self.h*self.d*self.dt.size)
 
     def fill(self, value):
