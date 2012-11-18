@@ -1949,7 +1949,10 @@ class MapObject(object):
                         if (fl_mat, fl_tile) in oks:
                             continue
 
-                        addr_s, addr_t = self.dispatch.get(fl_mat, fl_tile)
+                        fcx, fcy = self.dispatch.get(fl_mat, fl_tile)
+                        addr_s = fcx & 0xFF
+                        addr_t = fcy
+                        frameseq_len = fcx >> 8
                         
                         if (addr_s > self.codew) or (addr_t > self.codeh):
                             fails[(fl_mat, fl_tile)] = "bogus addr {}x{} (tile*mat not defined?)".format(addr_s, addr_t)
