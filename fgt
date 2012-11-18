@@ -1,9 +1,7 @@
 #!/bin/sh
 
-export FGTDIR=`dirname $0`
-export PGLIBDIR="${FGTDIR}/lib"
-export PYTHONPATH="${PGLIBDIR}/python3.2/site-packages/"
-
+FGTDIR=`dirname $0`
+. $FGTDIR/paths.sh
 $FGTDIR/fgtestbed.py "$@"
 
 
