@@ -2024,31 +2024,3 @@ class Designation(object):
         
         return ' '.join(rv)
 
-def main():
-    ap = argparse.ArgumentParser(description = 'full-graphics raws parser/compiler')
-    ap_data_args(ap)
-    ap.add_argument('-dump-dir', metavar='dir-name', 
-            help="dump intermediate representation, dispatch, blitcode and the texture album here")
-    ap.add_argument('-lint', nargs='?', metavar='zstart', type=int, const=-1,
-            help="cross-check compiler output, starting at z-level zstart; results written to 'lint.out'")
-    pa = ap.parse_args()
-    logconfig()
-
-    if pa.dump_dir is not None and not os.path.isdir(pa.dump_dir):
-        os.mkdir(pa.dump_dir)
-    
-    sdl_offscreen_init()
-    
-    mo = MapObject(     
-        dfprefix = pa.dfdir,
-        fgraws = [ pa.std ] + pa.ext,
-        apidir = pa.apidir,
-        dump_dir = pa.dump_dir)
-
-    mo.use_dump(pa.dfdump, pa.dump_dir)
-
-    if pa.lint is not None:
-        mo.lint(pa.lint)
-
-if __name__ == '__main__':
-    main()

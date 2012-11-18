@@ -1,15 +1,6 @@
 #!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
-#
-# lxnt has created fgtestbed, a lump of python code
-# all masterwork is of dubious quiality.
-# it is studded with bugs
-# it is encrusted with bugs
-# it is smelling with bugs
-# it menaces with spikes of bugs
-# a picture of giant bug is engraved on its side
-# ...
-# lxnt cancels Store item in stockpile: interrupted by bug
+
 """
 https://github.com/lxnt/fgtestbed
 Copyright (c) 2012-2012 Alexander Sabourenkov (screwdriver@lxnt.info)
@@ -743,31 +734,3 @@ class Rednerer(object):
     def fini(self):
         # somehow kill entire gl context
         pass
-
-def main():
-    ap = argparse.ArgumentParser(description = 'full-graphics renderer testbed')     
-    ap.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
-    ap.add_argument('-zeddown', metavar='zlevels', type=int, help="number of z-levels to draw below current", default=4)
-    ap_render_args(ap)
-    ap_data_args(ap)
-    pa = ap.parse_args()
-    
-    logconfig(pa.glinfo, pa.calltrace)
-    window, context = sdl_init(fwdcore=True)
-    glinfo()
-    
-    mo = MapObject(     
-        dfprefix = pa.dfdir,
-        fgraws = [ pa.std ] + pa.ext,
-        apidir = pa.apidir,
-        dump_dir = None)
-    mo.use_dump(pa.dfdump)
-    
-    hudfont = a_mono_font(pa.hudfont, 18)
-
-    rednr = Rednerer(window, pa.ss, mo, pa.psize, pa.par, pa.zeddown, pa.afps, hudfont)
-    rednr.loop(pa.choke)
-    rednr.fini()
-    
-if __name__ == "__main__":
-    main()

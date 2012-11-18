@@ -1,8 +1,6 @@
 #!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
 
-# Python 3.2 / SDL2 /OpenGL 3.0 FC r&d
-
 """
 https://github.com/lxnt/fgtestbed
 Copyright (c) 2012-2012 Alexander Sabourenkov (screwdriver@lxnt.info)
@@ -44,7 +42,7 @@ import pygame2.sdl.surface as sdlsurface
 import pygame2.sdl.pixels as sdlpixels
 import pygame2.sdl.rwops as sdlrwops
 import pygame2.sdl.hints as sdlhints
-from pygame2.sdl.keycode import *
+
 from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
 from pygame2.sdl.video import SDL_Surface
@@ -381,13 +379,6 @@ class VAO0(object):
         glDeleteVertexArrays(1, self._vao_name)
         self._vbo = None
 
-class DumbGridShader(Shader0):
-    sname = "dumb"
-    def __call__(self, grid_size, pszar, **kwargs):
-        glUseProgram(self.program)
-        glUniform3f(self.uloc[b'pszar'], *pszar)
-        glUniform2i(self.uloc[b'grid'], *grid_size)
-
 class GridVAO(VAO0):
     _primitive_type = GL_POINTS
     _data_type = struct.Struct('II')
@@ -399,31 +390,6 @@ class GridVAO(VAO0):
 
     def __str__(self):
         return "GridVAO(size={} num={})".format(self.size, self._count)
-
-class Grid(object):
-    """ dumb state container atm """
-    def __init__(self, size, pszar):
-        self.shader = DumbGridShader()
-        self.vao = GridVAO()
-        self.vao.resize(size)
-        self.pszar = pszar
-        
-    def render(self):
-        self.shader(self.vao.size, self.pszar)
-        self.vao()
-    
-    def resize(self, size):
-        self.vao.resize(size)
-    
-    @property
-    def size(self):
-        return self.vao.size
-    
-    def reshape(self, size):
-        glViewport(0, 0, size.w, size.h)
-        
-    def click(self, at):
-        pass
 
 class HudVAO(VAO0):
     """ a quad -> TRIANGLE_STRIP """
@@ -953,86 +919,4 @@ def a_mono_font(pref = None, size = 23):
     return sdlttf.open_font(ttfname, size)
 
 
-def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
-    fbo = FBO(Size2(window._w, window._h))
-    while True:
-        while True:
-            event = sdlevents.poll_event(True)
-            if event is None:
-                break
-            elif event.type == sdlevents.SDL_QUIT:
-                return
-            elif event.type == sdlevents.SDL_KEYUP:
-                if event.key.keysym.sym == SDLK_ESCAPE:
-                    return
-            elif event.type == sdlevents.SDL_WINDOWEVENT:
-                if event.window.event == sdlvideo.SDL_WINDOWEVENT_RESIZED:
-                    sz = Size2(event.window.data1, event.window.data2)
-                    fbo.resize(sz)
-                    grid.reshape(sz)
-                    hud.reshape(sz)
-            elif event.type == sdlevents.SDL_MOUSEBUTTONDOWN:
-                return
 
-        glcalltrace("frame")
-        glClearColor(*bg_color)
-        glClear(GL_COLOR_BUFFER_BIT)
-        
-        glcalltrace("fbo.bind()")
-        fbo.bind(fbo_color)
-        
-        glcalltrace("grid.render()")
-        grid.render()
-        
-        glcalltrace("fbo.blit()")
-        fbo.blit(Rect(0,0,window._w, window._h))
-        
-        glcalltrace("hud.render()")
-        hud.render(panels)
-
-        sdl_flip(window)
-        if choke > 0:
-            time.sleep(1/choke)
-
-    
-def main():
-    ap = argparse.ArgumentParser(description = 'full-graphics renderer backend test')    
-    ap_render_args(ap, psize=96, par=0.8, ss='dumb', choke=2)
-    pa = ap.parse_args()
-    logconfig(pa.glinfo, pa.calltrace)
-    
-    window, context = sdl_init(fwdcore=True)
-    glinfo()
-    
-    psize = pa.psize
-    if pa.par > 1:
-        pszar_x = 1
-        pszar_y = 1/pa.par
-    else:
-        pszar_x = pa.par
-        pszar_y = 1
-
-    grid_w = int(window._w // (pszar_x*psize))
-    grid_h = int(window._h // (pszar_y*psize))
-        
-    bg_color = ( 0,1,0,1 )
-    fbo_color = ( 1,0,0,1 )
-    
-    logging.getLogger("fgt.test").info("grid {}x{} psize {}x{}".format(grid_w, grid_h, 
-        int(pszar_x*psize), int(pszar_y*psize)))
-    grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
-    hud = Hud()
-
-    font = a_mono_font(pa.hudfont, 38)
-    panels = []
-    panels.append(HudTextPanel(font, [ "Yokarny Babai" ]))
-    panels[0].moveto(Coord2(100, 400))
-    panels.append(HudTextPanel(font, [ "Skoromorkovka" ]))
-    panels[1].moveto(Coord2(400, 100))
-    hud.reshape(Size2(window._w, window._h))
-    loop(window, bg_color, fbo_color, grid, hud, panels, pa.choke)
-    sdl_fini()
-    return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
