@@ -1,4 +1,3 @@
-#!/usr/bin/python3.2
 # -*- encoding: utf-8 -*-
 
 """
