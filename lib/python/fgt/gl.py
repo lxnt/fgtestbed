@@ -96,13 +96,12 @@ def mmap2voidp(_mmap):
     return ctypes.c_void_p(guts.data) # WTF??
 
 class CArray(object):
-    def __init__(self, data, fmt, w, h=1, d=1, inverty = False):
+    def __init__(self, data, fmt, w, h=1, d=1):
         assert ( h != 1) or ( d == 1) # I don't need this crap
         self.dt = struct.Struct(fmt)
         self.w = w
         self.h = h 
         self.d = d
-        self.inverty = inverty # for the GL textures and such
         if data is None:
             self.data = bytearray(w*h*d*self.dt.size)
         else:
@@ -113,8 +112,7 @@ class CArray(object):
             self.data = data
 
     def __str__(self):
-        return "{}x{}x{}{}; {}K".format(self.w, self.h, self.d, 
-            ", y-inverted" if self.inverty else "",
+        return "{}x{}x{}; {}K".format(self.w, self.h, self.d,
             self.w*self.h*self.d*self.dt.size >>10)
 
     def bzero(self):
@@ -128,17 +126,12 @@ class CArray(object):
             self.dt.pack_into(self.data, self.dt.size*i, *value)
 
     def get(self, x, y=0, z=0):
-        if self.inverty:
-            y = self.h - y - 1        
         offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
         return self.dt.unpack_from(self.data, offs)
             
     def set(self, value, x, y=0, z=0):
-        if self.inverty:
-            y = self.h - y - 1
         offs = self.dt.size*(x + y*self.w + z*self.w*self.h)
         self.dt.pack_into(self.data, offs, *value)
-
 
     @property
     def ptr(self):
