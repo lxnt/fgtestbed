@@ -28,9 +28,6 @@ distribution.
 import os, os.path, collections, struct, ctypes, mmap
 import logging, subprocess
 
-import pygame2
-pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
-
 import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
 import pygame2.sdl.mouse as sdlmouse

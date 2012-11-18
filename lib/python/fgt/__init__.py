@@ -1,10 +1,16 @@
 # -*- encoding: utf-8 -*-
 
+import os
 import os.path
 import sys
 import logging
 import logging.config
 import argparse
+
+import pygame2
+_pgld = os.environ.get('PGLIBDIR', False)
+if _pgld:
+    pygame2.set_dll_path(_pgld)
 
 def logconfig(info = None, calltrace = None):
     lcfg = {
