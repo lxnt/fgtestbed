@@ -34,7 +34,7 @@ import logging, logging.config, argparse, subprocess
 from collections import namedtuple
 
 import pygame2
-#pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
+pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
 
 import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
