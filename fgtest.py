@@ -47,7 +47,7 @@ import fgt.gui
 
 def main():
     fgt.config(description = 'full-graphics renderer testbed')
-    fgt.config.add_render_args()
+    fgt.config.add_render_args(hudfont = ',18')
     fgt.config.add_data_args()
     fgt.config.add_argument('-afps', metavar='afps', type=float, default=12, help="animation fps")
     fgt.config.add_argument('-zeddown', metavar='zlevels', type=int, 
