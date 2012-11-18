@@ -75,7 +75,7 @@ in the `forum thread <http://www.bay12forums.com/smf/index.php?topic=94528.666>`
 Download the dump pack from `<https://github.com/downloads/lxnt/fgtestbed/dumps-341x.7zr>`__ and extract it
 in the directory. It will create ``dumps`` directory with four example dumps.
 
-Now, assuming there's a ``df-34.11`` installation in ``/home/user/df_linux``, test it::
+Now, assuming there's a df-34.11 installation in ``/home/user/df_linux``, test it::
   
   user@box:~/fgtesbed$ ./run ./fgtest.py dumps/micro.dump
 
@@ -93,7 +93,7 @@ Generating map dumps
 
 
 Map dumps are generated using a version of libgraphics.so with dumping code built in.
-You can get it `here <http://dffd.wimbli.com/file.php?id=6210>`__ (``df_linux 34.11`` only).
+You can get it `here <http://dffd.wimbli.com/file.php?id=6210>`__ (df_linux 34.11 only).
 
 When running DF with it, press ``F12`` to generate dump or ``F11`` to dump and quit.
 Resulting file is called 'fugr.dump'.
