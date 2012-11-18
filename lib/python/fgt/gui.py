@@ -523,7 +523,7 @@ class Rednerer(object):
 
     def render(self, frame_no):
         bgc = GLColor( 0.0, 0.5, 0.0, 1 )
-        t_render_enter = time.clock()
+        t_render_enter = sdltimer.get_ticks()
         
         win_mouse_pos = Coord2._make(sdlmouse.get_mouse_state()[1:])
         fbo_mouse_pos = self.win2glfb(win_mouse_pos)
@@ -569,7 +569,7 @@ class Rednerer(object):
 
         self.fbo.blit(self.map_viewport)
         
-        t_hud_start = time.clock()
+        t_hud_start = sdltimer.get_ticks()
         panels = [ self.hp_renderer, self.hp_mouse, self.hp_cheat, self.hp_debug ]
 
         self.hp_renderer.update(self.winsize, self.map_viewport,
@@ -585,10 +585,10 @@ class Rednerer(object):
         self.hp_cheat.update(self.winsize)
         self.hud.reshape(self.winsize)
         self.hud.render(panels)
-        self.last_hud_time = time.clock() - t_hud_start
+        self.last_hud_time = sdltimer.get_ticks() - t_hud_start
         
         sdl_flip(self.window)
-        self.last_render_time = time.clock() - t_render_enter
+        self.last_render_time = sdltimer.get_ticks() - t_render_enter
         
     def zpan(self, delta):
         z = self.render_origin.z + delta
