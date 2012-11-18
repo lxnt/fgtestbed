@@ -294,7 +294,7 @@ class Shader0(object):
         log = logging.getLogger('fgt.shader')
         rv = glCreateShader(stype)
         glShaderSource(rv, lines)
-        log.info("glCompileShader: {}".format(glCompileShader._alternatives))
+        log.debug("glCompileShader: {}".format(glCompileShader._alternatives))
         try:
             glCompileShader(rv)
         except GLError:
@@ -303,12 +303,14 @@ class Shader0(object):
         nfo = glGetShaderInfoLog(rv)
         if result == GL_TRUE:
             log.info("compiled '{}'.".format(filename))
-            for l in nfo.decode('utf-8').strip().split("\n"):
-                log.info(l)
+            if len(nfo) > 0:
+                for l in nfo.decode('utf-8').strip().split("\n"):
+                    log.info(l)
         else:
             log.error("compiling '{}': ".format(filename))
-            for l in nfo.decode('utf-8').strip().split("\n"):
-                log.error(l)
+            if len(nfo) > 0:
+                for l in nfo.decode('utf-8').strip().split("\n"):
+                    log.error(l)
         return rv
     
     def validate(self):
@@ -734,9 +736,7 @@ def gldumplog(header = '', logger = None):
         return
     if logger is None:
         logger = logging.getLogger('OpenGL.debug_output')
-    glcalltrace("gldump({})".format(header))
-    logger.info("gldump({})".format(header))
-    
+
     count = 256
     logSize = 1048576
     sources = arrays.GLuintArray.zeros((count, ))
@@ -753,9 +753,14 @@ def gldumplog(header = '', logger = None):
         GL_DEBUG_SEVERITY_MEDIUM_ARB : logger.warn,
         GL_DEBUG_SEVERITY_LOW_ARB : logger.info,
     }
-        
+
+    first = True
     for n in range(num):
         msg = bytes(messageLog[offs:offs+lengths[n]]).decode('utf-8')
+        if first:
+            glcalltrace("gldump({})".format(header))
+            logger.info("gldump({})".format(header))
+            first = False
         ldict.get(severities[n],logger.error)(
             "{} {} {} {} {}".format(
                 glname.get(sources[n], sources[n]),
