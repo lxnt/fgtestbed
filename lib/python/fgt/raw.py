@@ -24,15 +24,15 @@ distribution.
 
 """
 
-import os, os.path, glob, sys, xml.parsers.expat, time, re, argparse
-import stat, copy, struct, math, mmap, ctypes, pprint
-import logging, logging.config
-from collections import namedtuple
+import os, os.path, glob, sys, re
+import stat, struct, math, mmap, pprint
+import logging
+import collections
 import lxml.etree
 import yaml
 
-from fractions import gcd
-lcm = lambda a, b: abs(a * b) // gcd(a, b)
+import fractions
+lcm = lambda a, b: abs(a * b) // fractions.gcd(a, b)
 
 def lcm_seq(ible):
     seen = set([1])
@@ -113,7 +113,7 @@ class enum_t(object):
         for ea in lxml.etree.XPath('enum-attr')(e):
             attrtypes[ea.get('name')] = ( typedict[ea.get('type-name', None)], ea.get('default-value') )
         
-        nt = namedtuple(self.name, attrtypes.keys())
+        nt = collections.namedtuple(self.name, attrtypes.keys())
         self._type = nt
         
         i = 0
@@ -147,7 +147,7 @@ class enum_t(object):
         names = {}
         values = {}
         typename = self._type.__doc__.split('(')[0]
-        newtype = namedtuple( typename, list(self._type._fields) + [ fieldname ] )
+        newtype = collections.namedtuple( typename, list(self._type._fields) + [ fieldname ] )
         for number, value in self._values.items():
             value = newtype( *(list(value) + [ valuefactory(value) ]) )
             names[value.name] = value

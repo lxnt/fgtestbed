@@ -3,6 +3,7 @@
 import os.path
 import sys
 import logging
+import logging.config
 import argparse
 
 def logconfig(info = None, calltrace = None):
@@ -100,4 +101,3 @@ class _fgt_config_container(object):
         return getattr(self.pa, name)
 
 config = _fgt_config_container()
-configure = config

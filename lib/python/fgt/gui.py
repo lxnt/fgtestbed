@@ -27,10 +27,9 @@ distribution.
 
 from __future__ import division
 
-import sys, time, math, struct, io, ctypes, zlib, ctypes, copy, time
-import argparse, traceback, os, types, mmap, logging, logging.config
 import math
-from collections import namedtuple
+import logging
+import collections
 
 from fgt.raw import Designation
 from fgt.gl import * 
@@ -39,15 +38,11 @@ from OpenGL.GL import *
 from OpenGL.GL.ARB.texture_rg import *
 from OpenGL.error import GLError
 
-import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
 import pygame2.sdl.mouse as sdlmouse
 import pygame2.sdl.keyboard as sdlkeyboard
 import pygame2.sdl.video as sdlvideo
-import pygame2.sdl.surface as sdlsurface
-import pygame2.sdl.pixels as sdlpixels
 import pygame2.sdl.timer as sdltimer
-import pygame2.sdlttf as ttf
 from pygame2.sdl.keycode import *
 from fgt.sdlenums import *
 
@@ -284,7 +279,7 @@ class Rednerer(object):
         self.debug_fbo = FBO()
         self.grid = GridVAO()
         self.grid_shader = GridShader(shaderset)
-        self.tex = namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
+        self.tex = collections.namedtuple("Texnames", "dispatch blitcode font findex screen")._make(glGenTextures(5))
         
         self.zeddown = zeddown if zeddown < gamedata.dim.z else gamedata.dim.z - 1
         self.anim_fps = anim_fps
@@ -352,6 +347,7 @@ class Rednerer(object):
         gldumplog()
     
     def dump_fbos(self, destdir="idumps"):
+        import os.path
         self.fbo.dump(os.path.join(destdir, 'fbo.bmp'))
         self.debug_fbo.dump(os.path.join(destdir, 'debug_fbo.bmp'))
     

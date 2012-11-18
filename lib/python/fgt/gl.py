@@ -25,10 +25,8 @@ distribution.
 
 """
 
-import os, os.path, sys, collections, struct, time, ctypes, mmap
-import logging, logging.config, argparse, subprocess
-
-from collections import namedtuple
+import os, os.path, collections, struct, ctypes, mmap
+import logging, subprocess
 
 import pygame2
 pygame2.set_dll_path(os.environ.get('PGLIBDIR', ''))
@@ -77,13 +75,13 @@ HudTextPanel Hud
 Rect Coord2 Coord3 Size2 Size3 GLColor
 FBO EmaFilter""".split()
 
-Coord2 = namedtuple('Coord2', 'x y')
-Coord3 = namedtuple('Coord3', 'x y z')
-Rect = namedtuple('Rect', 'x y w h')
-Size2 = namedtuple('Size2', 'w h')
-Size3 = namedtuple('Size3', 'w h d')
-GLColor = namedtuple('GLColor', 'r g b a')
-VertexAttr = namedtuple('VertexAttr', 'index size type stride offset')
+Coord2 = collections.namedtuple('Coord2', 'x y')
+Coord3 = collections.namedtuple('Coord3', 'x y z')
+Rect = collections.namedtuple('Rect', 'x y w h')
+Size2 = collections.namedtuple('Size2', 'w h')
+Size3 = collections.namedtuple('Size3', 'w h d')
+GLColor = collections.namedtuple('GLColor', 'r g b a')
+VertexAttr = collections.namedtuple('VertexAttr', 'index size type stride offset')
 
 ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
 ctypes.pythonapi.PyByteArray_FromStringAndSize.restype = ctypes.py_object
