@@ -225,11 +225,11 @@ tilesets:
         GlowingBarrier:
         GlowingFloor:
         MagmaFlow:
-        MurkyPool:
-        OpenSpace:
-        RampTop:
+        MurkyPool: { blit: [std,7,15] }
+        OpenSpace: { blit: ~ }
+        RampTop: { blit: ~ }
         SemiMoltenRock: { blit: [std,0,11] }
-        Void:
+        Void: { blit: ~ }
         Waterfall:
 
 materialsets:

@@ -1076,7 +1076,9 @@ class KeyFrame(object):
         blit = self.blit
         blend = self.blend
 
-        if isinstance(blit[0], str) and blit[0].upper() == 'MAT':
+        if blit is None:
+            return BM_NONE, ['std',0,0], 0, 0
+        elif isinstance(blit[0], str) and blit[0].upper() == 'MAT':
             blit, blend = material.getcel(blit[1])
 
         if isinstance(self.effect, str):
