@@ -1,8 +1,0 @@
-#!/bin/sh
-
-FGTDIR=`dirname $0`
-. $FGTDIR/paths.sh
-$FGTDIR/py3sdl2.py "$@"
-
-
-

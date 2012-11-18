@@ -2,4 +2,7 @@
 *.html
 pics/*
 dumps/*
+prefix/*
+deps/*
+run
 
