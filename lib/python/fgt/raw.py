@@ -1952,7 +1952,7 @@ class MapObject(object):
                         addr_s, addr_t = self.dispatch.get(fl_mat, fl_tile)
                         
                         if (addr_s > self.codew) or (addr_t > self.codeh):
-                            fails[(fl_mat, fl_tile)] = "bogus addr (tile*mat not defined?)"
+                            fails[(fl_mat, fl_tile)] = "bogus addr {}x{} (tile*mat not defined?)".format(addr_s, addr_t)
                             continue
                         
                         fibm, unused, bg, fg = self.blitcode.get(addr_s, addr_t, 0)
