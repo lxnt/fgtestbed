@@ -707,11 +707,13 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
         got = sdlvideo.gl_get_attribute(attr)
         log.info("{} requested {} got {}".format(name, val, got))
     
-    log.info("glGet: vers = {}.{} flags={}  " .format(
-        glGetInteger(GL_MAJOR_VERSION),
-        glGetInteger(GL_MINOR_VERSION),
-        glGetInteger(GL_CONTEXT_FLAGS)
-    ))
+    try:
+        log.info("glGet: vers = {}.{} flags={}  " .format(
+            glGetInteger(GL_MAJOR_VERSION),
+            glGetInteger(GL_MINOR_VERSION),
+            glGetInteger(GL_CONTEXT_FLAGS)))
+    except KeyError:
+        pass
 
     if not fwdcore:
         glEnable(GL_POINT_SPRITE)
