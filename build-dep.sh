@@ -55,17 +55,14 @@ then
     echo "Building and installing SDL2"
     cd $WORK/build-all/sdl
     $WORK/SDL/configure --prefix $PREFIX && make -j 4 install
-    ln -sf libSDL2.so "${PREFIX}/lib/SDL2.so"
 
     echo "Building and installing SDL_image"
     cd $WORK/build-all/image
     $WORK/SDL_image/configure --prefix $PREFIX && make -j 4 install
-    ln -sf libSDL2_image.so "${PREFIX}/lib/SDL2_image.so"
     
     echo "Building and installing SDL_ttf"
     cd $WORK/build-all/ttf
     $WORK/SDL_ttf/configure --prefix $PREFIX && make -j 4 install
-    ln -sf libSDL2_ttf.so "${PREFIX}/lib/SDL2_ttf.so"
 fi
 
 if [ "py" = "$WHAT" -o "all" = "$WHAT" ]
