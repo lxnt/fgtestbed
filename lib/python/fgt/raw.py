@@ -236,9 +236,11 @@ class DFAPI(object):
             if ( tt.name.endswith(('FloorSmooth', 'Floor1', 'Floor2', 'Floor3', 'Floor4', 'Floor')) and
                 tt.name not in ('ConstructedFloor', 'GlowingFloor')):
                     flags = flags | TF_TRUEFLOOR
-            if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name == 'Void'):
+            if (tt.shape.name in ('EMPTY', 'ENDLESS_PIT', 'RAMP_TOP') or tt.name in ('RampTop', 'Void')):
                 flags = flags | TF_VOID | TF_NONMAT
             if tt.name in nonmat_tiles:
+                flags = flags | TF_NONMAT
+            if tt.name.startswith(('Feature', 'Lava', 'Frozen')):
                 flags = flags | TF_NONMAT
             return flags
 
@@ -1076,8 +1078,8 @@ class KeyFrame(object):
         blit = self.blit
         blend = self.blend
 
-        if blit is None:
-            return BM_NONE, ['std',0,0], 0, 0
+        if isinstance(blit, str) and blit.upper() == 'VOID':
+            return BM_NONE, ['std', 0, 0], 0, 0
         elif isinstance(blit[0], str) and blit[0].upper() == 'MAT':
             blit, blend = material.getcel(blit[1])
 
@@ -1942,10 +1944,11 @@ class MapObject(object):
                         
                         if flags & TF_PLANT:
                             fl_mat = up_mat
-                        
-                        if (flags & TF_VOID):
+
+                        if (flags & (TF_VOID | TF_NONMAT)):
                             fl_mat = 0
-                        else:
+
+                        if not (flags & TF_VOID):
                             empty = False
                         
                         if (fl_mat, fl_tile) in oks:
