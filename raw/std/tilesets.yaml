@@ -289,26 +289,34 @@ tilesets:
         MurkyPoolRamp: {blit: [std,14,1], effect: ramp}
 
     river:
-        RiverSource:
-        RiverN:
-        RiverS:
-        RiverE:
-        RiverW:
-        RiverNW:
-        RiverNE:
-        RiverSW:
-        RiverSE:
+        RiverSource:    {blit: [std,14,7], effect: floor}
+        RiverN:         {blit: [std,14,7], effect: floor}
+        RiverS:         {blit: [std,14,7], effect: floor}
+        RiverE:         {blit: [std,14,7], effect: floor}
+        RiverW:         {blit: [std,14,7], effect: floor}
+        RiverNW:        {blit: [std,14,7], effect: floor}
+        RiverNE:        {blit: [std,14,7], effect: floor}
+        RiverSW:        {blit: [std,14,7], effect: floor}
+        RiverSE:        {blit: [std,14,7], effect: floor}
+        RiverRampN:     {blit: [std,14,1], effect: ramp}
+        RiverRampS:     {blit: [std,14,1], effect: ramp}
+        RiverRampE:     {blit: [std,14,1], effect: ramp}
+        RiverRampW:     {blit: [std,14,1], effect: ramp}
+        RiverRampNW:    {blit: [std,14,1], effect: ramp}
+        RiverRampNE:    {blit: [std,14,1], effect: ramp}
+        RiverRampSW:    {blit: [std,14,1], effect: ramp}
+        RiverRampSE:    {blit: [std,14,1], effect: ramp}
 
     brook:
-        BrookN:
-        BrookS:
-        BrookE:
-        BrookW:
-        BrookNW:
-        BrookNE:
-        BrookSW:
-        BrookSE:
-        BrookTop:
+        BrookN:         {blit: [std,14,7], effect: floor}
+        BrookS:         {blit: [std,14,7], effect: floor}
+        BrookE:         {blit: [std,14,7], effect: floor}
+        BrookW:         {blit: [std,14,7], effect: floor}
+        BrookNW:        {blit: [std,14,7], effect: floor}
+        BrookNE:        {blit: [std,14,7], effect: floor}
+        BrookSW:        {blit: [std,14,7], effect: floor}
+        BrookSE:        {blit: [std,14,7], effect: floor}
+        BrookTop:       {blit: [std,14,7], blend: 0ff}
 
     trees:
         Tree: {blit: [mat,Tree]}
