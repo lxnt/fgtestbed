@@ -217,7 +217,7 @@ class DFAPI(object):
 
             return rv
         nonmat_tiles = """Ashes1 Ashes2 Ashes3 Campfire Chasm Driftwood
-                          EeriePit Fire MagmaFlow MurkyPool OpenSpace
+                          EeriePit Fire MagmaFlow RampTop OpenSpace
                           RampTop SemiMoltenRock Void Waterfall""".split()
         # nonmats are those where the shader will replace supplied material
         # with material BUILTIN:NONEMAT.

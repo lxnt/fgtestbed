@@ -284,6 +284,10 @@ tilesets:
         LavaWallWorn2: {blit: [std,0,12]}
         LavaWallWorn3: {blit: [std,0,13]}
 
+    murky:
+        MurkyPool: {blit: [std,14,7], effect: floor}
+        MurkyPoolRamp: {blit: [std,14,1], effect: ramp}
+
     river:
         RiverSource:
         RiverN:
