@@ -111,7 +111,7 @@ tilesets:
         SoilWetFloor3: {blit: [std,14,2], effect: wetfloor}
         SoilWetFloor4: {blit: [std,0,6], effect: wetfloor}
         FurrowedSoil: {blit: [std,14,7]}
-    
+
     grass:
         Grass1StairD: {blit: [std,14,3]}
         Grass1StairU: {blit: [std,12,3]}
@@ -332,47 +332,78 @@ tilesets:
         FrozenRampTrackSEW:  {blit: [std,12, 2]}
         FrozenRampTrackNSEW: {blit: [std, 9,14]}
 
-    feature:
-        FeatureBoulder: {blit: [std,12,14], effect: ramp}
-        FeatureFloor1: {blit: [std,7,2], effect: floor}
-        FeatureFloor2: {blit: [std,12,2], effect: floor}
-        FeatureFloor3: {blit: [std,14,2], effect: floor}
-        FeatureFloor4: {blit: [std,0,6], effect: floor}
-        FeatureFloorSmooth: {blit: [std,11,2], effect: floor}
-        FeatureFortification: {blit: [std,14,12]}
-        FeaturePebbles1: {blit: [std,7,2], effect: floor}
-        FeaturePebbles2: {blit: [std,12,2], effect: floor}
-        FeaturePebbles3: {blit: [std,14,2], effect: floor}
-        FeaturePebbles4: {blit: [std,0,6], effect: floor}
-        FeaturePillar: {blit: [std,7,12]}
-        FeatureRamp: {blit: [std,14,1], effect: ramp}
-        FeatureStairD: {blit: [std,14,3], effect: ramp}
-        FeatureStairU: {blit: [std,12,3], effect: ramp}
-        FeatureStairUD: {blit: [std,8,5], effect: ramp}
-        FeatureWall: {blit: [mat,Wall]}
-        FeatureWallSmoothL2D: {blit: [std,8,11]}
-        FeatureWallSmoothL2U: {blit: [std,14,11]}
-        FeatureWallSmoothLD: {blit: [std,11,11]}
-        FeatureWallSmoothLD2: {blit: [std,7,11]}
-        FeatureWallSmoothLR: {blit: [std,13,12]}
-        FeatureWallSmoothLRD: {blit: [std,11,12]}
-        FeatureWallSmoothLRU: {blit: [std,10,12]}
-        FeatureWallSmoothLRUD: {blit: [std,14,12]}
-        FeatureWallSmoothLU: {blit: [std,12,11]}
-        FeatureWallSmoothLU2: {blit: [std,13,11]}
-        FeatureWallSmoothLUD: {blit: [std,9,11]}
-        FeatureWallSmoothR2D: {blit: [std,6,13]}
-        FeatureWallSmoothR2U: {blit: [std,4,13]}
-        FeatureWallSmoothRD: {blit: [std,9,12]}
-        FeatureWallSmoothRD2: {blit: [std,5,13]}
-        FeatureWallSmoothRU: {blit: [std,8,12]}
-        FeatureWallSmoothRU2: {blit: [std,3,13]}
-        FeatureWallSmoothRUD: {blit: [std,12,12]}
-        FeatureWallSmoothUD: {blit: [std,10,11]}
-        FeatureWallWorn1: {blit: [std,0,11]}
-        FeatureWallWorn2: {blit: [std,0,12]}
-        FeatureWallWorn3: {blit: [std,0,13]}
-    
+    feature: # slade, kinda. got to hardcode the color here
+             # since this entire tileset is TF_NONMAT
+        FeatureBoulder: {blit: [std,12,14], blend: ddd}
+        FeatureFloor1: {blit: [std,7,2], blend: ddd}
+        FeatureFloor2: {blit: [std,12,2], blend: ddd}
+        FeatureFloor3: {blit: [std,14,2], blend: ddd}
+        FeatureFloor4: {blit: [std,0,6], blend: ddd}
+        FeatureFloorSmooth: {blit: [std,11,2], blend: ddd}
+        FeatureFortification: {blit: [std,14,12], blend: ddd}
+        FeaturePebbles1: {blit: [std,7,2], blend: ddd}
+        FeaturePebbles2: {blit: [std,12,2], blend: ddd}
+        FeaturePebbles3: {blit: [std,14,2], blend: ddd}
+        FeaturePebbles4: {blit: [std,0,6], blend: ddd}
+        FeaturePillar: {blit: [std,7,12], blend: ddd}
+        FeatureRamp: {blit: [std,14,1], blend: ddd}
+        FeatureStairD: {blit: [std,14,3], blend: ddd}
+        FeatureStairU: {blit: [std,12,3], blend: ddd}
+        FeatureStairUD: {blit: [std,8,5], blend: ddd}
+        FeatureWall: {blit: [std,8,10], blend: ddd}
+        FeatureWallSmoothL2D: {blit: [std,8,11], blend: ddd}
+        FeatureWallSmoothL2U: {blit: [std,14,11], blend: ddd}
+        FeatureWallSmoothLD: {blit: [std,11,11], blend: ddd}
+        FeatureWallSmoothLD2: {blit: [std,7,11], blend: ddd}
+        FeatureWallSmoothLR: {blit: [std,13,12], blend: ddd}
+        FeatureWallSmoothLRD: {blit: [std,11,12], blend: ddd}
+        FeatureWallSmoothLRU: {blit: [std,10,12], blend: ddd}
+        FeatureWallSmoothLRUD: {blit: [std,14,12], blend: ddd}
+        FeatureWallSmoothLU: {blit: [std,12,11], blend: ddd}
+        FeatureWallSmoothLU2: {blit: [std,13,11], blend: ddd}
+        FeatureWallSmoothLUD: {blit: [std,9,11], blend: ddd}
+        FeatureWallSmoothR2D: {blit: [std,6,13], blend: ddd}
+        FeatureWallSmoothR2U: {blit: [std,4,13], blend: ddd}
+        FeatureWallSmoothRD: {blit: [std,9,12], blend: ddd}
+        FeatureWallSmoothRD2: {blit: [std,5,13], blend: ddd}
+        FeatureWallSmoothRU: {blit: [std,8,12], blend: ddd}
+        FeatureWallSmoothRU2: {blit: [std,3,13], blend: ddd}
+        FeatureWallSmoothRUD: {blit: [std,12,12], blend: ddd}
+        FeatureWallSmoothUD: {blit: [std,10,11], blend: ddd}
+        FeatureWallWorn1: {blit: [std,0,11], blend: ddd}
+        FeatureWallWorn2: {blit: [std,0,12], blend: ddd}
+        FeatureWallWorn3: {blit: [std,0,13], blend: ddd}
+        FeatureFloorTrackN:    {blit: [std,11, 3], blend: ddd}
+        FeatureFloorTrackS:    {blit: [std,11, 3], blend: ddd}
+        FeatureFloorTrackE:    {blit: [std,12, 4], blend: ddd}
+        FeatureFloorTrackW:    {blit: [std,12, 4], blend: ddd}
+        FeatureFloorTrackNS:   {blit: [std,11, 3], blend: ddd}
+        FeatureFloorTrackNE:   {blit: [std,12, 0], blend: ddd}
+        FeatureFloorTrackNW:   {blit: [std,13, 0], blend: ddd}
+        FeatureFloorTrackSE:   {blit: [std,13,10], blend: ddd}
+        FeatureFloorTrackSW:   {blit: [std,11,15], blend: ddd}
+        FeatureFloorTrackEW:   {blit: [std,12, 4], blend: ddd}
+        FeatureFloorTrackNSE:  {blit: [std,12, 3], blend: ddd}
+        FeatureFloorTrackNSW:  {blit: [std,11, 4], blend: ddd}
+        FeatureFloorTrackNEW:  {blit: [std,12, 1], blend: ddd}
+        FeatureFloorTrackSEW:  {blit: [std,12, 2], blend: ddd}
+        FeatureFloorTrackNSEW: {blit: [std, 9,14], blend: ddd}
+        FeatureRampTrackN:    {blit: [std,11, 3], blend: ddd}
+        FeatureRampTrackS:    {blit: [std,11, 3], blend: ddd}
+        FeatureRampTrackE:    {blit: [std,12, 4], blend: ddd}
+        FeatureRampTrackW:    {blit: [std,12, 4], blend: ddd}
+        FeatureRampTrackNS:   {blit: [std,11, 3], blend: ddd}
+        FeatureRampTrackNE:   {blit: [std,12, 0], blend: ddd}
+        FeatureRampTrackNW:   {blit: [std,13, 0], blend: ddd}
+        FeatureRampTrackSE:   {blit: [std,13,10], blend: ddd}
+        FeatureRampTrackSW:   {blit: [std,11,15], blend: ddd}
+        FeatureRampTrackEW:   {blit: [std,12, 4], blend: ddd}
+        FeatureRampTrackNSE:  {blit: [std,12, 3], blend: ddd}
+        FeatureRampTrackNSW:  {blit: [std,11, 4], blend: ddd}
+        FeatureRampTrackNEW:  {blit: [std,12, 1], blend: ddd}
+        FeatureRampTrackSEW:  {blit: [std,12, 2], blend: ddd}
+        FeatureRampTrackNSEW: {blit: [std, 9,14], blend: ddd}
+
     lava:
         LavaBoulder: {blit: [std,12,14], effect: ramp}
         LavaFloor1: {blit: [std,7,2], effect: floor}
