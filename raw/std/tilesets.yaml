@@ -55,7 +55,37 @@ tilesets:
         StoneWallWorn1: {blit: [std,0,11]}
         StoneWallWorn2: {blit: [std,0,12]}
         StoneWallWorn3: {blit: [std,0,13]}
-    
+        StoneFloorTrackN:    {blit: [std,11, 3]}
+        StoneFloorTrackS:    {blit: [std,11, 3]}
+        StoneFloorTrackE:    {blit: [std,12, 4]}
+        StoneFloorTrackW:    {blit: [std,12, 4]}
+        StoneFloorTrackNS:   {blit: [std,11, 3]}
+        StoneFloorTrackNE:   {blit: [std,12, 0]}
+        StoneFloorTrackNW:   {blit: [std,13, 0]}
+        StoneFloorTrackSE:   {blit: [std,13,10]}
+        StoneFloorTrackSW:   {blit: [std,11,15]}
+        StoneFloorTrackEW:   {blit: [std,12, 4]}
+        StoneFloorTrackNSE:  {blit: [std,12, 3]}
+        StoneFloorTrackNSW:  {blit: [std,11, 4]}
+        StoneFloorTrackNEW:  {blit: [std,12, 1]}
+        StoneFloorTrackSEW:  {blit: [std,12, 2]}
+        StoneFloorTrackNSEW: {blit: [std, 9,14]}
+        StoneRampTrackN:    {blit: [std,11, 3]}
+        StoneRampTrackS:    {blit: [std,11, 3]}
+        StoneRampTrackE:    {blit: [std,12, 4]}
+        StoneRampTrackW:    {blit: [std,12, 4]}
+        StoneRampTrackNS:   {blit: [std,11, 3]}
+        StoneRampTrackNE:   {blit: [std,12, 0]}
+        StoneRampTrackNW:   {blit: [std,13, 0]}
+        StoneRampTrackSE:   {blit: [std,13,10]}
+        StoneRampTrackSW:   {blit: [std,11,15]}
+        StoneRampTrackEW:   {blit: [std,12, 4]}
+        StoneRampTrackNSE:  {blit: [std,12, 3]}
+        StoneRampTrackNSW:  {blit: [std,11, 4]}
+        StoneRampTrackNEW:  {blit: [std,12, 1]}
+        StoneRampTrackSEW:  {blit: [std,12, 2]}
+        StoneRampTrackNSEW: {blit: [std, 9,14]}
+
     soil:
         SoilFloor1: {blit: [std,7,2], effect: floor}
         SoilFloor2: {blit: [std,12,2], effect: floor}
@@ -140,6 +170,36 @@ tilesets:
         MineralWallWorn1: {blit: [std,0,11]}
         MineralWallWorn2: {blit: [std,0,12]}
         MineralWallWorn3: {blit: [std,0,13]}
+        MineralFloorTrackN:    {blit: [std,11, 3]}
+        MineralFloorTrackS:    {blit: [std,11, 3]}
+        MineralFloorTrackE:    {blit: [std,12, 4]}
+        MineralFloorTrackW:    {blit: [std,12, 4]}
+        MineralFloorTrackNS:   {blit: [std,11, 3]}
+        MineralFloorTrackNE:   {blit: [std,12, 0]}
+        MineralFloorTrackNW:   {blit: [std,13, 0]}
+        MineralFloorTrackSE:   {blit: [std,13,10]}
+        MineralFloorTrackSW:   {blit: [std,11,15]}
+        MineralFloorTrackEW:   {blit: [std,12, 4]}
+        MineralFloorTrackNSE:  {blit: [std,12, 3]}
+        MineralFloorTrackNSW:  {blit: [std,11, 4]}
+        MineralFloorTrackNEW:  {blit: [std,12, 1]}
+        MineralFloorTrackSEW:  {blit: [std,12, 2]}
+        MineralFloorTrackNSEW: {blit: [std, 9,14]}
+        MineralRampTrackN:    {blit: [std,11, 3]}
+        MineralRampTrackS:    {blit: [std,11, 3]}
+        MineralRampTrackE:    {blit: [std,12, 4]}
+        MineralRampTrackW:    {blit: [std,12, 4]}
+        MineralRampTrackNS:   {blit: [std,11, 3]}
+        MineralRampTrackNE:   {blit: [std,12, 0]}
+        MineralRampTrackNW:   {blit: [std,13, 0]}
+        MineralRampTrackSE:   {blit: [std,13,10]}
+        MineralRampTrackSW:   {blit: [std,11,15]}
+        MineralRampTrackEW:   {blit: [std,12, 4]}
+        MineralRampTrackNSE:  {blit: [std,12, 3]}
+        MineralRampTrackNSW:  {blit: [std,11, 4]}
+        MineralRampTrackNEW:  {blit: [std,12, 1]}
+        MineralRampTrackSEW:  {blit: [std,12, 2]}
+        MineralRampTrackNSEW: {blit: [std, 9,14]}
 
     constructed:
         ConstructedFortification: {blit: [std,14,12]}
@@ -165,6 +225,36 @@ tilesets:
         ConstructedWallRU2: {blit: [std,3,13]}
         ConstructedWallRUD: {blit: [std,12,12]}
         ConstructedWallUD: {blit: [std,10,11]}
+        ConstructedFloorTrackN:    {blit: [std,11, 3]}
+        ConstructedFloorTrackS:    {blit: [std,11, 3]}
+        ConstructedFloorTrackE:    {blit: [std,12, 4]}
+        ConstructedFloorTrackW:    {blit: [std,12, 4]}
+        ConstructedFloorTrackNS:   {blit: [std,11, 3]}
+        ConstructedFloorTrackNE:   {blit: [std,12, 0]}
+        ConstructedFloorTrackNW:   {blit: [std,13, 0]}
+        ConstructedFloorTrackSE:   {blit: [std,13,10]}
+        ConstructedFloorTrackSW:   {blit: [std,11,15]}
+        ConstructedFloorTrackEW:   {blit: [std,12, 4]}
+        ConstructedFloorTrackNSE:  {blit: [std,12, 3]}
+        ConstructedFloorTrackNSW:  {blit: [std,11, 4]}
+        ConstructedFloorTrackNEW:  {blit: [std,12, 1]}
+        ConstructedFloorTrackSEW:  {blit: [std,12, 2]}
+        ConstructedFloorTrackNSEW: {blit: [std, 9,14]}
+        ConstructedRampTrackN:    {blit: [std,11, 3]}
+        ConstructedRampTrackS:    {blit: [std,11, 3]}
+        ConstructedRampTrackE:    {blit: [std,12, 4]}
+        ConstructedRampTrackW:    {blit: [std,12, 4]}
+        ConstructedRampTrackNS:   {blit: [std,11, 3]}
+        ConstructedRampTrackNE:   {blit: [std,12, 0]}
+        ConstructedRampTrackNW:   {blit: [std,13, 0]}
+        ConstructedRampTrackSE:   {blit: [std,13,10]}
+        ConstructedRampTrackSW:   {blit: [std,11,15]}
+        ConstructedRampTrackEW:   {blit: [std,12, 4]}
+        ConstructedRampTrackNSE:  {blit: [std,12, 3]}
+        ConstructedRampTrackNSW:  {blit: [std,11, 4]}
+        ConstructedRampTrackNEW:  {blit: [std,12, 1]}
+        ConstructedRampTrackSEW:  {blit: [std,12, 2]}
+        ConstructedRampTrackNSEW: {blit: [std, 9,14]}
     
     frozen:
         FrozenFloor: {blit: [std,7,2], effect: floor}
@@ -201,6 +291,36 @@ tilesets:
         FrozenWallWorn1: {blit: [std,0,11]}
         FrozenWallWorn2: {blit: [std,0,12]}
         FrozenWallWorn3: {blit: [std,0,13]}
+        FrozenFloorTrackN:    {blit: [std,11, 3]}
+        FrozenFloorTrackS:    {blit: [std,11, 3]}
+        FrozenFloorTrackE:    {blit: [std,12, 4]}
+        FrozenFloorTrackW:    {blit: [std,12, 4]}
+        FrozenFloorTrackNS:   {blit: [std,11, 3]}
+        FrozenFloorTrackNE:   {blit: [std,12, 0]}
+        FrozenFloorTrackNW:   {blit: [std,13, 0]}
+        FrozenFloorTrackSE:   {blit: [std,13,10]}
+        FrozenFloorTrackSW:   {blit: [std,11,15]}
+        FrozenFloorTrackEW:   {blit: [std,12, 4]}
+        FrozenFloorTrackNSE:  {blit: [std,12, 3]}
+        FrozenFloorTrackNSW:  {blit: [std,11, 4]}
+        FrozenFloorTrackNEW:  {blit: [std,12, 1]}
+        FrozenFloorTrackSEW:  {blit: [std,12, 2]}
+        FrozenFloorTrackNSEW: {blit: [std, 9,14]}
+        FrozenRampTrackN:    {blit: [std,11, 3]}
+        FrozenRampTrackS:    {blit: [std,11, 3]}
+        FrozenRampTrackE:    {blit: [std,12, 4]}
+        FrozenRampTrackW:    {blit: [std,12, 4]}
+        FrozenRampTrackNS:   {blit: [std,11, 3]}
+        FrozenRampTrackNE:   {blit: [std,12, 0]}
+        FrozenRampTrackNW:   {blit: [std,13, 0]}
+        FrozenRampTrackSE:   {blit: [std,13,10]}
+        FrozenRampTrackSW:   {blit: [std,11,15]}
+        FrozenRampTrackEW:   {blit: [std,12, 4]}
+        FrozenRampTrackNSE:  {blit: [std,12, 3]}
+        FrozenRampTrackNSW:  {blit: [std,11, 4]}
+        FrozenRampTrackNEW:  {blit: [std,12, 1]}
+        FrozenRampTrackSEW:  {blit: [std,12, 2]}
+        FrozenRampTrackNSEW: {blit: [std, 9,14]}
 
     feature:
         FeatureBoulder: {blit: [std,12,14], effect: ramp}
@@ -283,6 +403,36 @@ tilesets:
         LavaWallWorn1: {blit: [std,0,11]}
         LavaWallWorn2: {blit: [std,0,12]}
         LavaWallWorn3: {blit: [std,0,13]}
+        LavaFloorTrackN:    {blit: [std,11, 3]}
+        LavaFloorTrackS:    {blit: [std,11, 3]}
+        LavaFloorTrackE:    {blit: [std,12, 4]}
+        LavaFloorTrackW:    {blit: [std,12, 4]}
+        LavaFloorTrackNS:   {blit: [std,11, 3]}
+        LavaFloorTrackNE:   {blit: [std,12, 0]}
+        LavaFloorTrackNW:   {blit: [std,13, 0]}
+        LavaFloorTrackSE:   {blit: [std,13,10]}
+        LavaFloorTrackSW:   {blit: [std,11,15]}
+        LavaFloorTrackEW:   {blit: [std,12, 4]}
+        LavaFloorTrackNSE:  {blit: [std,12, 3]}
+        LavaFloorTrackNSW:  {blit: [std,11, 4]}
+        LavaFloorTrackNEW:  {blit: [std,12, 1]}
+        LavaFloorTrackSEW:  {blit: [std,12, 2]}
+        LavaFloorTrackNSEW: {blit: [std, 9,14]}
+        LavaRampTrackN:    {blit: [std,11, 3]}
+        LavaRampTrackS:    {blit: [std,11, 3]}
+        LavaRampTrackE:    {blit: [std,12, 4]}
+        LavaRampTrackW:    {blit: [std,12, 4]}
+        LavaRampTrackNS:   {blit: [std,11, 3]}
+        LavaRampTrackNE:   {blit: [std,12, 0]}
+        LavaRampTrackNW:   {blit: [std,13, 0]}
+        LavaRampTrackSE:   {blit: [std,13,10]}
+        LavaRampTrackSW:   {blit: [std,11,15]}
+        LavaRampTrackEW:   {blit: [std,12, 4]}
+        LavaRampTrackNSE:  {blit: [std,12, 3]}
+        LavaRampTrackNSW:  {blit: [std,11, 4]}
+        LavaRampTrackNEW:  {blit: [std,12, 1]}
+        LavaRampTrackSEW:  {blit: [std,12, 2]}
+        LavaRampTrackNSEW: {blit: [std, 9,14]}
 
     murky:
         MurkyPool: {blit: [std,14,7], effect: floor}
