@@ -90,8 +90,8 @@
 #   <pagename>,<index>        - cel by index
 #   <pagename>,<s>,<t>        - cel by column, row
 #    mat[,{<def>}]            - get cel from material raws
-#    none                     - don't blit anything 
-#                              (same as omitting [blit] for the keyframe)
+#    void                     - don't blit anything
+#   no blit sequence at all   - solid red aka c0dedbad
 #
 # Blend values, sequences and their meaning:
 #
@@ -224,17 +224,16 @@ tilesets:
         Fire:
         GlowingBarrier:
         GlowingFloor:
-        MagmaFlow:
-        MurkyPool: { blit: [std,7,15] }
-        OpenSpace: { blit: ~ }
-        RampTop: { blit: ~ }
+        MagmaFlow: { blit: [std,14,7], blend: f00 }
+        OpenSpace: { blit: void }
+        RampTop: { blit: void }
         SemiMoltenRock: { blit: [std,0,11] }
-        Void: { blit: ~ }
+        Void: { blit: void }
         Waterfall:
 
 materialsets:
 -   expr: [nonemat,mat.name,eq,builtin,mat.klass,eq,and]
-    tilesets: [nonmat]
+    tilesets: [nonmat, feature] # might be also lava and frozen
     name: nonmat
 
 
