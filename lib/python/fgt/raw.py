@@ -953,16 +953,17 @@ class Token(object):
 class CelPage(Token):
     tokens = ('CEL_PAGE', 'TILE_PAGE')
     parses = ('FILE', 'TILE_DIM', 'PAGE_DIM')
-    def __init__(self, name, tail, path = None, flike = None):
+    def __init__(self, name, tail, path = None, data = None):
+        self.defs = {}
+        self._surf = None
+
         if isinstance(tail, dict) and isinstance(path, str): # from YAML
-            data = tail
             self.name = name
-            self.file = data['file']
-            self.flike = flike
-            self.cdim = Size2(*data['cel-dim'])
-            self.pdim = Size2(*data['page-dim'])
-            self.defs = {}
-            for ndef, adef in data.get('defs', {}).items():
+            self.file = data[0]
+            self.data = data[1]
+            self.cdim = Size2(*tail['cel-dim'])
+            self.pdim = Size2(*tail['page-dim'])
+            for ndef, adef in tail.get('defs', {}).items():
                 if isinstance(adef, int):
                     self.defs[ndef] = [ adef% self.pdim.w, adef // self.pdim.w ]
                 elif isinstance(adef, (list, tuple)) and len(adef) == 2:
@@ -973,11 +974,9 @@ class CelPage(Token):
         else: # from df raws
             self.name = tail[0]
             self.file = None
+            self.data = None
             self.cdim = None
             self.pdim = None
-            self.defs = {}
-            self._surf = None
-            self.flike = None
 
     def __str__(self):
         return '{}:{} pdim={} cdim={} surf={}'.format(self.name, self.file, 
@@ -1000,7 +999,7 @@ class CelPage(Token):
     @property
     def surface(self):
         if not self._surf:
-            self._surf = rgba_surface(filename=self.file, flike=self.flike)
+            self._surf = rgba_surface(filename=self.file, data=self.data)
             self._check_dim(self._surf)
         return self._surf
 
@@ -1408,46 +1407,47 @@ class RawsCart(object):
         self.celpages = []
         self.pngs = ci_dict()
 
-    def add_yaml(self, path, flike):
+    def add_yaml(self, filename, data):
         log = logging.getLogger("fgt.raws.RawsCart.add_yaml")
-        log.info("{}".format(path))
+        log.info("[{}] {}".format(self.origin, filename))
         mset_n = 0
-        for fd in yaml.safe_load_all(flike):
+        origin = os.path.join(self.origin, filename)
+        for fd in yaml.safe_load_all(data): # accepts bytes, str and anything with .read()
             for k, v in fd.items():
                 if k == 'celpages':
                     for name, i in v.items():
                         if name in self.celpagedefs:
-                            raise ValueError("{}: celpage '{}' already there".format(path, name))
-                        self.celpagedefs[name] = (name, i, path)
+                            raise ValueError("{}: celpage '{}' already there".format(origin, name))
+                        self.celpagedefs[name] = (name, i, origin)
                 elif k == 'tilesets':
                     for name, i in v.items():
                         if name in self.tilesets:
-                            raise ValueError("{}: tileset '{}' already there".format(path, name))
-                        self.tilesets[name] = TileSet(name, i, path)
+                            raise ValueError("{}: tileset '{}' already there".format(origin, name))
+                        self.tilesets[name] = TileSet(name, i, origin)
                 elif k == 'materialsets':
                     for i in v:
                         name = i.get('name', "#{:d}".format(mset_n))
-                        self.materialsets.append(MaterialSet(i, path, name))
+                        self.materialsets.append(MaterialSet(name, i, origin))
                         mset_n += 1
                 elif k == 'effects':
                     for name, i in v.items():
                         if name in self.celeffects:
-                            raise ValueError("{}: celeffect '{}' already there".format(path, name))
-                        self.celeffects[name] = CelEffect(name, i)
+                            raise ValueError("{}: celeffect '{}' already there".format(origin, name))
+                        self.celeffects[name] = CelEffect(name, i, origin)
                 elif k == 'buildings':
                     continue # not ready for'em yet
 
-    def add_png(self, path, flike):
+    def add_png(self, name, filename = None, data = None):
         log = logging.getLogger("fgt.raws.RawsCart.add_png")
-        log.info("{}".format(path))
-        self.pngs[path] = flike
+        log.info("[{}] {}".format(self.origin, name, filename))
+        self.pngs[name] = (filename, data)
         
     def compile(self, materials, colortab):
         log = logging.getLogger("fgt.raws.RawsCart.compile")
         # instantiate celpages
-        for name, data, path in self.celpagedefs.values():
-            self.celpages.append(CelPage(name, data, path, self.pngs[data['file']]))
-            log.info("celpage {} added; path={}".format(name, path))
+        for name, data, origin in self.celpagedefs.values():
+            self.celpages.append(CelPage(name, data, origin, self.pngs[data['file']]))
+            log.info("[{}] celpage {} added; {}".format(self.origin, name, data['file']))
         
         # populate materialsets with tiles from tilesets
         # and matching materials.
@@ -1514,34 +1514,41 @@ class FullGraphics(object):
                     elif path.lower().endswith('.yaml'):
                         rc.add_yaml(path[len(origin)+1:], open(path, encoding='utf-8') )
                     elif path.lower().endswith('.png'):
-                        rc.add_png(path[len(origin)+1:], open(path, mode='rb') )
+                        rc.add_png(path[len(origin)+1:], filename=path)
                 paths = nextpaths
 
                 if numit == limit:
                     raise RuntimeError("{} paths scanned: something's wrong".format(numit))
-            return rc
-        
+            return [ rc ]
+
         import zipfile
         def rc_zip(origin):
+            carts = {}
             zf = zipfile.ZipFile(origin)
-            rc = RawsCart(origin)
+
             for zi in zf.infolist():
-                path = zi.filename
-                if path.endswith('.yaml'):
-                    rv.add_yaml( path, zf.open(path) )
-                elif path.endswith('.png'):
-                    rv.add_png( path, zf.open(path) )
-            return rc
-        rcs = []
+                dirname, filename = os.path.split(zi.filename)
+                if not filename: # skip directory entries.
+                    continue
+                this_origin = os.path.join(origin, dirname)
+                try:
+                    rc = carts[this_origin]
+                except KeyError:
+                    rc = carts[this_origin] = RawsCart(this_origin)
+                if filename.endswith('.yaml'):
+                    rc.add_yaml(filename, zf.read(zi.filename))
+                elif filename.endswith('.png'):
+                    rc.add_png(filename, data = zf.read(zi.filename))
+            return carts.values()
+
+        self.rc_list  = []
         for path in fgraws:
             if os.path.isdir(path):
-                rcs.append(rc_dir(path))
+                self.rc_list .extend(rc_dir(path))
             elif zipfile.is_zipfile(path):
-                rcs.append(rc_zip(path))
+                self.rc_list .extend(rc_zip(path))
             else:
                 raise ParseError("what is this '{}'?".format(path))
-
-        self.rc_list = rcs
 
     def compile(self, materials, colortab):
         celpages = []
