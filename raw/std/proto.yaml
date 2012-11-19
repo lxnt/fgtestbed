@@ -169,7 +169,7 @@
 ---
 materialsets:
 -   expr: [soil,mat,in,soil_ocean,mat,in,or]
-    tilesets: [soil]
+    tilesets: [soil,river,brook,murky]
 -   expr: [
         is_gem,mat,in,not,
         metamorphic,mat,in,
@@ -177,13 +177,13 @@ materialsets:
         igneous_intrusive,mat,in,or,
         igneous_extrusive,mat,in,or,
         and ]
-    tilesets: [stone, constructed]
+    tilesets: [stone,buggedfloor,constructed,river,brook,murky] # Granite SoilFloor1 wtf? Dirt?
     buildings: true 
 -   expr: [is_gem,mat,in,not,environment_spec,mat,in,environment,mat,in,or,and]
-    tilesets: [ mineral, constructed]
+    tilesets: [mineral,buggedfloor,constructed,river,brook,murky]
     buildings: true 
 -   expr: [deep_special,mat,in,is_stone,mat,in,and] # raw adamantine (or just mn,raw_adamantine,eq)
-    tilesets: [mineral] 
+    tilesets: [mineral,buggedfloor]
 -   expr: [deep_surface,mat,in]
     tilesets: [feature]  # slade
 -   expr: [is_metal,mat,in]
@@ -196,7 +196,7 @@ materialsets:
     tilesets: [constructed]
     buildings: true 
 -   expr: [is_gem,mat,in]
-    tilesets: [mineral] 
+    tilesets: [mineral,buggedfloor,river,brook,murky]
 -   expr: [grass,mat.parent,in] 
     tilesets: [grass] 
 -   expr: [mat.klass,structural,eq,

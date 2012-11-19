@@ -86,6 +86,16 @@ tilesets:
         StoneRampTrackSEW:  {blit: [std,12, 2]}
         StoneRampTrackNSEW: {blit: [std, 9,14]}
 
+    buggedfloor: # known df bug where MineralFloorN becomes StoneFloorN
+        StoneFloor1: {blit: [std,7,2], effect: sfloor}
+        StoneFloor2: {blit: [std,12,2], effect: sfloor}
+        StoneFloor3: {blit: [std,14,2], effect: sfloor}
+        StoneFloor4: {blit: [std,0,6], effect: sfloor}
+        SoilFloor1: {blit: [std,7,2], effect: floor}
+        SoilFloor2: {blit: [std,12,2], effect: floor}
+        SoilFloor3: {blit: [std,14,2], effect: floor}
+        SoilFloor4: {blit: [std,0,6], effect: floor}
+
     soil:
         SoilFloor1: {blit: [std,7,2], effect: floor}
         SoilFloor2: {blit: [std,12,2], effect: floor}
