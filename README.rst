@@ -30,7 +30,7 @@ Getting started
 
 Make sure that you have needed packages. For Ubuntu, do::
 
-  apt-get install python3.2 python3-lxml, python3-yaml realpath git bzr hg
+  apt-get install python3.2 python3-lxml, python3-yaml realpath git bzr mercurial
   apt-get build-dep libsdl1.2debian libsdl-ttf2.0-0 libsdl-image1.2
 
 Clone the git repository::
