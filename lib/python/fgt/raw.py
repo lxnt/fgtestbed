@@ -283,7 +283,9 @@ class Pageman(object):
         
         album = rgba_surface(album_w, album_w//8)
         for page in pages:
-            self.pages[page.name.upper()] = page
+            if page.id in self.pages:
+                raise ValueError("duplicate page {}#{}".format(page.origin, page.name))
+            self.pages[page.id] = page
             for j in range(page.pdim.h):
                 for i in range(page.pdim.w):
                     src = Rect(i*page.pdim.w, j*page.pdim.h, page.cdim.w, page.cdim.h)
@@ -298,7 +300,7 @@ class Pageman(object):
                             album = a
                     dst = Rect(cx, cy, page.cdim.w, page.cdim.h)
                     album.blit(page.surface, dst, src)
-                    self.mapping[(page.name.upper(), i, j)] = index
+                    self.mapping[(page.id, i, j)] = index
                     self.findex.set((cx, cy, page.cdim.w, page.cdim.h), index)
                     index += 1
                     cx += page.cdim.w
@@ -318,10 +320,17 @@ class Pageman(object):
         self.surface.write_bmp(os.path.join(dumpdir, 'album.bmp'))
         self.findex.dump(open(os.path.join(dumpdir, "album.index"), 'wb'))
 
-    def get(self, ref):
+    def get(self, origin, ref):
         logging.getLogger('fgt.raws.pageman.get').debug(repr(ref))
-        pagename = ref[0].upper()
-        page = self.pages[pagename]
+        pageid = ref[0].upper()
+        if pageid == 'STD':
+            page = self.pages[pageid]
+        else:
+            pageid = origin.upper() + '\00' + pageid
+            try:
+                page = self.pages[pageid]
+            except KeyError:
+                raise NameError("page '{}#{}' is not defined".format(origin, ref[0]))
         
         ref = ref[1:]
         if len(ref) == 2:
@@ -333,7 +342,7 @@ class Pageman(object):
             s, t = page.defs[ref[0]]
         else:
             raise KeyError(repr(ref))
-        return self.mapping[(pagename, s, t)]  
+        return self.mapping[(pageid, s, t)]
 
     def __str__(self):
         if len(self.pages) == 0:
@@ -953,11 +962,12 @@ class Token(object):
 class CelPage(Token):
     tokens = ('CEL_PAGE', 'TILE_PAGE')
     parses = ('FILE', 'TILE_DIM', 'PAGE_DIM')
-    def __init__(self, name, tail, path = None, data = None):
+    def __init__(self, name, tail, origin = None, data = None):
         self.defs = {}
         self._surf = None
 
-        if isinstance(tail, dict) and isinstance(path, str): # from YAML
+        if isinstance(tail, dict) and isinstance(origin, str): # from YAML
+            self.id = origin.upper() + '\x00' + name.upper()
             self.name = name
             self.file = data[0]
             self.data = data[1]
@@ -977,6 +987,7 @@ class CelPage(Token):
             self.data = None
             self.cdim = None
             self.pdim = None
+            self.id = None
 
     def __str__(self):
         return '{}:{} pdim={} cdim={} surf={}'.format(self.name, self.file, 
@@ -1005,6 +1016,7 @@ class CelPage(Token):
 
 class StdCelPage(CelPage):
     name = 'STD'
+    id = 'STD'
     def __init__(self, filename):
         self.pdim = Size2(16, 16)
         self.file = filename
@@ -1390,7 +1402,7 @@ class CodeUnit(object):
         """
         frames = []
         for bf in self.frames:
-            frames.append(( bf.mode, pageman.get(bf.blit), bf.fg, bf.bg ))
+            frames.append(( bf.mode, pageman.get(self.origin, bf.blit), bf.fg, bf.bg ))
         return matmap[(self.mat.name, self.mat.klass)], tilenum[self.tile.name].value, frames, self
     
     def __str__(self):
@@ -1446,7 +1458,7 @@ class RawsCart(object):
         log = logging.getLogger("fgt.raws.RawsCart.compile")
         # instantiate celpages
         for name, data, origin in self.celpagedefs.values():
-            self.celpages.append(CelPage(name, data, origin, self.pngs[data['file']]))
+            self.celpages.append(CelPage(name, data, self.origin, self.pngs[data['file']]))
             log.info("[{}] celpage {} added; {}".format(self.origin, name, data['file']))
         
         # populate materialsets with tiles from tilesets
