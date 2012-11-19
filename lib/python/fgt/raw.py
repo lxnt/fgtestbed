@@ -1428,6 +1428,8 @@ class RawsCart(object):
             for k, v in fd.items():
                 if k == 'celpages':
                     for name, i in v.items():
+                        if name.upper() == 'STD':
+                            raise ValueError("{}: celpage name '{}' is reserved.".format(origin, name))
                         if name in self.celpagedefs:
                             raise ValueError("{}: celpage '{}' already there".format(origin, name))
                         self.celpagedefs[name] = (name, i, origin)
