@@ -1431,8 +1431,11 @@ class RawsCart(object):
                         if name.upper() == 'STD':
                             raise ValueError("{}: celpage name '{}' is reserved.".format(origin, name))
                         if name in self.celpagedefs:
-                            raise ValueError("{}: celpage '{}' already there".format(origin, name))
-                        self.celpagedefs[name] = (name, i, origin)
+                            raise ValueError("{}: celpage '{}' already there.".format(origin, name))
+                        filename = i['file']
+                        if os.path.split(filename)[0]: # detect path separators
+                            raise ValueError("{}: path separator in filename '{}'.".format(origin, filename))
+                        self.celpagedefs[name] = (name, i, filename)
                 elif k == 'tilesets':
                     for name, i in v.items():
                         if name in self.tilesets:
@@ -1459,17 +1462,17 @@ class RawsCart(object):
     def compile(self, materials, colortab):
         log = logging.getLogger("fgt.raws.RawsCart.compile")
         # instantiate celpages
-        for name, data, origin in self.celpagedefs.values():
-            self.celpages.append(CelPage(name, data, self.origin, self.pngs[data['file']]))
-            log.info("[{}] celpage {} added; {}".format(self.origin, name, data['file']))
-        
+        for name, data, filename in self.celpagedefs.values():
+            self.celpages.append(CelPage(name, data, self.origin, self.pngs[filename]))
+            log.info("[{}] celpage {} added; {}".format(self.origin, name, filename))
+
         # populate materialsets with tiles from tilesets
         # and matching materials.
         for ms in self.materialsets:
             ms.resolve_tilesets(self.tilesets)
             for mat in materials:
                 ms.match(mat)
-        
+
         # turn materialsets into (tile, mat) -> frameseq pairs
         # where frameseq blits are unresolved wrt Pageman.
         seen_tiles = ci_set()

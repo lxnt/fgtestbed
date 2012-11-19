@@ -50,15 +50,7 @@ Pull in, build and install non-packaged dependencies::
   user@box:~/fgtesbed$
 
 This will download dependencies' source code into the deps directory and install them under prefix directory.
-This will also create a "run" file.
-
-**BEWARE:** as of writing this, `<http://code.google.com/p/pgreloaded/issues/detail?id=22>`__ hasn't been resolved yet,
-and without patching it, extra raws will cause crashes. You can apply any of the patches attached to the issue
-and re-run::
-
-  user@box:~/fgtesbed$ ./build-dep.sh ./deps ./prefix py
-
-The "run" file can either be used as a launcher::
+This will also create a "run" file. This file can either be used as a launcher::
 
   user@box:~/fgtesbed$ ./run ./gltest.py
 
@@ -109,13 +101,17 @@ Overall fg-raws format is `YAML <http://yaml.org>`__.
 
 If you feel like experimenting with fg-raws themselves, create a directory and put some yaml in there.
 Then supply it at the end of the above command line.
+
 Model it based on supplied yaml files. The code parses directories of yaml files in the order listed
 (first and implicitly goes the raw/std directory), definitions from later ones overriding the former ones.
 
-PNG file paths are relative to the directory they are referenced in.
-Cel page references are (to be) limited to a single raws directory, so you should not rely
-on any other directories being parsed earlier (or ever). The only exception is the '``std``'
-cel page which refers to the ``init.txt`` - defined standard tileset.
+Each directory is treated as a raws module. All yaml files there can refer to the tilesets,
+materialsets, effects and cel pages defined only in the files from the same directory, with the exception
+of '``std``' cel page always which refers to the ``init.txt`` - defined standard 16x16 tile set.
+Cel page definitions can only refer to the graphic files in the same directory.
+
+Nesting of directories is allowed, but keep in mind that the order in which subdirectories
+are processed is not defined.
 
 
 Dump format
