@@ -1838,20 +1838,15 @@ class MapObject(object):
         self.disph = len(self.api.tiletype)
 
         dispatch = CArray(None, "HH", self.dispw, self.disph)
-        for i in range(dispatch.w):
-            for j in range(dispatch.h):
-                dispatch.set((i,j), i, j)
+        dispatch.bzero() # all your base are point to BM_CODEDBAD insn
+
         log.info("dispatch: {}".format(dispatch))
         
         blitcode = CArray(None, "IIII", self.codew, self.codeh, self.codedepth)
         blitcode.memset(BM_CODEDBAD)
-        for i in range(blitcode.w):
-            for j in range(blitcode.h):
-                for k in range(blitcode.d):
-                    blitcode.set((BM_CODEDBAD,i,j,34), i, j, k)      
         log.info("blitcode: {}".format(blitcode))
         
-        tc = 1 # reserve 0,0 blitinsn as an implicit nop
+        tc = 1 # 0,0 blitinsn is a trap.
         
         for c in columns:
             mat_id, tile_id, frameseq, cu = c
