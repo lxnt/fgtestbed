@@ -1014,9 +1014,10 @@ class StdCelPage(CelPage):
         self._check_dim(self._surf)
 
 class CelEffect(object):
-    def __init__(self, name, data):
+    def __init__(self, name, data, origin):
         self.name = name
         self.data = data
+        self.origin = origin
 
     def __call__(self, color):
         assert isinstance(color, (tuple, list)) and len(color) == 3
@@ -1037,8 +1038,9 @@ class CelEffect(object):
         return rv
         
     def __str__(self):
-        return "CelEffect({}, {})".format(self.name, self.data)
-    __repr__ = __str__
+        return "CelEffect({}#{}: {})".format(self.origin, self.name, self.data)
+    def __repr__(self):
+        return self.__str__()
 
 def parse_rgba(f):
     a = 0xff
@@ -1176,7 +1178,7 @@ class TileSet(object):
             self.tiles.add(Tile(name, td))
 
     def __str__(self):
-        return "TileSet({}, {}: \n    {})".format(self.name, self.origin, '\n    '.join(map(str, self.tiles)))
+        return "TileSet({}#{}: \n    {})".format(self.origin, self.name, '\n    '.join(map(str, self.tiles)))
 
     def __repr__(self):
         return self.__str__()
@@ -1282,7 +1284,7 @@ class RpnExpr(object):
 
 class MaterialSet(object):
     log = logging.getLogger('fgt.raws.MaterialSet')
-    def __init__(self, data, origin, name):
+    def __init__(self, name, data, origin):
         self.name = name
         self.tiles = set()
         self.tile_names = set()
@@ -1320,7 +1322,8 @@ class MaterialSet(object):
         return result
 
     def __str__(self):
-        rv =  "MaterialSet({} selector={}, tilesets={} tiles={})".format(
+        rv =  "MaterialSet({}#{} selector={}, tilesets={} tiles={})".format(
+            self.origin,
             self.name,
             self.expr, 
             ', '.join([str(x) for x in self.tileset_names]),
@@ -1669,11 +1672,10 @@ class MapObject(object):
         self._mmap_dump(dumpfname)
         
     def _parse_raws(self, dfprefix, fgraws, dump_dir):
-        log = logging.getLogger('fgt.raws._parse_raws')
+        log = logging.getLogger('fgt.raws.MapObject._parse_raws')
         stdraws = os.path.join(dfprefix, 'raw')
         
         self.fg.parse(fgraws)
-        log.info('yamnomnom done.')
         
         fontpath, colortab = InitParser(dfprefix).get()
         log.info('init.txt done.')
@@ -1705,7 +1707,7 @@ class MapObject(object):
         log.info(str(self.pageman))
     
     def _mmap_dump(self, dumpfname):
-        log = logging.getLogger('fgt.mapdata')
+        log = logging.getLogger('fgt.MapObject._mmap_dump')
         
         if self._mmap_fd:
             self._tiles_mmap.close()
@@ -1808,7 +1810,7 @@ class MapObject(object):
                 def write(*args, **kwargs):
                     pass
             irdump = irdummy
-        log = logging.getLogger('fgt.raws._assemble_blitcode')
+        log = logging.getLogger('fgt.raws.MapObject._assemble_blitcode')
 
         # The shader uses effective_frame_no = frame_no % cel_frame_count.
         # Here frame_no is an uniform running from 0 to lcm(cel_frame_count:all)
