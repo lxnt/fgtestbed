@@ -1464,7 +1464,8 @@ class RawsCart(object):
             for material in ms.materials:
                 for tile in ms.tiles:
                     if tile.cel is None: # skip undefined stuff
-                        log.info("{}/{}/{} no cels defined.".format(ms.name, material.name, tile.name))
+                        log.warn("[{}] matset {}, mat {}, tile {}: no cels defined.".format(
+                            self.origin, ms.name, material.name, tile.name))
                         continue
                     keyframes = tile.cel.frames
                     basicframes = InflateFrameseq(keyframes, material, self.celeffects, colortab)
