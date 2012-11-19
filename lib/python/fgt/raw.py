@@ -1834,7 +1834,7 @@ class MapObject(object):
 
         self.codew = int(math.ceil(math.sqrt(len(self.codeunits))))
         self.codeh = self.codew        
-        self.dispw = self.max_mat_id
+        self.dispw = self.max_mat_id + 1
         self.disph = len(self.api.tiletype)
 
         dispatch = CArray(None, "HH", self.dispw, self.disph)
