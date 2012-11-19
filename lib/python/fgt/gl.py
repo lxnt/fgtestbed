@@ -777,15 +777,19 @@ class rgba_surface(object):
     _sdl_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
     _gl_fmt = GL_RGBA
     
-    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, flike = None):
+    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, data = None):
         self.do_free = True
-        if isinstance(filename, str):
-            if flike is not None:
-                rwops = sdlrwops.rw_from_object(flike)
-                self._surf = sdlimage.load_rw(rwops, 1)
+        if data is not None:
+            if type(data) is bytes:
+                data = bytearray(data)
+            if type(data) is bytearray:
+                rwops = sdlrwops.rw_from_mem(bar2voidp(data).value, len(data))
+            elif hasattr(data, "seek"):
+                rwops = sdlrwops.rw_from_object(data)
             else:
-                self._surf = sdlimage.load(filename)
-        elif isinstance(filename, bytes):
+                raise TypeError("unusable data type {}", str(type(data)))
+            self._surf = sdlimage.load_rw(rwops, 1)
+        elif isinstance(filename, str):
             self._surf = sdlimage.load(filename)
         elif isinstance(w, int) and isinstance(h, int):
             masks = list(sdlpixels.pixelformat_enum_to_masks(self._sdl_fmt))
@@ -793,14 +797,14 @@ class rgba_surface(object):
             if glpixels is None:
                 self._surf = sdlsurface.create_rgb_surface(w, h, bpp, *masks)
             else: # glpixels == ABGR8888, OpenGL coordinates
-                self._surf = sdlsurface.create_rgb_surface_from(ctypes.byref(glpixels), self._sdl_fmt, 
-                    w, h, bpp, w*4, *masks)
+                self._surf = sdlsurface.create_rgb_surface_from(ctypes.byref(glpixels),
+                    self._sdl_fmt, w, h, bpp, w*4, *masks)
                 self._hflip()
         elif isinstance(surface, SDL_Surface):
             self.do_free = False
             self._surf = surface
         else:
-            raise TypeError("rgba_surface({} {} {} {} {})".format(type(w), 
+            raise TypeError("Crazy shit in parameters: ({} {} {} {} {})".format(type(w),
                     type(h), type(glpixels), type(surface), type(filename)))
             
         sdlsurface.set_surface_blend_mode(self._surf, sdlvideo.SDL_BLENDMODE_NONE)
