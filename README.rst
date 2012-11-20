@@ -107,12 +107,13 @@ Model it based on supplied yaml files. The code parses directories of yaml files
 
 Each directory is treated as a raws module. All yaml files there can refer to the tilesets,
 materialsets, effects and cel pages defined only in the files from the same directory, with the exception
-of '``std``' cel page always which refers to the ``init.txt`` - defined standard 16x16 tile set.
+of ``std`` cel page which always refers to the ``init.txt`` - defined standard 16x16 tile set.
 Cel page definitions can only refer to the graphic files in the same directory.
 
 Nesting of directories is allowed, but keep in mind that the order in which subdirectories
 are processed is not defined.
 
+For more information see comments in the yaml files.
 
 Dump format
 -----------
