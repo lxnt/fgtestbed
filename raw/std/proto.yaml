@@ -89,17 +89,28 @@
 #   <pagename>,<celdefname>   - refers to an alias defined in the tilepage
 #   <pagename>,<index>        - cel by index
 #   <pagename>,<s>,<t>        - cel by column, row
-#    mat[,{<def>}]            - get cel from material raws
+#    mat[,<def>]              - get celref into std celpage from material raws,
+#                               def is for materials with multiple cels, like plants
 #    void                     - don't blit anything
-#   no blit sequence at all   - solid red aka c0dedbad
+#   no blit sequence at all   - solid red, produces warning at compile
+#
 #
 # Blend values, sequences and their meaning:
 #
-#  'rrggbbaa', 'rgba', 'rrggbb', 'rgb' - hex color, BM_ASIS mode
+#  'rrggbbaa', 'rgba', 'rrggbb', 'rgb' - hex color, BM_FGONLY mode
 #   sequence of two of the above       - BM_CLASSIC mode
 #  'asis', ~                           - BM_ASIS mode (no blending)
-#  'mat' or omitted                    - take material color, 
+#  'mat' or omitted                    - take material color,
 #                                        BM_CLASSIC_MODE
+#
+# Blend modes - cel color modifications:
+#
+#  BM_ASIS     - blit the cel without any blending
+#  BM_FGONLY   - multiply cel pixel color with the given color,
+#                cel pixel's alpha value is not modified
+#  BM_CLASSIC  - mix(pixel*fg, bg, 1.0-pixel.a),
+#                where mix(x, y, a) = x*(1-a)+y*a
+#
 #
 # Binding cels to tiles and materials.
 # ====================================
@@ -130,9 +141,11 @@
 #    It must compute to a boolean value or consist of a single keyword 'none'.
 #
 # Operators:
-#     and or not 
-#     eq  - case insensitive string comparison
-#     in  - a:b:in -> a in b -> b.has(a)
+#     and or not - as they are
+#     eq         - case insensitive string comparison
+#     in         - a,b,in -> a in b -> b.has(a)
+#     instack    - a,b,c,d,instack -> d in [a, b, c], that is,
+#                  in the rest of the stack, case insensitive.
 #
 # Variables:
 #     name:                 (alias)
@@ -161,10 +174,7 @@
 #  can be turned into unary operators), but I feel that would 
 #  make the expressions incomprehensible even to me.
 #
-#  '~' aka None is for materialset to draw tiles that do not 
-#  have any materials associated with them, like OpenSpace, 
-#  Void, EeriePit and the like.
-#
+
 
 ---
 materialsets:
