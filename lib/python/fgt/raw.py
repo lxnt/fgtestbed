@@ -1017,12 +1017,13 @@ class CelPage(Token):
 class StdCelPage(CelPage):
     name = 'STD'
     id = 'STD'
-    def __init__(self, filename):
+    def __init__(self, filename, celdefs):
         self.pdim = Size2(16, 16)
         self.file = filename
         self._surf = rgba_surface(filename=filename)
         self.cdim = Size2(self._surf.w//16, self._surf.h//16)
         self._check_dim(self._surf)
+        self.defs = celdefs
 
 class CelEffect(object):
     def __init__(self, name, data, origin):
@@ -1453,6 +1454,13 @@ class RawsCart(object):
                         self.celeffects[name] = CelEffect(name, i, origin)
                 elif k == 'buildings':
                     continue # not ready for'em yet
+                elif k == 'std-celpage':
+                    # handy celdefs for the std page.
+                    assert self.origin == os.path.join('raw','std')
+                    assert filename == 'stdpage.yaml'
+                    assert 'defs' in v
+                    assert len(v) == 1
+                    self.stddefs = v['defs']
 
     def add_png(self, name, filename = None, data = None):
         log = logging.getLogger("fgt.raws.RawsCart.add_png")
@@ -1515,7 +1523,6 @@ class RawsCart(object):
 class FullGraphics(object):
     def parse(self, fgraws):
         def rc_dir(origin):
-            """ returns list of (fpath -> filelike) """            
             assert os.path.isdir(origin)
             origin = origin.strip(os.path.sep)
             rc = RawsCart(origin)
@@ -1562,21 +1569,24 @@ class FullGraphics(object):
         self.rc_list  = []
         for path in fgraws:
             if os.path.isdir(path):
-                self.rc_list .extend(rc_dir(path))
+                self.rc_list.extend(rc_dir(path))
             elif zipfile.is_zipfile(path):
-                self.rc_list .extend(rc_zip(path))
+                self.rc_list.extend(rc_zip(path))
             else:
                 raise ParseError("what is this '{}'?".format(path))
 
     def compile(self, materials, colortab):
         celpages = []
         codeunits = []
+        stddefs = {}
         for rc in self.rc_list:
             rc.compile(materials, colortab)
             celpages.extend(rc.celpages)
             codeunits.extend(rc.codeunits)
+            if hasattr(rc, 'stddefs'):
+                stddefs = rc.stddefs
             
-        return celpages, codeunits
+        return celpages, codeunits, stddefs
 
 class MaterialTemplate(Token):
     tokens = ('MATERIAL_TEMPLATE',)
@@ -1716,7 +1726,7 @@ class MapObject(object):
         stdparser.materials.update(GetBuiltinMaterials())
         log.info("df materials done.")
         
-        celpages, self.codeunits = self.fg.compile(stdparser.materials, colortab)
+        celpages, self.codeunits, stddefs = self.fg.compile(stdparser.materials, colortab)
         log.info("compile done, {:d} code units.".format(len(self.codeunits)))
         
         if dump_dir:
@@ -1727,7 +1737,7 @@ class MapObject(object):
                 rcs.dump(f)
                 i += 1
         
-        celpages.append(StdCelPage(fontpath))
+        celpages.append(StdCelPage(fontpath, stddefs))
         self.pageman = Pageman(celpages)
         log.info(str(self.pageman))
     
