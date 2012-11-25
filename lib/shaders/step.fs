@@ -15,28 +15,20 @@ uniform sampler2D       font;
 uniform vec3 pszar;
 uniform vec4 mouse_color;
 uniform float darken;                   // drawing lower levels.
-uniform int debug_active;
 
 flat in uvec4 stuff;      		// up_mode, fl_mode, mouse, hidden
 flat in  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 flat in  vec4 fl_fg, fl_bg; 	        // floor or the only blit
 flat in  vec4 up_fg, up_bg; 	        // object or none blit
-
-flat in uvec4 debug0;
-flat in uvec4 debug1;
-
 out vec4 frag;
 
-void borderglow(inout vec4 color, in vec4 border_color) {
-    vec2 wh = pszar.xy * pszar.z;
-    vec2 pc = gl_PointCoord * wh;
-    float w = 1;
-    if (pc.x > 29.0)  { w = 2 ; }
-    if (   ( pc.x < w) || (pc.x > wh.x - w) 
-        || ( pc.y < w) || (pc.y > wh.y - w)) 
-        color = border_color;
-    return;
-}
+#if defined(DEBUG)
+flat in uvec4 debug0;
+flat in uvec4 debug1;
+uvec4 debug2 = uvec4(8u, 8u, 8u, 8u);
+uvec4 debug3 = uvec4(42u, 23u, 23u, 42u);
+# define DEBUG2(a,b,c,d) debug2 = uvec4(uint(a),uint(b),uint(c),uint(d))
+# define DEBUG3(a,b,c,d) debug3 = uvec4(uint(a),uint(b),uint(c),uint(d))
 
 vec4 debug_encode(in uint value) {
 /* encodes the value into rgb, take one */
@@ -45,6 +37,7 @@ vec4 debug_encode(in uint value) {
                   (value & 0xffu),
                    255u) / 255.0;
 }
+
 vec4 debug_output_row(in uvec4 dval) { 
     float x = gl_PointCoord.x;
     vec4 a = vec4(0.25, 0.5, 0.75, 1.0);
@@ -58,6 +51,7 @@ vec4 debug_output_row(in uvec4 dval) {
     if (x < a.w)
         return debug_encode(dval.w);
 }
+
 vec4 debug_output(in uvec4 d0, in uvec4 d1, in uvec4 d2, in uvec4 d3) {
     float y = gl_PointCoord.y;
     vec4 a = vec4(0.25, 0.5, 0.75, 1.0);
@@ -71,13 +65,35 @@ vec4 debug_output(in uvec4 d0, in uvec4 d1, in uvec4 d2, in uvec4 d3) {
         return debug_output_row(d3);
 }
 
-vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 bg, out uvec4 d2, out uvec4 d3) {
+uint rgba2rgbui(in vec4 c) {
+    return (uint(c.r*255)<<16u) +
+            (uint(c.g*255)<<8u) +
+            (uint(c.b*255));
+}
+#else
+# define DEBUG2(a,b,c,d)
+# define DEBUG3(a,b,c,d)
+# define rgba2rgbui(a)
+#endif
+
+void borderglow(inout vec4 color, in vec4 border_color) {
+    vec2 wh = pszar.xy * pszar.z;
+    vec2 pc = gl_PointCoord * wh;
+    float w = 1;
+    if (pc.x > 29.0)  { w = 2 ; }
+    if (   ( pc.x < w) || (pc.x > wh.x - w)
+        || ( pc.y < w) || (pc.y > wh.y - w))
+        color = border_color;
+    return;
+}
+
+vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 bg) {
     ivec2 finsz = textureSize(findex,0);
     ivec2 fintc = ivec2(int(cindex) % finsz.x, int(cindex) / finsz.x);
     uvec4 cinfo = texelFetch(findex, fintc, 0);
     ivec2 fonsz = textureSize(font,0);
-    d2 = cinfo;
-    d3 = uvec4(finsz.xy, fonsz.xy);
+    DEBUG2(cinfo.x, cinfo.y, cinfo.z, cinfo.w);
+    DEBUG3(finsz.x, finsz.y, fonsz.x, fonsz.y);
     
     // tile size in font texture normalized coordinates
     vec2 tilesizeN = vec2(float(cinfo.z)/float(fonsz.x), float(cinfo.w)/float(fonsz.y));
@@ -112,12 +128,6 @@ vec4 blit_execute(in vec2 pc, in uint mode, in uint cindex, in vec4 fg, in vec4 
     return rv;
 }
 
-uint rgba2rbgui(in vec4 c) {
-    return (uint(c.r*255)<<16u) + 
-            (uint(c.g*255)<<8u) + 
-            (uint(c.b*255));
-}
-
 void main() {
     uint fl_mode = stuff.x & 0xFFu;
     uint fl_cindex = stuff.x >> 8u;
@@ -125,9 +135,6 @@ void main() {
     uint up_mode = stuff.y & 0xFFu;
     uint mouse = stuff.z;
     uint hidden = stuff.w;
-    
-    uvec4 debug2 = uvec4(8u, 8u, 8u, 8u);
-    uvec4 debug3 = uvec4(42u, 23u, 23u, 42u);
     
     vec2 pc = gl_PointCoord/pszar.xy;
     if ((pc.x > 1.0) || (pc.y > 1.0))
@@ -143,26 +150,19 @@ void main() {
         return;
     }
 
-    vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg, debug2, debug3);
+    vec4 color = blit_execute(pc, fl_mode, fl_cindex, fl_fg, fl_bg);
     if (up_mode != BM_CODEDBAD) {
-        vec4 up_color = blit_execute(pc, up_mode, up_cindex, up_fg, up_bg, debug2, debug3);
-        debug2.x = fl_cindex;
-        debug2.y = fl_mode;
-        debug2.z = rgba2rbgui(fl_fg);
-        debug2.w = rgba2rbgui(fl_bg);
-        debug3.x = up_cindex;
-        debug3.y = up_mode;
-        debug3.z = rgba2rbgui(up_fg);
-        debug3.w = rgba2rbgui(up_bg);
-       
+        vec4 up_color = blit_execute(pc, up_mode, up_cindex, up_fg, up_bg);
+        DEBUG2(fl_cindex, fl_mode, rgba2rgbui(fl_fg), rgba2rgbui(fl_bg));
+        DEBUG3(up_cindex, up_mode, rgba2rgbui(up_fg), rgba2rgbui(up_bg));
         color = mix(up_color, color, 1.0 - up_color.a);
     }
 
-    if (debug_active > 0) {
-        frag = debug_output(debug0, debug1, debug2, debug3);
-        return;
-    }
-    
+#if defined(DEBUG)
+    frag = debug_output(debug0, debug1, debug2, debug3);
+    return;
+#endif
+
     if (liquicolor.a > 0.1) {
         if (fl_mode == BM_NONE) {
             color = vec4(liquicolor.rgb, 0.75);

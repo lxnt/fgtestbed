@@ -23,6 +23,16 @@
 
 #define TILETYPECOUNT   699     // tile types
 
+#if defined(DEBUG)
+flat out uvec4 debug0;
+flat out uvec4 debug1;
+#define DEBUG0(a,b,c,d) debug0 = uvec4(uint(a),uint(b),uint(c),uint(d))
+#define DEBUG1(a,b,c,d) debug1 = uvec4(uint(a),uint(b),uint(c),uint(d))
+#else
+#define DEBUG0(a,b,c,d)
+#define DEBUG1(a,b,c,d)
+#endif
+
 uniform uint tileflags[TILETYPECOUNT];
 
 uniform usampler2DArray screen;   // mapdata under traditional name
@@ -43,9 +53,6 @@ flat out uvec4 stuff;      		// up_mode, fl_mode, mouse, hidden
 flat out  vec4 liquicolor; 		// alpha < 0.1 -> no liquidatall
 flat out  vec4 fl_fg, fl_bg; 	        // floor or the only blit
 flat out  vec4 up_fg, up_bg; 	        // object or none blit
-
-flat out uvec4 debug0;
-flat out uvec4 debug1;
 
 void decode_tile(const in uvec4 vc,
                  out uint fmat, out uint ftile,
@@ -70,12 +77,12 @@ void decode_insn(in uint mat, in uint tile, in uint fudge, out uint mode, out ve
     ivec2 dt_size = textureSize(dispatch, 0);
     ivec2 dt_coords = ivec2(int(mat), int(tile));
     if (any(greaterThanEqual(dt_coords, dt_size))) {
-        debug0 = uvec4(23u, 42u, 23u, 42u);
+        DEBUG0(23u, 42u, 23u, 42u);
         return;
     }
     uvec4 addr = texelFetch(dispatch, dt_coords, 0);
     
-    debug0 = uvec4(mat, tile, addr.x, addr.y);
+    DEBUG0(mat, tile, addr.x, addr.y);
     
     uint framecount = addr.x >> 8u;
     addr.x = addr.x & 0xffu;
@@ -85,12 +92,12 @@ void decode_insn(in uint mat, in uint tile, in uint fudge, out uint mode, out ve
     ivec3 bc_coords = ivec3(addr.xyz);
     ivec3 bc_size = textureSize(blitcode, 0);
     if (any(greaterThanEqual(bc_coords, bc_size))) {
-        debug1 = uvec4(23u, 42u, 23u, 42u);
+        DEBUG1(23u, 42u, 23u, 42u);
         return;
     }
     uvec4 insn = texelFetch(blitcode, bc_coords, 0);
     
-    debug1 = uvec4(insn.x >>8u, insn.x & 0xffu, insn.z>>8u, insn.w>>8u);
+    DEBUG1(insn.x >>8u, insn.x & 0xffu, insn.z>>8u, insn.w>>8u);
     
     mode = insn.x;
     fg = vec4(insn.z>>24u, (insn.z>>16u ) &0xffu, (insn.z>>8u ) &0xffu, insn.z & 0xffu) / 256.0;
@@ -192,8 +199,8 @@ void main() {
     gl_PointSize = pszar.z;
     
     stuff = uvec4(0,0,0,0);
-    debug0 = uvec4(0,0,0,0);
-    debug1 = uvec4(0,0,0,0);
+    DEBUG0(0,0,0,0);
+    DEBUG1(0,0,0,0);
     
     ivec3 map_posn = ivec3(position, 0) + origin;
     if (   any(        lessThan(map_posn, ivec3(0,0,0)))
