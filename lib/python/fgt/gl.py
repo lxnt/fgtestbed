@@ -62,7 +62,7 @@ glinfo gldumplog glcalltrace
 upload_tex2d upload_tex2da dump_tex2da texparams
 Shader0 VAO0 VertexAttr GridVAO
 Rect Coord2 Coord3 Size2 Size3 GLColor
-FBO EmaFilter""".split()
+FBO""".split()
 
 Coord2 = collections.namedtuple('Coord2', 'x y')
 Coord3 = collections.namedtuple('Coord3', 'x y z')
@@ -448,41 +448,6 @@ class FBO(object):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glDeleteRenderbuffers(1, [self.fb_name])
         glDeleteFramebuffers(1, [self.rb_name])
-
-class EmaFilter(object):
-    """ http://en.wikipedia.org/wiki/Exponential_moving_average 
-
-        used here for the FPS counters. seed of 16 corresponds
-        to approximately 60 fps if we're talking microseconds.
-        
-        alpha of 0.01 is completely arbitrary, see the wikipedia article.
-        
-        usage: supply whatever time it took to render previous frame
-        to the value() method and it'll return a filtered value.
-        
-        filtered fps = 1.0 / filtered value
-        
-        todo: convert this into a generator.
-    """
-    def __init__(self, alpha, nseed):
-        self.alpha = alpha
-        self._value = None
-        self.nseed = nseed
-        self.seeds = []
-    
-    def update(self, val):
-        if self.nseed is not None:
-            self.seeds.append(val)
-            if len(self.seeds) == self.nseed:
-                self._value = sum(self.seeds)/len(self.seeds)
-                self.nseed = None
-        else:
-            self._value = self.alpha*val + (1-self.alpha)*self._value
-
-    def value(self, val=None):
-        self.update(val)
-        return self._value
-    
 
 def glinfo():
     strs = {

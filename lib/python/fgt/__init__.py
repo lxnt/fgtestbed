@@ -131,3 +131,37 @@ class _fgt_config_container(object):
         return getattr(self.pa, name)
 
 config = _fgt_config_container()
+
+class EmaFilter(object):
+    """ http://en.wikipedia.org/wiki/Exponential_moving_average
+
+        used here for the FPS counters. seed of 16 corresponds
+        to approximately 60 fps if we're talking microseconds.
+
+        alpha of 0.01 is completely arbitrary, see the wikipedia article.
+
+        usage: supply whatever time it took to render previous frame
+        to the value() method and it'll return a filtered value.
+
+        filtered fps = 1.0 / filtered value
+
+        todo: convert this into a generator.
+    """
+    def __init__(self, alpha, nseed):
+        self.alpha = alpha
+        self._value = None
+        self.nseed = nseed
+        self.seeds = []
+
+    def update(self, val):
+        if self.nseed is not None:
+            self.seeds.append(val)
+            if len(self.seeds) == self.nseed:
+                self._value = sum(self.seeds)/len(self.seeds)
+                self.nseed = None
+        else:
+            self._value = self.alpha*val + (1-self.alpha)*self._value
+
+    def value(self, val=None):
+        self.update(val)
+        return self._value

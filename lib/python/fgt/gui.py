@@ -31,9 +31,11 @@ import math
 import logging
 import collections
 
+from fgt import EmaFilter
 from fgt.raw import Designation
 from fgt.gl import *
 from fgt.hud import *
+from fgt.sdlenums import *
 
 from OpenGL.GL import *
 from OpenGL.GL.ARB.texture_rg import *
@@ -45,7 +47,6 @@ import pygame2.sdl.keyboard as sdlkeyboard
 import pygame2.sdl.video as sdlvideo
 import pygame2.sdl.timer as sdltimer
 from pygame2.sdl.keycode import *
-from fgt.sdlenums import *
 
 CONTROLS = """\
     F1:                         toggle this text
