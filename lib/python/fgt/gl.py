@@ -37,7 +37,6 @@ import pygame2.sdl.pixels as sdlpixels
 import pygame2.sdl.rwops as sdlrwops
 import pygame2.sdl.hints as sdlhints
 
-from pygame2.sdl.pixels import SDL_Color
 from pygame2.sdl.rect import SDL_Rect
 from pygame2.sdl.video import SDL_Surface
 from pygame2 import sdlttf, sdlimage
@@ -68,7 +67,6 @@ bar2voidp mmap2voidp CArray rgba_surface a_mono_font
 glinfo gldumplog glcalltrace
 upload_tex2d upload_tex2da dump_tex2da texparams
 Shader0 VAO0 VertexAttr GridVAO
-HudTextPanel Hud
 Rect Coord2 Coord3 Size2 Size3 GLColor
 FBO EmaFilter""".split()
 
@@ -383,114 +381,6 @@ class GridVAO(VAO0):
 
     def __str__(self):
         return "GridVAO(size={} num={})".format(self.size, self._count)
-
-class HudVAO(VAO0):
-    """ a quad -> TRIANGLE_STRIP """
-    _primitive_type = GL_TRIANGLE_STRIP
-    _data_type = struct.Struct("IIII")
-    _attrs = (VertexAttr( 0, 4, GL_INT, 0, 0 ),)    
-
-    def set(self, rect):
-        self.update(( # hmm. texture coords are inverted? 
-            ( rect.x,          rect.y,          0, 1 ), # bottom left
-            ( rect.x + rect.w, rect.y,          1, 1 ), # bottom right
-            ( rect.x,          rect.y + rect.h, 0, 0 ), # top left
-            ( rect.x + rect.w, rect.y + rect.h, 1, 0 )) # top right
-        )
-
-class HudShader(Shader0):
-    sname = "hud"
-    def __call__(self, panel, winsize):
-        glUseProgram(self.program)
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, panel.texture_name)
-        glUniform1i(self.uloc[b"hudtex"], 0)
-        glUniform2i(self.uloc[b"resolution"], *winsize)
-        glUniform4f(self.uloc[b"fg"], *panel.fg)
-        glUniform4f(self.uloc[b"bg"], *panel.bg)
-
-class HudTextPanel(object):
-    def __init__(self, strs, longest_str = None, active = True, font = None):
-        self.fg = GLColor(1, 1, 1, 1)
-        self.bg = GLColor(0, 0, 0, 0.68)
-        self._texture_name = glGenTextures(1)
-        self.font = font if font else a_mono_font(fgt.config.hudfont)
-        self.padding = 8
-        self.margin = 8 
-        self.strings = strs
-        if longest_str is None:
-            longest_str_px = 0
-            for s in strs:
-                sz = sdlttf.size(self.font, s)[0]
-                if sz > longest_str_px:
-                   longest_str_px = sz
-        else:
-            longest_str_px = sdlttf.size(self.font, longest_str)[0]
-        width = 2*self.padding + longest_str_px
-        self.ystep = sdlttf.font_line_skip(self.font)
-        height = 2*self.padding + self.ystep * len(strs)
-        self.surface = rgba_surface(width, height)
-        self._surface_dirty = True
-        self.active = active
-        self.rect = Rect(0, 0, width, height)
-
-    def __str__(self):
-        return "{}({})".format(self.__class__.__name__, self.rect)
-
-    def moveto(self, to):
-        self.rect = self.rect._replace(x=to.x, y=to.y)
-
-    @property
-    def data(self):
-        return None
-
-    @property
-    def texture_name(self):
-        if self._surface_dirty:
-            self._render_text()
-        return self._texture_name
-
-    def _render_text(self):
-        """ renders bw blended text. tinting is done in the shader. """
-        self.surface.fill((0,0,0,0))
-        i = 0
-        dump = False
-        for s in self.strings:
-            if len(s) > 0:
-                if isinstance(self.data, dict):
-                    s = s.format(**self.data)
-                strsurf = sdlttf.render_blended(self.font, s, SDL_Color())
-                # since we render with white, we can set the pixelformat
-                # to anything that starts with 'A' and has the same bpp and amask,
-                # thus avoiding extra blit cost
-                # or we can just render_shaded and use that as the alpha channel.
-                
-                self.surface.blit(strsurf, (self.padding, self.padding + i * self.ystep))
-                sdlsurface.free_surface(strsurf)
-            i += 1
-        self.surface.upload_tex2d(self._texture_name)
-        self._surface_dirty = False
-
-    def fini(self):
-        glDeleteTextures(self.texture_name)
-        sdlsurface.free_surface(self.surface)
-
-class Hud(object):
-    """ draws tinted translucent overlays with some text. """    
-    def __init__(self):
-        self.shader = HudShader()
-        self.panels = []
-        self._vao = HudVAO()
-
-    def render(self, panels):
-        for p in panels:
-            if p.active:
-                self._vao.set(p.rect)
-                self.shader(p, self.winsize)
-                self._vao()
-        
-    def reshape(self, sz):
-        self.winsize = sz
 
 class FBO(object):
     """ aids smooth panning.

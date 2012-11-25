@@ -34,6 +34,7 @@ import time
 
 import fgt
 from fgt.gl import *
+from fgt.hud import *
 from fgt.sdlenums import *
 
 import pygame2.sdl.events as sdlevents

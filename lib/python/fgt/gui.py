@@ -32,7 +32,8 @@ import logging
 import collections
 
 from fgt.raw import Designation
-from fgt.gl import * 
+from fgt.gl import *
+from fgt.hud import *
 
 from OpenGL.GL import *
 from OpenGL.GL.ARB.texture_rg import *
