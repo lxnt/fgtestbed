@@ -48,13 +48,7 @@ OpenGL.FULL_LOGGING = 'GLTRACE' in os.environ
 OpenGL.ERROR_ON_COPY = True
 
 from OpenGL.GL import *
-from OpenGL.GL.shaders import *
-from OpenGL.GLU import *
-from OpenGL.GL.ARB import shader_objects
-from OpenGL.GL.ARB.texture_rg import *
-from OpenGL.GL.ARB.framebuffer_object import *
 from OpenGL.GL.ARB.debug_output import *
-
 from OpenGL.error import GLError
 
 import fgt
@@ -268,7 +262,7 @@ class Shader0(object):
         self.uloc = collections.defaultdict(lambda:-1)
         au = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
         for i in range(au):
-            name, wtf, typ = shader_objects.glGetActiveUniformARB(program, i)
+            name, wtf, typ = glGetActiveUniform(program, i)
             loc = glGetUniformLocation(program, name)
             self.uloc[name] = loc
             log_locs("  uni{0}: name={1} type={2} loc={3}".format(i, name, glname.get(typ, typ), loc))
@@ -282,7 +276,6 @@ class Shader0(object):
         log = logging.getLogger('fgt.shader')
         rv = glCreateShader(stype)
         glShaderSource(rv, lines)
-        log.debug("glCompileShader: {}".format(glCompileShader._alternatives))
         try:
             glCompileShader(rv)
         except GLError:
