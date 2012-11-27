@@ -76,7 +76,9 @@ class Grid(object):
 
 def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
     fbo = FBO(Size2(window._w, window._h))
+    choke_ms = 0 if choke == 0 else 1000//choke
     while True:
+        loopstart = sdltimer.get_ticks()
         while True:
             event = sdlevents.poll_event(True)
             if event is None:
@@ -112,8 +114,9 @@ def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
         hud.render(panels)
 
         sdl_flip(window)
-        if choke > 0:
-            time.sleep(1/choke)
+        elapsed = sdltimer.get_ticks() - loopstart
+        if choke_ms > elapsed:
+            sdltimer.delay(choke_ms - elapsed)
 
 def main():
     fgt.config(description = 'full-graphics renderer backend test')
