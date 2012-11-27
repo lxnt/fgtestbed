@@ -26,11 +26,8 @@ distribution.
 
 """
 
-import os
 import sys
-import argparse
 import logging
-import time
 
 import fgt
 from fgt.gl import *
