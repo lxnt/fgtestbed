@@ -40,6 +40,7 @@ from fgt.sdlenums import *
 import pygame2.sdl.events as sdlevents
 import pygame2.sdl.video as sdlvideo
 import pygame2.sdl.keycode as sdlkeys
+import pygame2.sdl.timer as sdltimer
 
 from OpenGL.GL import *
 
