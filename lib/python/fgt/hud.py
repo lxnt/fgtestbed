@@ -35,6 +35,8 @@ from fgt.gl import *
 
 from OpenGL.GL import *
 
+__all__ = "HudVAO HudShader HudTextPanel Hud".split()
+
 class HudVAO(VAO0):
     """ a quad -> TRIANGLE_STRIP """
     _primitive_type = GL_TRIANGLE_STRIP
@@ -65,7 +67,7 @@ class HudTextPanel(object):
         self.fg = GLColor(1, 1, 1, 1)
         self.bg = GLColor(0, 0, 0, 0.68)
         self._texture_name = glGenTextures(1)
-        self.font = font if font else a_mono_font(fgt.config.hudfont)
+        self.font = font if font else a_mono_font(fgt.config.uifont)
         self.padding = 8
         self.margin = 8 
         self.strings = strs
@@ -127,7 +129,7 @@ class HudTextPanel(object):
         sdlsurface.free_surface(self.surface)
 
 class Hud(object):
-    """ draws tinted translucent overlays with some text. """    
+    """ draws tinted translucent overlays with some text. """
     def __init__(self):
         self.shader = HudShader()
         self.panels = []

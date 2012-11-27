@@ -107,13 +107,19 @@ class _fgt_config_container(object):
         self.ap.add_argument('-choke', metavar='fps', type=float, default=0, help="renderer fps cap")
         self.ap.add_argument('-psize', metavar="psize", type=int, help="point size")
         self.ap.add_argument('-par', metavar="par", type=float, help="point aspect ratio")
+        self.ap.add_argument('-ss', metavar='sname', help='shader set name', default='step')
+        self.ap.set_defaults(**kwargs)
+
+    def add_gl_args(self, **kwargs):
         self.ap.add_argument('-calltrace', metavar="outfile", nargs='?', type=str, const='calltrace.out',
                 help="enable GL call trace, write to given file")
         self.ap.add_argument('-glinfo', metavar="exts", nargs='?', type=str, const='noexts',
                 help="log GL caps and possibly extensions")
-        self.ap.add_argument('-ss', metavar='sname', help='shader set name', default='step')
         self.ap.add_argument('-shaderpath', metavar='ssdir', help='path to shader sets', default='lib/shaders')
-        self.ap.add_argument('-hudfont', metavar='family[,pt]', help='font family substring[,size]', default=None)
+        self.ap.set_defaults(**kwargs)
+
+    def add_ui_args(self, **kwargs):
+        self.ap.add_argument('-uifont', metavar='family[,pt]', help='font family substring[,size]', default=None)
         self.ap.set_defaults(**kwargs)
 
     def add_data_args(self, **kwargs):

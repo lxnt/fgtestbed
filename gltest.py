@@ -117,7 +117,9 @@ def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
 
 def main():
     fgt.config(description = 'full-graphics renderer backend test')
-    fgt.config.add_render_args(psize=96, par=0.8, ss='dumb', choke=2, hudfont=',96')
+    fgt.config.add_render_args(psize=96, par=0.8, ss='dumb', choke=2)
+    fgt.config.add_gl_args()
+    fgt.config.add_ui_args(uifont=',96')
     fgt.config.parse_args()
     
     window, context = sdl_init()
