@@ -116,16 +116,7 @@ def loop(window, bg_color, fbo_color, grid, hud, panels, choke):
         if choke_ms > elapsed:
             sdltimer.delay(choke_ms - elapsed)
 
-def main():
-    fgt.config(description = 'full-graphics renderer backend test')
-    fgt.config.add_render_args(psize=96, par=0.8, ss='dumb', choke=2)
-    fgt.config.add_gl_args()
-    fgt.config.add_ui_args(uifont=',96')
-    fgt.config.parse_args()
-    
-    window, context = sdl_init()
-    glinfo()
-    
+def test_grid(window):
     psize = fgt.config.psize
     par = fgt.config.par
     if par > 1:
@@ -137,13 +128,25 @@ def main():
 
     grid_w = int(window._w // (pszar_x*psize))
     grid_h = int(window._h // (pszar_y*psize))
-        
+
+    logging.getLogger("gltest.makegrid").info("grid {}x{} psize {}x{}".format(
+        grid_w, grid_h, int(pszar_x*psize), int(pszar_y*psize)))
+    return Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
+
+def main():
+    fgt.config(description = 'full-graphics renderer backend test')
+    fgt.config.add_render_args(psize=96, par=0.8, ss='dumb', choke=2)
+    fgt.config.add_gl_args()
+    fgt.config.add_ui_args(uifont=',96')
+    fgt.config.parse_args()
+
+    window, context = sdl_init()
+    glinfo()
+
     bg_color = ( 0,1,0,1 )
     fbo_color = ( 1,0,0,1 )
     
-    logging.getLogger("fgt.test").info("grid {}x{} psize {}x{}".format(grid_w, grid_h, 
-        int(pszar_x*psize), int(pszar_y*psize)))
-    grid = Grid(size = (grid_w, grid_h), pszar = (pszar_x, pszar_y, psize))
+    grid = test_grid(window)
     hud = Hud()
 
     panels = []
