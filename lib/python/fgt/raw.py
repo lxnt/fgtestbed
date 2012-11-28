@@ -1010,7 +1010,7 @@ class CelPage(Token):
     @property
     def surface(self):
         if not self._surf:
-            self._surf = rgba_surface(filename=self.file, data=self.data)
+            self._surf = rgba_surface(filename=self.file, filedata=self.data)
             self._check_dim(self._surf)
         return self._surf
 

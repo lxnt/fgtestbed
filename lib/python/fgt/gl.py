@@ -628,17 +628,17 @@ class rgba_surface(object):
     _sdl_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
     _gl_fmt = GL_RGBA
     
-    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, data = None):
+    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, filedata = None):
         self.do_free = True
-        if data is not None:
-            if type(data) is bytes:
-                data = bytearray(data)
-            if type(data) is bytearray:
-                rwops = sdlrwops.rw_from_mem(bar2voidp(data).value, len(data))
-            elif hasattr(data, "seek"):
-                rwops = sdlrwops.rw_from_object(data)
+        if filedata is not None:
+            if type(filedata) is bytes:
+                imagedata = bytearray(filedata)
+            if type(filedata) is bytearray:
+                rwops = sdlrwops.rw_from_mem(bar2voidp(filedata).value, len(filedata))
+            elif hasattr(filedata, "seek"):
+                rwops = sdlrwops.rw_from_object(filedata)
             else:
-                raise TypeError("unusable data type {}", str(type(data)))
+                raise TypeError("unusable data type {}", str(type(filedata)))
             self._surf = sdlimage.load_rw(rwops, 1)
         elif isinstance(filename, str):
             self._surf = sdlimage.load(filename)
