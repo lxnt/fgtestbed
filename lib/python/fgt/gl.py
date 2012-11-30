@@ -510,6 +510,46 @@ def glinfo():
 def glcalltrace(s):
     s = "{0} {1} {0}".format("*" * 16, s)
     logging.getLogger('OpenGL.calltrace' ).info(s)
+
+def gldumplog(header = '', logger = None):
+    if not bool(glGetDebugMessageLogARB):
+        return
+    if logger is None:
+        logger = logging.getLogger('OpenGL.debug_output')
+
+    count = 256
+    logSize = 1048576
+    sources = arrays.GLuintArray.zeros((count, ))
+    types = arrays.GLuintArray.zeros((count, ))
+    ids = arrays.GLuintArray.zeros((count, ))
+    severities = arrays.GLuintArray.zeros((count, ))
+    lengths = arrays.GLsizeiArray.zeros((count, ))
+    messageLog = arrays.GLcharArray.zeros((logSize, ))
+
+    num = glGetDebugMessageLogARB(count, logSize, sources, types, ids, severities, lengths, messageLog)
+    offs = 0
+    ldict = {
+        GL_DEBUG_SEVERITY_HIGH_ARB : logger.error,
+        GL_DEBUG_SEVERITY_MEDIUM_ARB : logger.warn,
+        GL_DEBUG_SEVERITY_LOW_ARB : logger.info,
+    }
+
+    first = True
+    for n in range(num):
+        msg = bytes(messageLog[offs:offs+lengths[n]]).decode('utf-8')
+        if first:
+            glcalltrace("gldump({})".format(header))
+            logger.info("gldump({})".format(header))
+            first = False
+        ldict.get(severities[n],logger.error)(
+            "{} {} {} {} {}".format(
+                glname.get(sources[n], sources[n]),
+                glname.get(types[n], types[n]),
+                glname.get(ids[n], ids[n]),
+                glname.get(severities[n], severities[n]),
+                msg))
+        offs += lengths[n]
+
 def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=False, fwdcore=False):
     log = logging.getLogger('fgt.sdl_init')
     sdlhints.set_hint(SDL_HINT_RENDER_DRIVER, 'software') # do not need no renderer
@@ -552,7 +592,7 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
     gldumplog("just after context", logger=log) # this catches PyOpenGL's try: glGetString() except: glGetStringiv() unsanity
     for attr, name, val in gl_attrs:
         got = sdlvideo.gl_get_attribute(attr)
-        log.info("{} requested {} got {}".format(name, val, got))
+        log.debug("{} requested {} got {}".format(name, val, got))
     
     try:
         log.info("glGet: vers = {}.{} flags={}  " .format(
@@ -574,47 +614,8 @@ def sdl_init(size=(1280, 800), title = "DFFG testbed", icon = None, gldebug=Fals
     sdlimage.init()
     return window, context
 
-def gldumplog(header = '', logger = None):
-    if not bool(glGetDebugMessageLogARB):
-        return
-    if logger is None:
-        logger = logging.getLogger('OpenGL.debug_output')
-
-    count = 256
-    logSize = 1048576
-    sources = arrays.GLuintArray.zeros((count, ))
-    types = arrays.GLuintArray.zeros((count, ))
-    ids = arrays.GLuintArray.zeros((count, ))
-    severities = arrays.GLuintArray.zeros((count, ))
-    lengths = arrays.GLsizeiArray.zeros((count, ))
-    messageLog = arrays.GLcharArray.zeros((logSize, ))
-    
-    num = glGetDebugMessageLogARB(count, logSize, sources, types, ids, severities, lengths, messageLog)
-    offs = 0
-    ldict = {
-        GL_DEBUG_SEVERITY_HIGH_ARB : logger.error,
-        GL_DEBUG_SEVERITY_MEDIUM_ARB : logger.warn,
-        GL_DEBUG_SEVERITY_LOW_ARB : logger.info,
-    }
-
-    first = True
-    for n in range(num):
-        msg = bytes(messageLog[offs:offs+lengths[n]]).decode('utf-8')
-        if first:
-            glcalltrace("gldump({})".format(header))
-            logger.info("gldump({})".format(header))
-            first = False
-        ldict.get(severities[n],logger.error)(
-            "{} {} {} {} {}".format(
-                glname.get(sources[n], sources[n]),
-                glname.get(types[n], types[n]),
-                glname.get(ids[n], ids[n]),
-                glname.get(severities[n], severities[n]),
-                msg))
-        offs += lengths[n]  
-    
 def sdl_offscreen_init():
-    """ just init sdl core and the SDL_image lib (raw.py standalone run)"""
+    """ init sdl core and the SDL_image lib (raw.py standalone run)"""
     sdl.init(0)
     sdlimage.init()
 
