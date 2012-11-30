@@ -49,6 +49,7 @@ OpenGL.ERROR_ON_COPY = True
 
 from OpenGL.GL import *
 from OpenGL.GL.ARB.debug_output import *
+from OpenGL.GL.ARB.copy_buffer import *
 from OpenGL.error import GLError
 
 import fgt
@@ -62,7 +63,7 @@ glinfo gldumplog glcalltrace
 upload_tex2d upload_tex2da dump_tex2da texparams
 Shader0 VAO0 VertexAttr GridVAO
 Rect Coord2 Coord3 Size2 Size3 GLColor
-FBO""".split()
+FBO TexFBO TexBunch2D SurfBunchPBO Blitter""".split()
 
 Coord2 = collections.namedtuple('Coord2', 'x y')
 Coord3 = collections.namedtuple('Coord3', 'x y z')
@@ -451,6 +452,280 @@ class FBO(object):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glDeleteRenderbuffers(1, [self.fb_name])
         glDeleteFramebuffers(1, [self.rb_name])
+
+class TexFBO(object):
+    """ render target for most of rendering.
+        supports context mgmt protocol for both rendering to and from
+        i.e. :
+            with some_fbo.target(Size2(tex_w,tex_h)):
+                ...
+                render shit
+                ...
+        later:
+            with same_fbo.source(GL_TEXTURE23)
+                with other_fbo.target(Size2(window_w,window_h))
+                    ...
+                    render other shit
+                    ...
+        and/or:
+            with some_fbo.pixels([offset=..., size=...]) as pixels
+                ...
+                read those pixels which are a c_void_p but don't write'em
+                ...
+
+        doing something like:
+            ctm = some_fbo.a_ctx_manager_factory(...)
+              ... here take a dump into the GL state
+            with ctm:
+                ....
+        is discouraged.
+
+        Nesting of same-type contexts will mess up GL state since they
+        don't rebind back buffers that were bound to their targets prior.
+
+        GL state sanity is your problem. """
+
+    def __init__(self, size):
+        self.fb_name = glGenFramebuffers(1)
+        self.tex_name = glGenTextures(1)
+        self.bo_name = glGenBuffers(1)
+
+        glBindTexture(GL_TEXTURE_2D, self.tex_name)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+        self.size = None
+        #if size is not None:
+        #    self.resize(size)
+        self.resize(size)
+
+    def as_target(self, clear=None):
+        owner = self
+        class _fbo_target_ctx(object):
+            def __enter__(ctxm):
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, owner.fb_name)
+                glViewport(0, 0, owner.size.w, owner.size.h)
+                if clear is not None:
+                    glClearColor(*clear)
+                    glClear(GL_COLOR_BUFFER_BIT)
+            def __exit__(ctxm, et, ev, tb):
+                pass
+        return _fbo_target_ctx()
+
+    def as_texture(self, textarget):
+        if self.size is None:
+            raise EOFError("no pixels here")
+        tex_name = self.tex_name
+        class _fbo_source_ctx(object):
+            def __enter__(ctxm):
+                glActiveTexture(textarget)
+                glBindTexture(GL_TEXTURE_2D, tex_name)
+            def __exit__(ctxm, et, ev, tb):
+                pass
+        return _fbo_source_ctx()
+
+    def as_pixels(self, offset=0, size=None):
+        if self.size is None:
+            raise EOFError("no pixels here")
+        elif size is None:
+            size = self.bytesize
+        if offset < 0 or size <= 0 or offset+size > self.bytesize:
+            raise ValueError("bogus offset and/or size ")
+
+        buftarget = GL_COPY_READ_BUFFER_ARB # in GL_ARB_copy_buffer
+        buftarget = GL_COPY_READ_BUFFER # in 3.1
+        class _fbo_pixel_ctx(object):
+            def __enter__(ctxm):
+                glBindBuffer(buftarget, self.bo_name)
+                return glMapBufferRange(buftarget, offset, size, GL_MAP_READ_BIT)
+            def __exit__(ctxm, et, ev, tb):
+                glBindBuffer(buftarget, self.bo_name)
+                glUnmapBuffer(buftarget)
+        return _fbo_pixel_ctx()
+
+    def resize(self, size):
+        if self.size == size:
+            return
+        self.size = size
+        self.bytesize = size.w*size.h*4
+
+        # [re]-init texture storage
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.bo_name)
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, self.bytesize, ctypes.c_void_p(0), GL_STREAM_DRAW)
+        glBindTexture(GL_TEXTURE_2D, self.tex_name)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size.w, size.h, 0,
+            GL_RGBA, GL_UNSIGNED_BYTE, ctypes.c_void_p(0))
+
+        # attach the texture
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self.fb_name)
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D, self.tex_name, 0)
+
+        # check completeness
+        x = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)
+        if x != GL_FRAMEBUFFER_COMPLETE:
+            raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x)))
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
+
+class TexBunch2D(dict):
+    def __init__(self, ):
+        self._wrapped_up = False
+
+        self._wrapped_up = True
+
+
+SurfTex = collections.namedtuple('SurfTex', 'surface texname')
+class SurfBunchPBO(object):
+    """ a bunch of SDL surfaces backed by a pixel buffer object
+        for upload. only GL_RGBA8/SDL_ABGR8888/GL_TEXTURE2D for now.
+        TexEnv is up to texbunch supplier.
+        Be sure not to do reads on the surfaces.
+
+        TODO:
+            - Avoid rgba_surface recreation on swaps.
+            - Avoid complete teardown on resize
+
+        """
+
+    def __init__(self, sizes, filter=GL_LINEAR, wrap=GL_CLAMP_TO_EDGE):
+        """ where sizes is a dict some_key -> Size2
+            textures and surfaces are later accessed by this key """
+        assert len(sizes)
+        self.frontbuf, self.backbuf = glGenBuffers(2)
+        self.store = {}
+        self.surfaces = {}
+        offset = 0
+        self.texnames = tuple(glGenTextures(len(sizes)))
+        texnames = list(self.texnames)
+        for some_key, size in sizes.items():
+            texname = texnames.pop(0)
+            glBindTexture(GL_TEXTURE_2D, texname)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
+            self.store[some_key] = ( texname, size, offset )
+            offset += size.w*size.h*4
+        self.bufsize = offset
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.backbuf)
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, self.bufsize, gl_off_t(0), GL_STREAM_DRAW)
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, self.bufsize, gl_off_t(0), GL_STREAM_DRAW)
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
+
+        self.swap() # initializes self.surfaces.
+
+    def __getitem__(self, k):
+        """ return a SurfTex, rest is implementation detail. """
+        return SurfTex(self.surfaces[k], self.store[k][0])
+
+    def __contains__(self, k):
+        return k in self.store
+
+    def keys(self):
+        return keys(self.store)
+
+    def __len__(self):
+        return len(self.store)
+
+    def __iter__(self):
+        for k in self.store.keys():
+            yield k
+        raise StopIteration
+
+    def items(self):
+        for k in self.store.keys():
+            yield ( k, self.__getitem__(k) )
+        raise StopIteration
+
+    def swap(self):
+        #glGetBufferParameter(GL_PIXEL_UNPACK_BUFFER, GL_BUFFER_MAPPED)
+        self.frontbuf, self.backbuf = self.backbuf, self.frontbuf
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY)
+        for some_key, stuff in self.store.items():
+            unused, size, offset = stuff
+            try:
+                self.surfaces[some_key].free()
+            except KeyError:
+                pass
+            glop = ctypes.c_void_p(ptr + offset)
+
+            self.surfaces[some_key] = rgba_surface(size.w, size.h, glpixels = glop)
+
+    def upload(self):
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        for texname, size, offset in self.store.values():
+            glBindTexture(GL_TEXTURE_2D, texname)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size.w, size.h,
+                            0, GL_RGBA, GL_UNSIGNED_BYTE, gl_off_t(offset))
+        self.swap()
+
+    def __delx__(self):
+        # OMG I hate OpenGL.error.CopyError
+        # also have to unmap the shit
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        array = [self.frontbuf, self.backbuf]
+        ptr = arrays.GLuintArray.asArray( array )
+        size = arrays.GLuintArray.arraySize( ptr )
+        glDeleteBuffers(size, ptr)
+        if len(self.texnames):
+            glDeleteTextures(self.texnames)
+
+class BlitVAO(VAO0):
+    """ a quad -> TRIANGLE_STRIP """
+    _primitive_type = GL_TRIANGLE_STRIP
+    _data_type = struct.Struct("IIII")
+    _attrs = (VertexAttr( 0, 4, GL_INT, 0, 0 ),)
+
+    def set(self, rect):
+        self.update(( # hmm. texture coords are inverted?
+            ( rect.x,          rect.y,          0, 1 ), # bottom left
+            ( rect.x + rect.w, rect.y,          1, 1 ), # bottom right
+            ( rect.x,          rect.y + rect.h, 0, 0 ), # top left
+            ( rect.x + rect.w, rect.y + rect.h, 1, 0 )) # top right
+        )
+
+class BlitShader(Shader0):
+    sname = "blit"
+    M_FILL   = 1 # fill with color
+    M_BLEND  = 2 # texture it
+    M_OPAQUE = 3 # force texture alpha to 1.0
+
+    def __call__(self, vpsize, mode, color):
+        glUseProgram(self.program)
+        glUniform1i(self.uloc[b"tex"], 0)
+        glUniform2i(self.uloc[b"vpsize"], *vpsize)
+        glUniform1i(self.uloc[b"mode"], mode)
+        glUniform4f(self.uloc[b"color"], *color)
+
+class Blitter(object):
+    def __init__(self):
+        self.shader = BlitShader()
+        self.vao = BlitVAO()
+        self.log = logging.getLogger("fgt.ui.blitter")
+
+    def fill(self, *args, **kwargs):
+        return self._blit(self.shader.M_FILL, *args, **kwargs)
+
+    def texblend(self, *args, **kwargs):
+        return self._blit(self.shader.M_BLEND, *args, **kwargs)
+
+    def tex(self, *args, **kwargs):
+        return self._blit(self.shader.M_OPAQUE, *args, **kwargs)
+
+    def _blit(self, mode, dstrect, vpsize, color=(0,0,0,0.68)):
+        """ vpsize - size of destination viewport for calculating NDC"""
+        self.log.debug("mode={} dstrect={} vpsize={}".format(mode, dstrect, vpsize))
+        self.vao.set(dstrect)
+        self.shader(vpsize, mode, color)
+        self.vao()
 
 def glinfo():
     strs = {
