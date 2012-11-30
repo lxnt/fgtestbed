@@ -1002,13 +1002,18 @@ class rgba_surface(object):
     def h(self):
         return self._surf._h
     
+    def free(self):
+        if self.do_free:
+            sdlsurface.free_surface(self._surf)
+            self.do_free = False
+
     def __del__(self):
         if self.do_free:
             sdlsurface.free_surface(self._surf)
             
     def dump(self, fname):
         open(fname, "wb").write(ctypes.string_at(self.pixels, self.pitch*self.h))
-        
+
 def sdl_flip(window):
     sdlvideo.gl_swap_window(window)
 
