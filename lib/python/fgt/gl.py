@@ -27,6 +27,7 @@ distribution.
 
 import os, os.path, collections, struct, ctypes, mmap
 import logging, subprocess
+from ctypes import c_void_p as gl_off_t
 
 import pygame2.sdl as sdl
 import pygame2.sdl.events as sdlevents
@@ -924,9 +925,7 @@ class rgba_surface(object):
             if glpixels is None:
                 self._surf = sdlsurface.create_rgb_surface(w, h, bpp, *masks)
             else: # glpixels == ABGR8888, OpenGL coordinates
-                self._surf = sdlsurface.create_rgb_surface_from(ctypes.byref(glpixels),
-                    self._sdl_fmt, w, h, bpp, w*4, *masks)
-                self._hflip()
+                self._surf = sdlsurface.create_rgb_surface_from(glpixels, w, h, bpp, w*4, *masks)
         elif isinstance(surface, SDL_Surface):
             self.do_free = False
             self._surf = surface
@@ -940,7 +939,7 @@ class rgba_surface(object):
         return "rgba_surface(size={}x{}, {}, do_free={})".format(self._surf._w, 
                 self._surf._h, sdlpixels.get_pixelformat_name(self._surf.format.format), self.do_free)
 
-    def _hflip(self):
+    def hflip(self):
         pitch = self._surf._pitch
         pixels = ctypes.cast(self._surf._pixels, ctypes.c_void_p).value
         h = self._surf._h
