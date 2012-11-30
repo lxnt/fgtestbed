@@ -30,63 +30,83 @@ import sys
 import logging
 import logging.config
 import argparse
+import yaml
 
 import pygame2
 _pgld = os.environ.get('PGLIBDIR', False)
 if _pgld:
     pygame2.set_dll_path(_pgld)
 
-def logconfig(info = None, calltrace = None):
+def curly_formatter(format):
+    return logging.Formatter(fmt=format, style='{')
+
+def logconfig(glinfo = None, gltrace = None, extraconf = 'logs.conf'):
     lcfg = {
         'version': 1,
+        'formatters': {
+            'console': {
+                '()': 'fgt.curly_formatter',
+                'format': '{name:10s}: {message}',
+            },
+            'alert': {
+                '()': 'fgt.curly_formatter',
+                'format': '-- {levelname:10s} {message}',
+            }
+        },
         'handlers': {
             'console': {
                 'class': 'logging.StreamHandler',
-                'level': 'INFO',
                 'stream': sys.stdout,
+                'formatter': 'console'
             },
-            'calltrace': {
+            'alert': {
                 'class': 'logging.StreamHandler',
-                'level': 'INFO',
-                'stream': sys.stdout,
+                'level': 'WARN',
+                'stream': sys.stderr,
+                'formatter': 'alert'
             },
         },
+        'root': { 'handlers': ['console'] },
         'loggers': {
-            'root': { 'level': 'INFO', 'handlers': ['console'] },
             'OpenGL': { 'level': 'INFO' },
-            'OpenGL.calltrace': { 'level': 'CRITICAL', 'handlers': ['calltrace'], 'propagate': 0 },
+            'OpenGL.calltrace': { 'level': 'CRITICAL', 'propagate': False },
             'OpenGL.extensions':        { 'level': 'WARN' },
-            'fgt':                      { 'level': 'INFO' },
-            'fgt.raws':                 { 'level': 'DEBUG' },
-            'fgt.raws.rpn.trace':       { 'level': 'WARN' },
-            'fgt.raws.TSParser':        { 'level': 'WARN' },
-            'fgt.raws.ObjectHandler':   { 'level': 'WARN' },
-            'fgt.raws.InitParser':      { 'level': 'WARN' },
-            'fgt.raws.pageman.get':     { 'level': 'WARN' },
-            'fgt.raws.InflateFrameseq': { 'level': 'DEBUG' },
-            'fgt.raws.MaterialSet':     { 'level': 'WARN' },
-            'fgt.raws.RawsCart.compile':{ 'level': 'DEBUG' },
-            'fgt.shader':               { 'level': 'INFO' },
-            'fgt.shader.locs':          { 'level': 'WARN' },
-            'fgt.pan':                  { 'level': 'WARN' },
-            'fgt.zoom':                 { 'level': 'WARN' },
-            'fgt.reshape':              { 'level': 'WARN' },
-            'fgt.glinfo':               { 'level': 'WARN' },
-            'fgt.glinfo.extensions':    { 'level': 'WARN' },
+            'fgt.args': { 'level': 'WARN', 'propagate': False, 'handlers': ['alert'] }
         },
     }
-    if calltrace:
-        lcfg['loggers']['OpenGL.calltrace']['level'] = 'INFO'
-        if calltrace != 'stderr':
-            lcfg['handlers']['calltrace']['stream'] = open(calltrace, 'w')
-        else:
-            del lcfg['loggers']['OpenGL.calltrace']['propagate']
 
-    if info:
-        lcfg['loggers']['fgt.glinfo']['level'] = 'INFO'
-        if info == 'exts':
-            lcfg['loggers']['fgt.glinfo.extensions']['level'] = 'INFO'
     logging.config.dictConfig(lcfg)
+
+    if gltrace:
+        logger = logging.getLogger('OpenGL.calltrace')
+        logger.setLevel('INFO')
+        if gltrace != 'stderr':
+            logger.addHandler(logging.StreamHandler(stream=open(gltrace, 'w')))
+        else:
+            logger.propagate = True
+
+    if glinfo:
+        logging.getLogger('fgt.glinfo').setLevel('INFO')
+        if glinfo == 'exts':
+            logging.getLogger('fgt.glinfo.extensions').setLevel('INFO')
+
+    try:
+        icfg = {}
+        for doc in yaml.safe_load_all(open(extraconf)):
+            icfg.update(doc)
+        icfg['incremental'] = True
+        icfg['version'] = 1
+        logging.config.dictConfig(icfg)
+    except IOError:
+        if extraconf != 'logs.conf':
+            logging.getLogger('fgt.args').exception('opening {}'.format(extraconf))
+            sys.exit(1)
+    except (ValueError, yaml.YAMLError):
+        logging.getLogger('fgt.args').exception('parsing logs.conf')
+        sys.exit(1)
+
+    if gltrace and 'GLTRACE' not in os.environ:
+        logging.getLogger('fgt.args').warn('Set GLTRACE env var to actually trace GL calls.')
 
 class _fgt_config_container(object):
     def __init__(self):
@@ -95,10 +115,13 @@ class _fgt_config_container(object):
 
     def __call__(self, **kwargs):
         self.ap = argparse.ArgumentParser(**kwargs)
+        self.ap.add_argument('-logconf', metavar='logs.conf', type=str, default='logs.conf',
+            help="logging conf file instead of './logs.conf'")
 
     def parse_args(self):
         self.pa = self.ap.parse_args()
-        logconfig(getattr(self.pa,"glinfo", False), getattr(self.pa,"calltrace", False))
+        logconfig(getattr(self.pa,"glinfo", False),
+                    getattr(self.pa,"gltrace", False), self.pa.logconf)
 
     def add_argument(self, *args, **kwargs):
         return self.ap.add_argument(*args, **kwargs)
@@ -111,8 +134,8 @@ class _fgt_config_container(object):
         self.ap.set_defaults(**kwargs)
 
     def add_gl_args(self, **kwargs):
-        self.ap.add_argument('-calltrace', metavar="outfile", nargs='?', type=str, const='calltrace.out',
-                help="enable GL call trace, write to given file")
+        self.ap.add_argument('-gltrace', metavar="outfile", nargs='?', type=str, const='calltrace.out',
+                help="write GL call trace to given file; enable by setting GLTRACE env var")
         self.ap.add_argument('-glinfo', metavar="exts", nargs='?', type=str, const='noexts',
                 help="log GL caps and possibly extensions")
         self.ap.add_argument('-shaderpath', metavar='ssdir', help='path to shader sets', default='lib/shaders')
