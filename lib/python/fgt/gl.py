@@ -163,7 +163,7 @@ def upload_tex2da(txid, informat, tw, th, td, dformat, dtype, dptr, filter):
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, informat, tw, th, td, 0, dformat, dtype, dptr)
     #texparams(GL_TEXTURE_2D_ARRAY)
 
-def unpackstate():
+def unpackstate(callable = print):
     d = [
             (glGetBoolean, GL_UNPACK_SWAP_BYTES, "GL_UNPACK_SWAP_BYTES"),
             (glGetBoolean, GL_UNPACK_LSB_FIRST, "GL_UNPACK_LSB_FIRST"),
@@ -175,9 +175,9 @@ def unpackstate():
             (glGetInteger, GL_UNPACK_ALIGNMENT, "GL_UNPACK_ALIGNMENT"),
         ]
     for foo, param, name in d:
-        print("{} = {}".format(name, foo(param)))
+        callable("{} = {}".format(name, foo(param)))
 
-def texparams(target):
+def texparams(target, callable = print):
     w = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_WIDTH)
     h = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_HEIGHT)
     d = glGetTexLevelParameteriv(target, 0, GL_TEXTURE_DEPTH)
@@ -194,9 +194,9 @@ def texparams(target):
     max_f = glGetTexParameteriv(target, GL_TEXTURE_MAG_FILTER)
     wrap_s = glGetTexParameteriv(target, GL_TEXTURE_WRAP_S)
     wrap_t = glGetTexParameteriv(target, GL_TEXTURE_WRAP_T)
-    print(w,h,d,glname.get(ifmt))
-    print(glname.get(rt),glname.get(bt),glname.get(gt),glname.get(at),rsz,gsz,bsz,asz)
-    print(glname.get(min_f), glname.get(max_f), glname.get(wrap_s), glname.get(wrap_t))
+    callable(w,h,d,glname.get(ifmt))
+    callable(glname.get(rt),glname.get(bt),glname.get(gt),glname.get(at),rsz,gsz,bsz,asz)
+    callable(glname.get(min_f), glname.get(max_f), glname.get(wrap_s), glname.get(wrap_t))
     
 
 def dump_tex2da(fname):
