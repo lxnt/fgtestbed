@@ -77,6 +77,13 @@ VertexAttr = collections.namedtuple('VertexAttr', 'index size type stride offset
 ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
 ctypes.pythonapi.PyByteArray_FromStringAndSize.restype = ctypes.py_object
 
+def glnamelist(*args):
+    """ For glDeleting stuff without CopyErrors.
+        Note that glDeleteTextures is "exceptional" in that it
+        doesn't want the first parameter. What a joke. """
+    n = len(args)
+    return n, struct.pack("I"*n, *args)
+
 def bar2voidp(bar):
     return ctypes.c_void_p(ctypes.pythonapi.PyByteArray_AsString(id(bar)))
 
@@ -367,8 +374,8 @@ class VAO0(object):
         else:
             glBufferSubData(GL_ARRAY_BUFFER, 0, data_size, data_ptr)
 
-    def fini(self):
-        glDeleteVertexArrays(1, self._vao_name)
+    def __del__(self):
+        glDeleteVertexArrays(*glnamelist(self._vao_name))
         self._vbo = None
 
 class GridVAO(VAO0):
@@ -452,10 +459,9 @@ class FBO(object):
 
         glViewport(0, 0, srcrect.w, srcrect.h)
 
-    def fini(self):
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glDeleteRenderbuffers(1, [self.fb_name])
-        glDeleteFramebuffers(1, [self.rb_name])
+    def __del__(self):
+        glDeleteRenderbuffers(*glnamelist(self.fb_name))
+        glDeleteFramebuffers(*glnamelist(self.rb_name))
 
 class TexFBO(object):
     """ render target for most of rendering.
@@ -574,6 +580,11 @@ class TexFBO(object):
             raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x)))
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
 
+    def __del__(self):
+        glDeleteFramebuffers(*glnamelist(self.fb_name))
+        glDeleteTextures(glnamelist(self.tex_name)[1])
+        glDeleteBuffers(*glnamelist(self.bo_name))
+
 SurfTex = collections.namedtuple('SurfTex', 'surface texname')
 class SurfBunchPBO(object):
     """ a bunch of SDL surfaces backed by a pixel buffer object
@@ -664,16 +675,12 @@ class SurfBunchPBO(object):
                             0, GL_RGBA, GL_UNSIGNED_BYTE, gl_off_t(offset))
         self.swap()
 
-    def __delx__(self):
-        # OMG I hate OpenGL.error.CopyError
-        # also have to unmap the shit
-        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
-        array = [self.frontbuf, self.backbuf]
-        ptr = arrays.GLuintArray.asArray( array )
-        size = arrays.GLuintArray.arraySize( ptr )
-        glDeleteBuffers(size, ptr)
+    def __del__(self):
         if len(self.texnames):
-            glDeleteTextures(self.texnames)
+            glDeleteTextures(glnamelist(*self.texnames)[1])
+
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        glDeleteBuffers(*glnamelist(self.frontbuf, self.backbuf))
 
 class BlitVAO(VAO0):
     """ a quad -> TRIANGLE_STRIP """
