@@ -571,13 +571,6 @@ class TexFBO(object):
             raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x)))
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
 
-class TexBunch2D(dict):
-    def __init__(self, ):
-        self._wrapped_up = False
-
-        self._wrapped_up = True
-
-
 SurfTex = collections.namedtuple('SurfTex', 'surface texname')
 class SurfBunchPBO(object):
     """ a bunch of SDL surfaces backed by a pixel buffer object
