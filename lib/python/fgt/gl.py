@@ -54,6 +54,7 @@ from OpenGL.GL import *
 from OpenGL.GL.ARB.debug_output import *
 from OpenGL.GL.ARB.copy_buffer import *
 from OpenGL.error import GLError
+from OpenGL.GL.ARB.texture_rg import *
 
 from gi.repository import freetype2
 
@@ -598,8 +599,12 @@ class TexFBO(object):
 
 SurfTex = collections.namedtuple('SurfTex', 'surface texname')
 class SurfBunchPBO(object):
-    """ a bunch of SDL surfaces backed by a pixel buffer object
-        for upload. only GL_RGBA8/SDL_ABGR8888/GL_TEXTURE2D for now.
+    """ a bunch of surfaces backed by a pixel buffer object for upload.
+        Only GL_TEXTURE2D for now. Fmt/data_fmt/data_type are controlled
+        by surface type classvars. Surface type must have those params;
+        its constructor must accept 'w','h' positional and 'data_ptr' keyword
+        arguments, where 'data_ptr' is c_void_p or similar.
+
         TexEnv is up to texbunch supplier.
         Be sure not to do reads on the surfaces.
 
@@ -609,10 +614,11 @@ class SurfBunchPBO(object):
 
         """
 
-    def __init__(self, sizes, filter=GL_LINEAR, wrap=GL_CLAMP_TO_EDGE):
+    def __init__(self, sizes, surface_type, filter=GL_LINEAR, wrap=GL_CLAMP_TO_EDGE):
         """ where sizes is a dict some_key -> Size2
             textures and surfaces are later accessed by this key """
         assert len(sizes)
+        self.surftype = surface_type
         self.frontbuf, self.backbuf = glGenBuffers(2)
         self.store = {}
         self.surfaces = {}
@@ -663,7 +669,6 @@ class SurfBunchPBO(object):
         raise StopIteration
 
     def swap(self):
-        #glGetBufferParameter(GL_PIXEL_UNPACK_BUFFER, GL_BUFFER_MAPPED)
         self.frontbuf, self.backbuf = self.backbuf, self.frontbuf
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
         ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY)
@@ -674,16 +679,16 @@ class SurfBunchPBO(object):
             except KeyError:
                 pass
             glop = ctypes.c_void_p(ptr + offset)
-
-            self.surfaces[some_key] = rgba_surface(size.w, size.h, glpixels = glop)
+            self.surfaces[some_key] = self.surftype(size.w, size.h, data_ptr = glop)
 
     def upload(self):
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
         for texname, size, offset in self.store.values():
             glBindTexture(GL_TEXTURE_2D, texname)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size.w, size.h,
-                            0, GL_RGBA, GL_UNSIGNED_BYTE, gl_off_t(offset))
+            glTexImage2D(GL_TEXTURE_2D, 0, self.surftype.gl_internal_fmt,
+                size.w, size.h, 0, self.surftype.gl_data_fmt,
+                self.surftype.gl_data_type, gl_off_t(offset))
         self.swap()
 
     def fini(self):
@@ -747,20 +752,24 @@ class Blitter(object):
         self.vao()
 
 class FtBitmap(object):
-    unpack_align = 4
-    def __init__(self, w, h, data = None):
+    gl_unpack_alignment = 4
+    gl_internal_fmt = GL_R8
+    gl_data_fmt = GL_R
+    gl_data_type = GL_UNSIGNED_BYTE
+
+    def __init__(self, w, h, data_ptr = None):
         self.gob = freetype2.Bitmap()
         self.gob.rows = h
         self.gob.width = w
         self.gob.pitch = pot_align(w, 2)
         self.gob.num_grays = 256
         self.pixel_mode = freetype2.PixelMode.GRAY
-        if data is None:
+        if data_ptr is None:
             self.gob.buffer = libc.malloc(len(self))
             libc.memset(self.gob.buffer, 0, len(self))
             self.do_free = True
         else:
-            self.gob.buffer = data
+            self.gob.buffer = data_ptr
             self.do_free = False
 
     def __str__(self):
@@ -778,8 +787,10 @@ class FtBitmap(object):
     def bytearray(self):
         return ctypes.pythonapi.PyByteArray_FromStringAndSize(self.gob.buffer, len(self))
 
-    def __del__(self):
-        libc.free(self.gob.buffer)
+    def free(self):
+        if self.do_free:
+            libc.free(self.gob.buffer)
+        del self.gob
 
 def glinfo():
     strs = {
@@ -949,16 +960,20 @@ def sdl_offscreen_init():
     sdlimage.init()
 
 class rgba_surface(object):
-    """ a plain RGBA32 surface w/o any blending on blits 
+    """ a plain RGBA32 surface w/o any blending on blits, hopefully.
         pixel ordering depends on endianness. lil': ABGR, big: RGBA
         
-        when subclassing to change pixel format, note that glpixels'
+        when subclassing to change pixel format, note that data_ptr's
         expected format changes too.
     """
-    _sdl_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
-    _gl_fmt = GL_RGBA
+    sdl_pixel_fmt = sdlpixels.SDL_PIXELFORMAT_ABGR8888
+    gl_unpack_alignment = 4
+    gl_internal_fmt = GL_RGBA8
+    gl_data_fmt = GL_RGBA
+    gl_data_type = GL_UNSIGNED_BYTE
     
-    def __init__(self, w = None, h = None, glpixels = None, surface = None, filename = None, filedata = None):
+    def __init__(self, w = None, h = None, data_ptr = None, surface = None,
+                    filename = None, filedata = None):
         self.do_free = True
         if filedata is not None:
             if type(filedata) is bytes:
@@ -973,18 +988,18 @@ class rgba_surface(object):
         elif isinstance(filename, str):
             self._surf = sdlimage.load(filename)
         elif isinstance(w, int) and isinstance(h, int):
-            masks = list(sdlpixels.pixelformat_enum_to_masks(self._sdl_fmt))
+            masks = list(sdlpixels.pixelformat_enum_to_masks(self.sdl_pixel_fmt))
             bpp = masks.pop(0)
-            if glpixels is None:
+            if data_ptr is None:
                 self._surf = sdlsurface.create_rgb_surface(w, h, bpp, *masks)
-            else: # glpixels == ABGR8888, OpenGL coordinates
-                self._surf = sdlsurface.create_rgb_surface_from(glpixels, w, h, bpp, w*4, *masks)
+            else: # data_ptr == ABGR8888
+                self._surf = sdlsurface.create_rgb_surface_from(data_ptr, w, h, bpp, w*4, *masks)
         elif isinstance(surface, SDL_Surface):
             self.do_free = False
             self._surf = surface
         else:
             raise TypeError("Crazy shit in parameters: ({} {} {} {} {})".format(type(w),
-                    type(h), type(glpixels), type(surface), type(filename)))
+                    type(h), type(data_ptr), type(surface), type(filename)))
             
         sdlsurface.set_surface_blend_mode(self._surf, sdlvideo.SDL_BLENDMODE_NONE)
 
@@ -1023,8 +1038,8 @@ class rgba_surface(object):
 
     def upload_tex2d(self, texture_name):
         assert self.pitch == 4 * self.w # muahahaha
-        upload_tex2d(texture_name, GL_RGBA8, self.w, self.h,
-                self._gl_fmt, GL_UNSIGNED_BYTE, self.pixels, GL_LINEAR)
+        upload_tex2d(texture_name, self.gl_internal_fmt, self.w, self.h,
+                self.gl_data_fmt, self.gl_data_type, self.pixels, GL_LINEAR)
 
     def fill(self, color):
         """ expects RGBA8888 4-tuple """
