@@ -721,6 +721,7 @@ class BlitShader(Shader0):
     M_FILL   = 1 # fill with color
     M_BLEND  = 2 # texture it
     M_OPAQUE = 3 # force texture alpha to 1.0
+    M_RALPHA = 4 # fill with color; take alpha from tex
 
     def __call__(self, vpsize, mode, color):
         glUseProgram(self.program)
@@ -743,6 +744,9 @@ class Blitter(object):
 
     def tex(self, *args, **kwargs):
         return self._blit(self.shader.M_OPAQUE, *args, **kwargs)
+
+    def ralpha(self, *args, **kwargs):
+        return self._blit(self.shader.M_RALPHA, *args, **kwargs)
 
     def _blit(self, mode, dstrect, vpsize, color=(0,0,0,0.68)):
         """ vpsize - size of destination viewport for calculating NDC"""
