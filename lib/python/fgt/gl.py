@@ -89,6 +89,10 @@ def mmap2voidp(_mmap):
     guts = mmap_mmap.from_address(id(_mmap))
     return ctypes.c_void_p(guts.data) # WTF??
 
+def pot_align(value, pot):
+    return (((value - 1)>>pot) + 1) << pot
+    return (value + (1<<pot) - 1) & ~((1<<pot) -1)
+
 class CArray(object):
     def __init__(self, data, fmt, w, h=1, d=1):
         assert ( h != 1) or ( d == 1) # I don't need this crap
