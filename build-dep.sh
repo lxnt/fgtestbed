@@ -9,7 +9,7 @@ WHAT=$3
 
 if [ -z "${PREFIX}" -o -z "${WORK}" -o -z "${PDIR}" ]
 then 
-    echo "Usage: $0 work/dir dest/prefix [sdl|py|all]"
+    echo "Usage: $0 work/dir dest/prefix [sdl|py|gir|all]"
     echo "Please run this from the fgtestbed directory."
     exit 1 
 fi
@@ -76,9 +76,16 @@ then
     python3.2 setup.py install --prefix=$PREFIX
 fi
 
+if [ "gir" = "$WHAT" -o "all" = "$WHAT" ]
+then
+    echo "Compiling ft2 typelib"
+    g-ir-compiler -o $PDIR/lib/gir/freetype2-2.0.typelib $PDIR/lib/gir/freetype2-2.0.gir
+fi
+
 (   echo "#!/bin/sh"
     echo export PGLIBDIR=$PREFIX/lib
     echo export PYTHONPATH=$PREFIX/lib/python3.2/site-packages:$PDIR/lib/python
+    echo export GI_TYPELIB_PATH=$PDIR/lib/gir
     echo '"$@"' ) >$PDIR/run
 chmod a+x $PDIR/run
     

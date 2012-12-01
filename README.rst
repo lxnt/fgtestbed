@@ -21,8 +21,9 @@ On the system side, fgtestbed requires OpenGL 3.0/GLSL 1.30 capable hardware and
 On the Dwarf Fortress side, it requires *some* installation of version 34.10 or 34.11.
 Standard and custom tile sets and graphics sets are supported.
 
-Python 3.2, python3-lxml, python3-yaml, trunk PyOpenGL, pgreloaded, libSDL 2.0,
-SDL_image and SDL_ttf are the code dependencies.
+Python 3.2, python3-lxml, python3-yaml, python3-gi (pygobject), gir1.2-pango-1.0,
+Pango itself,  trunk PyOpenGL, pgreloaded, libSDL 2.0 and SDL2_image are the code
+dependencies.
 
 
 Getting started
@@ -30,7 +31,7 @@ Getting started
 
 Make sure that you have needed packages. For Ubuntu, do::
 
-  apt-get install python3.2 python3-lxml python3-yaml realpath git bzr mercurial
+  apt-get install python3.2 python3-lxml python3-yaml realpath git bzr mercurial python3-gi gir1.2-pango-1.0
   apt-get build-dep libsdl1.2debian libsdl-ttf2.0-0 libsdl-image1.2
 
 Clone the git repository::

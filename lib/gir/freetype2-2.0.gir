@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<repository version="1.2"
+            xmlns="http://www.gtk.org/introspection/core/1.0"
+            xmlns:c="http://www.gtk.org/introspection/c/1.0">
+  <namespace name="freetype2" version="2.0"
+	     c:identifier-prefixes="FT"
+	     c:symbol-prefixes="FT">
+    <record name="Bitmap" c:type="FT_Bitmap">
+      <field name="rows" writable="1">
+        <type name="gint" c:type="int"/>
+      </field>
+      <field name="width" writable="1">
+        <type name="gint" c:type="int"/>
+      </field>
+      <field name="pitch" writable="1">
+        <type name="gint" c:type="int"/>
+      </field>
+      <field name="buffer" writable="1">
+      <!-- https://bugzilla.gnome.org/show_bug.cgi?id=683599 -->
+        <type name="gint64" c:type="int64"/>
+      </field>
+      <field name="num_grays" writable="1">
+        <type name="gshort" c:type="short"/>
+      </field>
+      <field name="pixel_mode" writable="1">
+        <type name="gchar" c:type="char"/>
+      </field>
+      <field name="palette_mode" writable="1">
+        <type name="gchar" c:type="char"/>
+      </field>
+      <field name="palette" writable="1">
+        <type name="gint64" c:type="int64"/>
+      </field>
+    </record>
+    <enumeration name="PixelMode" c:type="FT_Pixel_Mode">
+      <member name="none" value="0" c:identifier="FT_PIXEL_MODE_NONE"/>
+      <member name="mono" value="1" c:identifier="FT_PIXEL_MODE_MONO"/>
+      <member name="gray" value="2" c:identifier="FT_PIXEL_MODE_GRAY"/>
+      <member name="gray2" value="3" c:identifier="FT_PIXEL_MODE_GRAY2"/>
+      <member name="gray4" value="4" c:identifier="FT_PIXEL_MODE_GRAY4"/>
+      <member name="lcd" value="5" c:identifier="FT_PIXEL_MODE_LCD"/>
+      <member name="lcd_v" value="6" c:identifier="FT_PIXEL_MODE_LCD_V"/>
+      <member name="max" value="7" c:identifier="FT_PIXEL_MODE_MAX"/>
+    </enumeration>
+    <record name="Face" c:type="FT_Face"/>
+    <record name="Library" c:type="FT_Library"/>
+    <alias name="Int32" c:type="FT_Int32">
+      <type name="int32"/>
+    </alias>
+    <function name="library_version" c:identifier="FT_Library_Version">
+      <return-value transfer-ownership="none">
+        <type name="none" c:type="void"/>
+      </return-value>
+      <parameters>
+      </parameters>
+    </function>
+  </namespace>
+</repository>

@@ -25,7 +25,8 @@ distribution.
 
 """
 
-import os, os.path, collections, struct, ctypes, mmap
+import os, os.path, collections, struct, mmap
+import ctypes, ctypes.util
 import logging, subprocess
 from ctypes import c_void_p as gl_off_t
 
@@ -43,6 +44,7 @@ from pygame2.sdl.video import SDL_Surface
 from pygame2 import sdlttf, sdlimage
 
 import OpenGL
+
 OpenGL.ERROR_CHECKING_GLSL = False
 OpenGL.FORWARD_COMPATIBLE_ONLY = True
 OpenGL.FULL_LOGGING = 'GLTRACE' in os.environ
@@ -53,8 +55,9 @@ from OpenGL.GL.ARB.debug_output import *
 from OpenGL.GL.ARB.copy_buffer import *
 from OpenGL.error import GLError
 
-import fgt
+from gi.repository import freetype2
 
+import fgt
 from fgt.glname import glname as glname
 from fgt.sdlenums import *
 
@@ -64,7 +67,7 @@ glinfo gldumplog glcalltrace
 upload_tex2d upload_tex2da dump_tex2da texparams
 Shader0 VAO0 VertexAttr GridVAO
 Rect Coord2 Coord3 Size2 Size3 GLColor
-FBO TexFBO TexBunch2D SurfBunchPBO Blitter""".split()
+FBO TexFBO SurfBunchPBO Blitter FtBitmap""".split()
 
 Coord2 = collections.namedtuple('Coord2', 'x y')
 Coord3 = collections.namedtuple('Coord3', 'x y z')
@@ -76,6 +79,7 @@ VertexAttr = collections.namedtuple('VertexAttr', 'index size type stride offset
 
 ctypes.pythonapi.PyByteArray_AsString.restype = ctypes.c_void_p
 ctypes.pythonapi.PyByteArray_FromStringAndSize.restype = ctypes.py_object
+libc = ctypes.CDLL(ctypes.util.find_library("c"))
 
 def glnamelist(*args):
     """ For glDeleting stuff without CopyErrors.
@@ -730,6 +734,41 @@ class Blitter(object):
         self.vao.set(dstrect)
         self.shader(vpsize, mode, color)
         self.vao()
+
+class FtBitmap(object):
+    unpack_align = 4
+    def __init__(self, w, h, data = None):
+        self.gob = freetype2.Bitmap()
+        self.gob.rows = h
+        self.gob.width = w
+        self.gob.pitch = pot_align(w, 2)
+        self.gob.num_grays = 256
+        self.pixel_mode = freetype2.PixelMode.GRAY
+        if data is None:
+            self.gob.buffer = libc.malloc(len(self))
+            libc.memset(self.gob.buffer, 0, len(self))
+            self.do_free = True
+        else:
+            self.gob.buffer = data
+            self.do_free = False
+
+    def __str__(self):
+        return "size:{}x{} pitch:{} bytes:{}".format(self.gob.width,
+            self.gob.rows, self.gob.pitch, len(self))
+
+    @property
+    def ptr(self):
+        return self.gob.buffer
+
+    def __len__(self):
+        print( self.gob.pitch * self.gob.rows )
+        return self.gob.pitch * self.gob.rows
+
+    def bytearray(self):
+        return ctypes.pythonapi.PyByteArray_FromStringAndSize(self.gob.buffer, len(self))
+
+    def __del__(self):
+        libc.free(self.gob.buffer)
 
 def glinfo():
     strs = {
