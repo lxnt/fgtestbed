@@ -678,8 +678,8 @@ class SurfBunchPBO(object):
             self.surfaces[some_key] = rgba_surface(size.w, size.h, glpixels = glop)
 
     def upload(self):
-        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
         for texname, size, offset in self.store.values():
             glBindTexture(GL_TEXTURE_2D, texname)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size.w, size.h,
@@ -689,7 +689,7 @@ class SurfBunchPBO(object):
     def fini(self):
         if len(self.texnames):
             glDeleteTextures(glnamelist(*self.texnames)[1])
-
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
         glDeleteBuffers(*glnamelist(self.frontbuf, self.backbuf))
 
