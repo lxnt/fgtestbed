@@ -76,7 +76,7 @@ then
     python3.2 setup.py install --prefix=$PREFIX
 fi
 
-if [ "gir" = "$WHAT" -o "all" = "$WHAT" ]
+if [ "gir" = "$WHAT" ]
 then
     echo "Compiling ft2 typelib"
     g-ir-compiler -o $PDIR/lib/gir/freetype2-2.0.typelib $PDIR/lib/gir/freetype2-2.0.gir
