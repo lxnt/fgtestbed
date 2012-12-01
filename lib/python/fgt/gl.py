@@ -758,7 +758,7 @@ class Blitter(object):
 class FtBitmap(object):
     gl_unpack_alignment = 4
     gl_internal_fmt = GL_R8
-    gl_data_fmt = GL_R
+    gl_data_fmt = GL_RED
     gl_data_type = GL_UNSIGNED_BYTE
 
     def __init__(self, w, h, data_ptr = None):
@@ -773,7 +773,7 @@ class FtBitmap(object):
             libc.memset(self.gob.buffer, 0, len(self))
             self.do_free = True
         else:
-            self.gob.buffer = data_ptr
+            self.gob.buffer = data_ptr.value
             self.do_free = False
 
     def __str__(self):
