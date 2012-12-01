@@ -231,17 +231,16 @@ class Shader0(object):
                 
     """
     aloc = { b'position': 0 }
-    def __init__(self, sname=None, define={}):
+    prepend = ()
+    def __init__(self, sname=None):
         log_locs = logging.getLogger('fgt.shader.locs').info
         
         self.uloc = collections.defaultdict(lambda:-1)
         if sname is None:
             sname = self.sname
-        prepend = []
-        for k in define.keys():
-            prepend.append("#define {} {}\n".format(k, define.get(k, 8)))
         vsfn = os.path.join(fgt.config.shaderpath, sname) + '.vs'
         fsfn = os.path.join(fgt.config.shaderpath, sname) + '.fs'
+        prepend = list(map(lambda x: x+"\n", self.prepend))
         vsp = self._compile(prepend + open(vsfn, encoding='utf-8').readlines(), GL_VERTEX_SHADER, vsfn)
         fsp = self._compile(prepend + open(fsfn, encoding='utf-8').readlines(), GL_FRAGMENT_SHADER, fsfn)
         if not (vsp and fsp):
