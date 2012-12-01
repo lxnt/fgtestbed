@@ -378,9 +378,11 @@ class VAO0(object):
         else:
             glBufferSubData(GL_ARRAY_BUFFER, 0, data_size, data_ptr)
 
-    def __del__(self):
+    def fini(self):
         glDeleteVertexArrays(*glnamelist(self._vao_name))
-        self._vbo = None
+        glDeleteBuffers(*glnamelist(self._vbo_name))
+        del self._vbo_name
+        del self._vao_name
 
 class GridVAO(VAO0):
     _primitive_type = GL_POINTS
@@ -463,9 +465,11 @@ class FBO(object):
 
         glViewport(0, 0, srcrect.w, srcrect.h)
 
-    def __del__(self):
+    def fini(self):
         glDeleteRenderbuffers(*glnamelist(self.fb_name))
         glDeleteFramebuffers(*glnamelist(self.rb_name))
+        del self.fb_name
+        del self.rb_name
 
 class TexFBO(object):
     """ render target for most of rendering.
@@ -584,10 +588,13 @@ class TexFBO(object):
             raise RuntimeError("framebuffer incomplete: {}".format(glname.get(x,x)))
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
 
-    def __del__(self):
+    def fini(self):
         glDeleteFramebuffers(*glnamelist(self.fb_name))
         glDeleteTextures(glnamelist(self.tex_name)[1])
         glDeleteBuffers(*glnamelist(self.bo_name))
+        del self.fb_name
+        del self.tex_name
+        del self.bo_name
 
 SurfTex = collections.namedtuple('SurfTex', 'surface texname')
 class SurfBunchPBO(object):
@@ -679,12 +686,16 @@ class SurfBunchPBO(object):
                             0, GL_RGBA, GL_UNSIGNED_BYTE, gl_off_t(offset))
         self.swap()
 
-    def __del__(self):
+    def fini(self):
         if len(self.texnames):
             glDeleteTextures(glnamelist(*self.texnames)[1])
 
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER, self.frontbuf)
         glDeleteBuffers(*glnamelist(self.frontbuf, self.backbuf))
+
+        del self.texnames
+        del self.frontbuf
+        del self.backbuf
 
 class BlitVAO(VAO0):
     """ a quad -> TRIANGLE_STRIP """
