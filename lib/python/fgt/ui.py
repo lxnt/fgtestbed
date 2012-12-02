@@ -236,14 +236,16 @@ class Panel(uibase):
         self.child.resize(size)
 
     def gather(self, rect):
-        panel_rect = Rect(
-            rect.x + self.margin, rect.y + self.margin,
-            rect.w - 2*self.margin, rect.h - 2*self.margin)
         child_rect = Rect(
             rect.x + self.margin + self.padding,
             rect.y + self.margin + self.padding,
             rect.w - 2*(self.margin + self.padding),
             rect.h - 2*(self.margin + self.padding))
+        if self.color[3] < 1/256:
+            return self.child.gather(child_rect)
+        panel_rect = Rect(
+            rect.x + self.margin, rect.y + self.margin,
+            rect.w - 2*self.margin, rect.h - 2*self.margin)
         return [(self, panel_rect)] + self.child.gather(child_rect)
 
     @property
