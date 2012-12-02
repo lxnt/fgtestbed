@@ -723,12 +723,14 @@ class BlitShader(Shader0):
     M_OPAQUE = 3 # force texture alpha to 1.0
     M_RALPHA = 4 # fill with color; take alpha from tex
 
-    def __call__(self, vpsize, mode, color):
+    def __call__(self, dstsize, mode, color, srcrect, srcsize):
         glUseProgram(self.program)
         glUniform1i(self.uloc[b"tex"], 0)
-        glUniform2i(self.uloc[b"vpsize"], *vpsize)
+        glUniform2i(self.uloc[b"dstsize"], *dstsize)
         glUniform1i(self.uloc[b"mode"], mode)
         glUniform4f(self.uloc[b"color"], *color)
+        glUniform4i(self.uloc[b"srcrect"], *srcrect)
+        glUniform2i(self.uloc[b"srcsize"], *srcsize)
 
 class Blitter(object):
     def __init__(self):
@@ -748,11 +750,13 @@ class Blitter(object):
     def ralpha(self, *args, **kwargs):
         return self._blit(self.shader.M_RALPHA, *args, **kwargs)
 
-    def _blit(self, mode, dstrect, vpsize, color=(0,0,0,0.68)):
-        """ vpsize - size of destination viewport for calculating NDC"""
-        self.log.debug("mode={} dstrect={} vpsize={}".format(mode, dstrect, vpsize))
+    def _blit(self, mode, dstrect, dstsize, color=(0,0,0,0.68),
+                srcrect = Rect(0,0,0,0), srcsize = Size2(0,0)):
+        """ dstsize - size of destination viewport for calculating NDC
+            srcrect, srcsize - for partial blitting """
+        self.log.debug("mode={} dstrect={} vpsize={}".format(mode, dstrect, dstsize))
         self.vao.set(dstrect)
-        self.shader(vpsize, mode, color)
+        self.shader(dstsize, mode, color, srcrect, srcsize)
         self.vao()
 
 class FtBitmap(object):
