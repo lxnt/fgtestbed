@@ -32,7 +32,6 @@ import pprint
 
 import fgt
 from fgt.gl import *
-from fgt.hud import *
 from fgt.ui import *
 from fgt.sdlenums import *
 
