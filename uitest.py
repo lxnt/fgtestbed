@@ -221,7 +221,7 @@ class DumbUI(object):
                     blit.ralpha(rect, vpsize, color=(1.0,1.0,1.0,1.0))
                 elif isinstance(what, Panel):
                     glcalltrace("blit panel")
-                    blit.fill(rect, vpsize, color=(0,0,0,0.68))
+                    blit.fill(rect, vpsize, what.color)
                 elif what in map_sizes:
                     glcalltrace("blit mapview")
                     with map_sizes[what].as_texture(GL_TEXTURE0):
