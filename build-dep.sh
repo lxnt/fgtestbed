@@ -9,7 +9,7 @@ WHAT=$3
 
 if [ -z "${PREFIX}" -o -z "${WORK}" -o -z "${PDIR}" ]
 then 
-    echo "Usage: $0 work/dir dest/prefix [sdl|py|gir|all]"
+    echo "Usage: $0 work/dir dest/prefix [sdl|py|gir|rst|all]"
     echo "Please run this from the fgtestbed directory."
     exit 1 
 fi
@@ -80,6 +80,14 @@ if [ "gir" = "$WHAT" ]
 then
     echo "Compiling ft2 typelib"
     g-ir-compiler -o $PDIR/lib/gir/freetype2-2.0.typelib $PDIR/lib/gir/freetype2-2.0.gir
+fi
+if [ "rst" = "$WHAT" ]
+then
+    echo "Converting docs to HTML"
+    for WHAT in $PDIR/*.rst
+    do
+	rst2html $WHAT `echo $WHAT | sed -e s/rst\$/html/g`
+    done
 fi
 
 (   echo "#!/bin/sh"
